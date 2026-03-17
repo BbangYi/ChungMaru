@@ -1,4 +1,4 @@
-package com.example.youtubeparser
+package com.capstone.design.youtubeparser
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
@@ -109,7 +109,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
             for (i in 0 until node.childCount) {
                 val child = node.getChild(i)
                 dfs(child)
-                child?.recycle()
             }
         }
 

@@ -2,66 +2,52 @@
 
 모바일 앱 + 브라우저 익스텐션 기반 실시간 텍스트 유해성 필터링 에이전트 프로젝트입니다.
 
-## GitHub 협업 규칙 (필수)
-
-1. 모든 변경은 포크에서 작업 후 PR로 반영
-2. `main` 직접 push 금지
-3. 승인 규칙: `@Gimminu`/`@haapppy23`는 서로 승인, 다른 팀원 PR은 두 명 중 1명 승인
-4. PR 템플릿 작성 필수 + 사람 리뷰로 충돌/오류 확인
-5. `main` 머지 시 자동 버전 태그(`v0.0.x`)와 Release 이력 생성
-6. 최종 승인/머지 판단은 사람이 수행
-
-## 최소 폴더 구조
+## 현재 구조
 
 ```text
-android/                  # Android Studio 앱
-extension/chrome/         # Chrome Extension
-backend/api/              # 유해성 분류 API
-backend/tests/            # API 검증/회귀 테스트
-shared/normalization/     # 텍스트 정규화
-shared/rules/             # 욕설/혐오/스팸 룰 패턴
-shared/policy/            # 민감도/카테고리 정책
-shared/contracts/         # 앱-익스텐션-백엔드 공통 계약
-evaluation/api-vs-ml/     # API vs ML 비교 실험
-scripts/new-branch.sh     # 표준 브랜치 생성 보조 스크립트
-docs/team-ownership.md    # 팀원별 작업 위치/역할
+android/                  Android Studio 메인 앱
+extension/chrome/         Chrome Extension
+backend/api/              유해성 분류 API 초안
+backend/tests/            API 검증 및 회귀 테스트
+shared/contracts/         앱-익스텐션-백엔드 공통 JSON 계약
+shared/normalization/     텍스트 정규화
+shared/policy/            민감도/카테고리 정책
+shared/rules/             룰 기반 필터
+evaluation/api-vs-ml/     API vs ML 비교 실험
+docs/                     협업 및 작업 가이드
+scripts/                  보조 스크립트
 ```
 
-문서:
-- [협업 가이드](docs/github-collaboration-guide.md)
-- [팀 작업 분담표](docs/team-ownership.md)
+## Android 위치 정리
 
-브랜치 생성 보조(로컬):
+유튜브 댓글 수집용 접근성 서비스는 별도 `tools/` 프로젝트가 아니라 Android 메인 앱 안에서 관리합니다.
 
-```bash
-./scripts/new-branch.sh feat android-text-capture --push
-```
+- 앱 진입점: `android/app/src/main/java/com/capstone/design/MainActivity.kt`
+- 접근성 수집 서비스: `android/app/src/main/java/com/capstone/design/youtubeparser/YoutubeAccessibilityService.kt`
+- 댓글 추출 로직: `android/app/src/main/java/com/capstone/design/youtubeparser/YoutubeCommentExtractor.kt`
+- 업로드 주소 저장: `android/app/src/main/java/com/capstone/design/youtubeparser/UploadEndpointStore.kt`
+- 접근성 서비스 설정: `android/app/src/main/res/xml/accessibility_service_config.xml`
 
+즉, Android 관련 기능은 앞으로 `android/app/src/main/...` 아래에서만 수정하면 됩니다.
 
-## 🚀 Getting Started (설치 및 실행 가이드)
+## Android 실행 방법
 
-본 유튜브 데이터 파싱 도구(`YouTubeParser`)는 수집된 유해성 데이터를 안전하게 **개인 로컬 서버 PC**로 전송하기 위해 [Tailscale](https://tailscale.com/) 프라이빗 네트워크(VPN) 환경을 사용합니다. 
+1. Android Studio에서 `android/`를 엽니다.
+2. 앱을 설치한 뒤 첫 화면에서 업로드 서버 주소를 저장합니다.
+3. `접근성 설정 열기` 버튼으로 접근성 권한을 켭니다.
+4. 유튜브 앱에서 댓글 화면을 열면 수집 로직이 동작합니다.
 
-포트 포워딩 없이, 외부 네트워크(LTE/5G) 환경에서도 안전한 내부망 통신을 보장합니다.
+기본 업로드 주소는 Tailscale 기반 로컬 서버를 가정하며, 앱 첫 화면에서 변경할 수 있습니다.
 
-### 📋 Prerequisites (사전 준비)
-* 안드로이드 스마트폰 (Android 8.0 이상 권장)
-* **Tailscale** 모바일 앱 설치 및 계정 연동
-* 데이터를 수신할 로컬 서버 PC (동일한 Tailscale 네트워크에 연결되어 있어야 함)
+## 협업 원칙
 
-### 🛠️ Installation & Network Setup (설치 및 네트워크 연동)
+1. 기본 흐름은 `feature branch -> PR -> main` 입니다.
+2. `main`은 가급적 직접 수정하지 않고, 리뷰 기록을 남깁니다.
+3. 운영상 급한 수정은 관리자 확인 후 바로 반영할 수 있습니다.
+4. 자세한 규칙은 `docs/github-collaboration-guide.md`에서 관리합니다.
 
-**Step 1. 애플리케이션 설치**
-* 제공된 `YouTubeParser.apk` 파일을 안드로이드 기기에 설치합니다.
+## 관련 문서
 
-**Step 2. Tailscale 프라이빗 망 연결**
-* 구글 플레이스토어에서 **Tailscale** 앱을 다운로드합니다.
-* 데이터 수신용 서버 PC와 **동일한 계정**으로 로그인하여 기기를 Tailnet에 등록합니다. (김성현한테 말 하면 로그인 해줌)
-* 앱 내 토글을 눌러 VPN을 **Active(활성화)** 상태로 전환합니다.
-
-**Step 3. 서버 IP 동기화 (Endpoint Configuration)**
-* 모바일 Tailscale 앱 목록에서, 목적지인 서버 PC에 할당된 **Tailscale 고유 IPv4 주소** (예: `100.x.x.x`)를 확인합니다.
-* `YouTubeParser` 앱을 실행한 뒤, 첫 화면의 `서버 주소 저장` 입력란에 해당 IP 주소를 기입하고 저장합니다.
-* ssh first@IP 비밀번호 = first
-
-> **💡 Note for Reviewers:** > 이 방식을 통해 공용망에서의 데이터 탈취(Sniffing) 위험을 원천 차단하고, 백엔드 로컬 개발 환경과 모바일 클라이언트 간의 매끄러운 다이렉트 통신 파이프라인을 구축하였습니다.
+- `docs/github-collaboration-guide.md`
+- `docs/team-ownership.md`
+- `shared/contracts/web-text-payload-v1.md`

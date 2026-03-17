@@ -1,104 +1,87 @@
-# GitHub 협업 가이드 (포크 + PR + 리뷰 강제)
+# GitHub 협업 가이드
 
-이 문서는 팀원이 GitHub 사용 경험이 적어도 동일한 방식으로 협업할 수 있도록 만든 운영 가이드입니다.
+이 문서는 현재 저장소에서 실제로 사용하는 협업 흐름만 정리합니다.
 
-운영 원칙:
-1. 최종 승인/머지 판단은 사람이 한다.
-2. 자동화는 릴리즈 버전 태그 생성만 사용한다.
+## 기본 원칙
 
-## 1) 우리가 적용한 기본 규칙
+1. 기본 작업 흐름은 `feature branch -> PR -> main` 입니다.
+2. `main`은 보호 브랜치로 유지하고, 머지는 `Squash merge`만 사용합니다.
+3. 리뷰와 최종 판단은 사람이 합니다.
+4. 관리자(`@Gimminu`)는 긴급 수정이나 정리 작업 시 직접 반영할 수 있습니다.
+5. 자동화는 보조 수단이고, 충돌 여부와 영향 범위 확인은 사람이 직접 합니다.
 
-1. `upstream(main)`에 직접 push 금지
-2. 작업은 반드시 개인 포크에서 진행
-3. 모든 변경은 PR로만 반영
-4. 최소 1명 승인 + CODEOWNER 승인 필요
-5. PR 본문 템플릿 필수 작성
-6. 머지는 `Squash merge`만 허용
-7. `main`에 머지되면 자동으로 버전 태그(`v0.0.x`)와 Release 이력 생성
+## 현재 보호 정책
 
-## 2) 관리자 1회 설정 방법
+1. `main`은 linear history를 유지합니다.
+2. CODEOWNER 리뷰 1개가 필요합니다.
+3. stale review 자동 무효화는 사용하지 않습니다.
+4. last push approval 강제는 사용하지 않습니다.
+5. 관리자 bypass는 허용합니다.
 
-아래는 관리자 계정에서 한 번만 수행하면 됩니다.
+즉, 일반 팀원은 PR 중심으로 작업하고, 관리자만 예외적으로 직접 정리할 수 있습니다.
 
-```bash
-gh auth login
-./.github/scripts/apply-github-governance.sh Gimminu/capstone-design main
-```
+## 팀원 작업 방법
 
-추가로 GitHub 웹 설정에서 반드시 확인:
-
-1. `Settings > Collaborators and teams`
-2. 팀원 권한을 `Read`로 설정 (포크 강제의 핵심)
-3. 관리자만 `Write/Admin` 유지
-
-권장: `@Gimminu`, `@haapppy23`는 리뷰/승인 권한(Write 이상)을 유지
-
-## 3) 팀원 작업 방법 (반복)
-
-역할/담당 경계는 [팀 작업 분담표](team-ownership.md)를 기준으로 한다.
-
-### A. 포크 및 클론
-
-1. GitHub에서 `Fork` 버튼 클릭
-2. 개인 포크를 로컬에 클론
-
-```bash
-git clone https://github.com/<my-id>/capstone-design.git
-cd capstone-design
-git remote add upstream https://github.com/Gimminu/capstone-design.git
-```
-
-### B. 기능 브랜치 생성 및 작업
+### 1. 브랜치 생성
 
 ```bash
 ./scripts/new-branch.sh feat <short-topic> --push
-# 코드 수정
+```
+
+예시:
+
+```bash
+./scripts/new-branch.sh feat android-comment-capture --push
+```
+
+### 2. 작업 및 커밋
+
+```bash
 git add .
 git commit -m "feat: <what changed>"
 ```
 
-참고:
-1. GitHub 서버가 PR 시 브랜치를 자동 생성해주지는 않습니다.
-2. 위 스크립트는 로컬에서 표준 브랜치를 자동 생성하고 필요 시 바로 push합니다.
+### 3. PR 생성
 
-### C. PR 생성
+1. 작업 브랜치에서 `main`으로 PR 생성
+2. PR 템플릿 작성
+3. 변경 범위, 충돌 여부, 테스트 결과를 리뷰어가 바로 볼 수 있게 정리
 
-1. `origin(feat/...)` -> `upstream(main)` 으로 PR 생성
-2. PR 템플릿 항목 작성
-3. 리뷰 요청 후 피드백 반영
+## 리뷰/머지 흐름
 
-## 4) 리뷰/머지 흐름
+1. PR 작성
+2. 충돌 여부 확인
+3. 필요 시 `main` 기준 동기화
+4. 리뷰 후 `Squash merge`
+5. 머지 후 작업 브랜치 삭제
 
-1. 승인 규칙 충족
-2. GitHub PR 화면에서 충돌(conflict)/오류 여부 확인
-3. 필요한 경우 `upstream/main` 기준 rebase
-4. `Squash merge`
-5. 머지 후 브랜치 삭제
-6. `main` push 트리거로 자동 버전 태그 + Release 생성
+## 관리자 작업 원칙
 
-승인 규칙:
+`@Gimminu`는 아래 경우 직접 수정 또는 직접 머지할 수 있습니다.
 
-1. PR 작성자가 `@Gimminu`이면 `@haapppy23` 승인 필수
-2. PR 작성자가 `@haapppy23`이면 `@Gimminu` 승인 필수
-3. PR 작성자가 그 외 팀원이면 `@Gimminu` 또는 `@haapppy23` 중 1명 승인 필수
+1. 브랜치 구조가 불필요하게 꼬였을 때
+2. 팀원이 충돌 해결을 못 하고 멈춘 상태일 때
+3. 문서/설정/브랜치 정리처럼 빠른 정비가 더 중요한 경우
+4. 자기 PR을 직접 확인하고 바로 머지해야 하는 경우
 
-## 5) 충돌(conflict) 해결 기본
+다만, 가능하면 PR 기록은 남기는 쪽이 좋습니다.
+
+## 충돌 해결 기본
 
 ```bash
-git fetch upstream
+git fetch origin
 git checkout feat/<short-topic>
-git rebase upstream/main
-# 충돌 수정 후
+git rebase origin/main
+# 충돌 수정
 git add <fixed-files>
 git rebase --continue
-git push --force-with-lease origin feat/<short-topic>
+git push --force-with-lease
 ```
 
-`--force-with-lease`는 rebase 후 내 원격 브랜치만 안전하게 갱신할 때 사용합니다.
+## 자주 틀리는 부분
 
-## 6) 자주 발생하는 실패 원인
-
-1. 포크가 아닌 upstream 브랜치에서 PR 생성함
-2. PR 템플릿 미작성 또는 체크리스트 미체크
-3. CODEOWNER 승인 없이 머지 시도
-4. `main` 기준 최신 동기화 없이 오래된 브랜치로 PR
+1. `main`에서 바로 작업 시작함
+2. PR 설명 없이 변경 파일만 올림
+3. 여러 기능을 한 PR에 섞음
+4. Android, extension, backend를 한 번에 크게 건드림
+5. 충돌이 난 상태로 방치함

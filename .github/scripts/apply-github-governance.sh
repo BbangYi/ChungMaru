@@ -37,12 +37,12 @@ echo "[2/2] Branch protection 적용: ${REPO} (${BRANCH})"
 read -r -d '' payload <<JSON || true
 {
   "required_status_checks": null,
-  "enforce_admins": true,
+  "enforce_admins": false,
   "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
+    "dismiss_stale_reviews": false,
     "require_code_owner_reviews": true,
     "required_approving_review_count": 1,
-    "require_last_push_approval": true
+    "require_last_push_approval": false
   },
   "restrictions": null,
   "required_linear_history": true,
@@ -64,8 +64,8 @@ cat <<EOF
 [DONE] GitHub 보호 정책이 적용되었습니다.
 
 추가 수동 설정(필수):
-1) Settings > Collaborators and teams 에서 팀원 권한을 Read로 설정
-2) direct push 금지 여부가 main 브랜치 보호에 반영되었는지 확인
-3) PR merge 전에 CODEOWNER(@Gimminu / @haapppy23) 리뷰 승인 흐름 점검
+1) 기본 작업 흐름은 feature branch -> PR -> main 으로 유지
+2) CODEOWNER(@Gimminu / @haapppy23) 리뷰 승인 흐름 점검
+3) 관리자 직접 수정은 긴급 수정/정리 작업에만 사용
 4) 본 설정은 status check 강제를 두지 않습니다 (사람 리뷰 중심 운영)
 EOF
