@@ -50,6 +50,7 @@ scripts/                  보조 스크립트
 
 ## 관련 문서
 
-- `docs/github-collaboration-guide.md`
-- `docs/team-ownership.md`
-- `shared/contracts/README.md`
+- [서비스 정의서](docs/service-definition.md)
+- [GitHub 협업 가이드](docs/github-collaboration-guide.md)
+- [팀 작업 분담표](docs/team-ownership.md)
+- [공통 계약 문서](shared/contracts/README.md)
