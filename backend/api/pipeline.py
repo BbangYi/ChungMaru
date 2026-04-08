@@ -1,75 +1,124 @@
 """
-메인 파이프라인: 텍스트 → 정규화 → 모델 분류 + XAI Attribution → 결과 JSON
-사전 없이 모델이 분류와 위치 추출을 동시에 수행
+메인 파이프라인: 텍스트 → 정규화 → 분류 → Span 추출 → 결과 JSON
+
+아키텍처:
+  1) TextClassifier  — 문장 분류 (XLM-RoBERTa-base, 비속어/공격/혐오)
+  2) SpanDetector    — 욕설 span 추출 (XLM-RoBERTa-large + CRF)
+  3) 분류기 주도     — 분류기가 판정, span은 근거 제공 (판정을 뒤집지 않음)
+
+플랫폼별 처리:
+  Chrome Extension → analyze() / analyze_batch()       텍스트 직접 입력
+  Android App      → analyze_android_batch()           JSON + boundsInScreen 입력/출력
 """
+import os
+
 from normalizer import normalize
-from explainer import ProfanityExplainer
+from classifier import TextClassifier
+from span_detector import SpanDetector
+from input_filter import filter_android_json
+
+# 모델 경로: 환경변수 > 기본값(backend/ 기준)
+BASE = os.environ.get("MODEL_BASE", os.path.join(os.path.dirname(__file__), ".."))
 
 
 class ProfanityPipeline:
-    def __init__(self, model_path: str = "./models_v2", threshold: float = 0.5,
-                 span_min_score: float = 0.5):
+    def __init__(self,
+                 classifier_path: str = None,
+                 span_model_path: str = None,
+                 threshold: float = 0.5):
         """
         Args:
-            model_path: 모델 경로
+            classifier_path: 분류 모델 경로
+            span_model_path: Span CRF 모델 경로
             threshold: 분류 임계값 (is_profane 등 판정 기준)
-            span_min_score: evidence_spans에 포함할 최소 attribution 점수.
-                           이 값 미만이면 span 추출 보류 → 문장 전체 경고만 반환.
         """
-        self.explainer = ProfanityExplainer(model_path=model_path)
+        if classifier_path is None:
+            classifier_path = os.environ.get(
+                "MODEL_CLASSIFIER_PATH",
+                os.path.join(BASE, "models", "v2"),
+            )
+        if span_model_path is None:
+            span_model_path = os.environ.get(
+                "MODEL_SPAN_PATH",
+                os.path.join(BASE, "models", "span_large_combined_crf"),
+            )
+
+        self.classifier = TextClassifier(model_path=classifier_path)
+        self.span_detector = SpanDetector(model_dir=span_model_path)
         self.threshold = threshold
-        self.span_min_score = span_min_score
 
     def analyze(self, text: str) -> dict:
         """단일 텍스트 분석.
 
-        Returns:
-            {
-                "text": str,
-                "is_profane": bool,
-                "is_toxic": bool,
-                "is_hate": bool,
-                "scores": {"profanity": float, "toxicity": float, "hate": float},
-                "evidence_spans": [
-                    {"text": str, "start": int, "end": int, "score": float}
-                ],
-                "span_reliable": bool,  # span 신뢰도 충분 여부
-            }
+        분류기가 주 판정자, span은 근거 제공자.
+        분류기 판정(is_offensive)을 span이 뒤집지 않는다.
         """
         # [1단계] 정규화
         normalized = normalize(text)
 
-        # [2단계] 모델 분류 + XAI attribution 추출
-        raw = self.explainer.analyze(normalized, threshold=self.threshold)
+        # [2단계] 문장 분류
+        cls_result = self.classifier.predict(normalized, threshold=self.threshold)
 
-        # [3단계] flagged_tokens → evidence_spans 변환 (원문 기준)
+        is_offensive = (
+            cls_result["is_profane"]
+            or cls_result["is_toxic"]
+            or cls_result["is_hate"]
+        )
+
+        # [3단계] Span 추출 — 분류기가 유해 판정한 경우에만 실행
         evidence_spans = []
-        for ft in raw.get("flagged_tokens", []):
-            span = {"text": ft["word"], "score": ft["attribution"]}
-            if "start" in ft:
-                # 정규화 텍스트 기준 위치 → 원문에서 재탐색
-                idx = text.find(ft["word"])
+        if is_offensive:
+            raw_spans = self.span_detector.detect(normalized)
+            # 정규화 텍스트 → 원문 위치 매핑
+            for s in raw_spans:
+                idx = text.find(s["text"])
                 if idx >= 0:
-                    span["start"] = idx
-                    span["end"] = idx + len(ft["word"])
-                else:
-                    span["start"] = ft.get("start", -1)
-                    span["end"] = ft.get("end", -1)
-            evidence_spans.append(span)
-
-        # span 신뢰도 판정: 최소 1개 span이 span_min_score 이상이어야 신뢰
-        span_reliable = any(s["score"] >= self.span_min_score for s in evidence_spans)
+                    s["start"] = idx
+                    s["end"] = idx + len(s["text"])
+            evidence_spans = raw_spans
 
         return {
             "text": text,
-            "is_profane": raw["is_profane"],
-            "is_toxic": raw["is_toxic"],
-            "is_hate": raw["is_hate"],
-            "scores": raw["scores"],
+            "is_offensive": is_offensive,
+            "is_profane": cls_result["is_profane"],
+            "is_toxic": cls_result["is_toxic"],
+            "is_hate": cls_result["is_hate"],
+            "scores": cls_result["scores"],
             "evidence_spans": evidence_spans,
-            "span_reliable": span_reliable,
         }
 
     def analyze_batch(self, texts: list[str]) -> list[dict]:
         """배치 텍스트 분석."""
         return [self.analyze(text) for text in texts]
+
+    def analyze_android_batch(self, raw: dict) -> dict:
+        """Android 앱 수집 JSON 전체 처리.
+
+        0단계 필터 → 분석 → boundsInScreen 보존하여 반환.
+        """
+        total = len(raw.get("comments", []))
+        valid_comments = filter_android_json(raw)
+
+        results = []
+        for item in valid_comments:
+            text = item["commentText"]
+            bounds = item["boundsInScreen"]
+
+            analysis = self.analyze(text)
+
+            results.append({
+                "original": text,
+                "boundsInScreen": bounds,
+                "is_offensive": analysis["is_offensive"],
+                "is_profane": analysis["is_profane"],
+                "is_toxic": analysis["is_toxic"],
+                "is_hate": analysis["is_hate"],
+                "scores": analysis["scores"],
+                "evidence_spans": analysis["evidence_spans"],
+            })
+
+        return {
+            "timestamp": raw.get("timestamp"),
+            "results": results,
+            "filtered_count": total - len(valid_comments),
+        }
