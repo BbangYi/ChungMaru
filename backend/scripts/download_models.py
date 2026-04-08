@@ -11,8 +11,8 @@ import os
 import sys
 
 # TODO: 실제 Google Drive 폴더 ID로 교체
-CLASSIFIER_DRIVE_ID = "YOUR_CLASSIFIER_FOLDER_ID"
-SPAN_MODEL_DRIVE_ID = "YOUR_SPAN_MODEL_FOLDER_ID"
+CLASSIFIER_DRIVE_ID = "1EkC2QMxJVE-3zAX0i4KlJ0LtsTVsx7Aj"
+SPAN_MODEL_DRIVE_ID = "10ihyp30eRqeJSIuR8YSleytwzv9KU6kV"
 
 BASE = os.path.join(os.path.dirname(__file__), "..")
 MODELS_DIR = os.path.join(BASE, "models")
