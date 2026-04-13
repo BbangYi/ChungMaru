@@ -3822,7 +3822,7 @@ async function executeHotPathForCandidates(candidates, runReason) {
   const analysisUnits = buildHotPathAnalysisUnits(foregroundCandidates, {
       containerLimit: MAX_FOREGROUND_WAVE_CONTAINERS,
       boundContext: true,
-      preferStandaloneGoogle: false
+      preferStandaloneGoogle: true
     });
   if (analysisUnits.length === 0) {
     return { ok: true, skipped: true };
@@ -4189,7 +4189,7 @@ async function executePipeline(runReason) {
         ? MAX_HOT_PATH_CONTAINERS
         : MAX_FOREGROUND_WAVE_CONTAINERS,
       boundContext: true,
-      preferStandaloneGoogle: false
+      preferStandaloneGoogle: true
     });
     const unitCandidates = collectUnitCandidates(analysisUnits);
     const analyzedCandidateIds = new Set(unitCandidates.map((candidate) => candidate.nodeId));
