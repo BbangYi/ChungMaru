@@ -331,8 +331,17 @@ function syncEditableSingleLineBarLayout(state, style, rect) {
       ? Math.max(0, parsePixelValue(style.fontSize) * 1.2)
       : parsePixelValue(style.lineHeight);
   const contentHeight = Math.max(0, rect.height - paddingTop - paddingBottom);
+  const singleLineBarHeight = singleLineElement
+    ? Math.max(
+        12,
+        Math.min(
+          Math.max(12, rect.height - 2),
+          Math.max(lineHeight + 2, contentHeight)
+        )
+      )
+    : Math.max(lineHeight + 2, contentHeight + 2);
   const topOffset = singleLineElement
-    ? 0
+    ? Math.max(0, paddingTop + Math.max(0, (contentHeight - singleLineBarHeight) / 2))
     : Math.max(0, paddingTop - 1);
   const maxWidth = Math.max(0, rect.width - paddingLeft - paddingRight);
   const barHorizontalPadding = 2;
@@ -383,8 +392,12 @@ function syncEditableSingleLineBarLayout(state, style, rect) {
     bar.style.top = `${Math.round(Math.max(0, topOffset))}px`;
     bar.style.width = `${Math.round(Math.min(paddingLeft + maxWidth, right) - Math.max(paddingLeft, left))}px`;
     bar.style.height = `${Math.round(
-      coversFullText || singleLineElement
-        ? rect.height
+      coversFullText
+        ? singleLineElement
+          ? singleLineBarHeight
+          : rect.height
+        : singleLineElement
+          ? singleLineBarHeight
         : Math.max(lineHeight + 2, contentHeight + 2)
     )}px`;
     fragment.appendChild(bar);
@@ -517,7 +530,7 @@ function shouldUseEditableNativeMask(element, spans, text) {
 }
 
 function shouldUseEditableSingleLineBarMask(element, spans) {
-  return false;
+  return isSingleLineEditableElement(element) && Array.isArray(spans) && spans.length > 0;
 }
 
 function renderEditableValueOutcome(candidate, outcome, settings) {
@@ -551,8 +564,12 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
     spans
   });
   if (decisionKey === state.lastDecisionKey) {
-    if (renderMode === "overlay" || renderMode === "single-line-bars") {
-      syncEditableOverlayLayout(state);
+    if (renderMode === "native-mask") {
+      renderEditableNativeMask(state, tooltip, settings);
+    } else if (renderMode === "single-line-bars") {
+      renderEditableSingleLineBarMask(state, candidate.text, spans, settings, tooltip);
+    } else {
+      renderEditableOverlay(state, candidate.text, spans, settings, tooltip);
     }
     return;
   }

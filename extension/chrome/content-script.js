@@ -115,6 +115,8 @@ const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
 const FOREGROUND_ANALYZE_TIMEOUT_MS = 650;
 const RECONCILE_ANALYZE_TIMEOUT_MS = 3000;
+const FOREGROUND_BACKEND_BATCH_SIZE = 6;
+const RECONCILE_BACKEND_BATCH_SIZE = 3;
 const BACKEND_WARMUP_TEXTS = ["안녕하세요", "검색 테스트", "청마루 실시간 필터"];
 const FOREGROUND_STANDALONE_SAFE_CACHE_TTL_MS = 7000;
 const FOREGROUND_CONTEXTUAL_SAFE_CACHE_TTL_MS = 800;
@@ -493,18 +495,25 @@ function shouldAllowGoogleInteractiveElement(element) {
 
 function isSkippableElement(element) {
   if (!(element instanceof Element)) return true;
-  if (SKIP_TAGS.has(element.tagName)) return true;
+  const allowGoogleInteractive = shouldAllowGoogleInteractiveElement(element);
+  if (SKIP_TAGS.has(element.tagName) && !(element.tagName === "BUTTON" && allowGoogleInteractive)) {
+    return true;
+  }
   if (isShieldTextManagedElement(element)) return true;
   if (isEditableElement(element)) return true;
-  if (element.closest("form")) return true;
+  if (element.closest("form") && !allowGoogleInteractive) return true;
   if (element.closest("pre, code, textarea, input, select")) return true;
-  if (element.closest("button, [role='button']") && !shouldAllowGoogleInteractiveElement(element)) {
+  if (element.closest("button, [role='button']") && !allowGoogleInteractive) {
     return true;
   }
   if (element.closest("[data-shieldtext-rendered='true']")) return true;
-  if (element.getAttribute("role") === "button" && !shouldAllowGoogleInteractiveElement(element)) return true;
+  if (element.getAttribute("role") === "button" && !allowGoogleInteractive) return true;
   if (element.getAttribute("role") === "textbox") return true;
   return false;
+}
+
+function shouldSkipTextNodeParent(element) {
+  return isSkippableElement(element) || isSpeculationRulesElement(element);
 }
 
 function looksLikeRawUrl(text) {
@@ -901,13 +910,7 @@ function registerTextNodesInTree(root, options = {}) {
     acceptNode(node) {
       if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
       if (!node.parentElement) return NodeFilter.FILTER_REJECT;
-      if (SKIP_TAGS.has(node.parentElement.tagName)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      if (isSpeculationRulesElement(node.parentElement)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      if (isShieldTextManagedElement(node.parentElement)) {
+      if (shouldSkipTextNodeParent(node.parentElement)) {
         return NodeFilter.FILTER_REJECT;
       }
       if (onlyVisible) {
@@ -1125,9 +1128,7 @@ function collectTextCandidatesFromElements(elements, limit = Number.POSITIVE_INF
       acceptNode(node) {
         if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
         if (!node.parentElement) return NodeFilter.FILTER_REJECT;
-        if (SKIP_TAGS.has(node.parentElement.tagName)) return NodeFilter.FILTER_REJECT;
-        if (isSpeculationRulesElement(node.parentElement)) return NodeFilter.FILTER_REJECT;
-        if (isShieldTextManagedElement(node.parentElement)) {
+        if (shouldSkipTextNodeParent(node.parentElement)) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -2286,13 +2287,7 @@ function buildContainerAnalysisUnits(candidates) {
       acceptNode(node) {
         if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
         if (!node.parentElement) return NodeFilter.FILTER_REJECT;
-        if (SKIP_TAGS.has(node.parentElement.tagName)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (isSpeculationRulesElement(node.parentElement)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (isShieldTextManagedElement(node.parentElement)) {
+        if (shouldSkipTextNodeParent(node.parentElement)) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -2411,9 +2406,7 @@ function buildContextualAnalysisUnits(candidates) {
       acceptNode(node) {
         if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
         if (!node.parentElement) return NodeFilter.FILTER_REJECT;
-        if (SKIP_TAGS.has(node.parentElement.tagName)) return NodeFilter.FILTER_REJECT;
-        if (isSpeculationRulesElement(node.parentElement)) return NodeFilter.FILTER_REJECT;
-        if (isShieldTextManagedElement(node.parentElement)) {
+        if (shouldSkipTextNodeParent(node.parentElement)) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -2660,6 +2653,14 @@ function chunkArray(items, chunkSize) {
   return chunks;
 }
 
+function getBackendRequestBatchSize(analysisMode) {
+  const mode = String(analysisMode || "");
+  if (mode === "reconcile" || mode === "background-validation") {
+    return RECONCILE_BACKEND_BATCH_SIZE;
+  }
+  return FOREGROUND_BACKEND_BATCH_SIZE;
+}
+
 function normalizeEvidenceSpans(spans, originalText) {
   const sourceText = String(originalText || "");
   const nextSpans = (Array.isArray(spans) ? spans : [])
@@ -2904,6 +2905,13 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   let backendDurationMs = 0;
   let apiBaseUrl = "";
   let backendStatus = "ready";
+  const requestBatchSize = Math.max(
+    1,
+    getBackendRequestBatchSize(String(options.analysisMode || ""))
+  );
+  const requestBatches = pendingRequests.length > 0
+    ? chunkArray(pendingRequests, requestBatchSize)
+    : [];
 
   async function emitProgress(resolvedCandidates) {
     if (typeof onProgress !== "function" || resolvedCandidates.length === 0) {
@@ -2933,59 +2941,63 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   }
 
   if (pendingRequests.length > 0) {
-    const response = await safeRuntimeSendMessage({
-          type: "ANALYZE_TEXT_BATCH",
-          texts: pendingRequests.map((request) => request.text),
-          requestTimeoutMsOverride: requestTimeoutMs || undefined,
-          sensitivity: cacheSensitivity,
-          analysisMode: String(options.analysisMode || "")
-        });
+    const analysisMode = String(options.analysisMode || "");
 
-    if (!response?.ok) {
-      return {
-        ok: false,
-        error: {
-          reason: response?.reason || "ANALYZE_TEXT_BATCH_FAILED",
-          errorCode: response?.errorCode || "ANALYZE_TEXT_BATCH_FAILED",
-          retryable: Boolean(response?.retryable),
-          backendStatus: response?.backendStatus || "degraded"
-        },
-        apiBaseUrl: response?.apiBaseUrl || apiBaseUrl,
-        backendDurationMs
-      };
+    for (const requestBatch of requestBatches) {
+      const response = await safeRuntimeSendMessage({
+        type: "ANALYZE_TEXT_BATCH",
+        texts: requestBatch.map((request) => request.text),
+        requestTimeoutMsOverride: requestTimeoutMs || undefined,
+        sensitivity: cacheSensitivity,
+        analysisMode
+      });
+
+      if (!response?.ok) {
+        return {
+          ok: false,
+          error: {
+            reason: response?.reason || "ANALYZE_TEXT_BATCH_FAILED",
+            errorCode: response?.errorCode || "ANALYZE_TEXT_BATCH_FAILED",
+            retryable: Boolean(response?.retryable),
+            backendStatus: response?.backendStatus || "degraded"
+          },
+          apiBaseUrl: response?.apiBaseUrl || apiBaseUrl,
+          backendDurationMs
+        };
+      }
+
+      apiBaseUrl = response.apiBaseUrl || apiBaseUrl;
+      backendDurationMs += Number(response.durationMs || 0);
+      backendStatus = response.backendStatus || backendStatus;
+      backendCacheHitCount += Number(response.cacheHitCount || 0);
+      const resolvedCandidates = [];
+
+      response.results.forEach((result, index) => {
+        const request = requestBatch[index];
+        if (!request) {
+          return;
+        }
+
+        const skippedResult = result?.__shieldtextSkipped === true;
+        const cacheableResult =
+          skippedResult
+            ? null
+            : result && typeof result === "object"
+            ? {
+                ...result,
+                text: String(result.text || result.original || request.text || "")
+              }
+            : result || null;
+        resultsByText.set(request.key, cacheableResult || null);
+        setCachedAnalysis(request.entry, cacheableResult || null);
+
+        for (const item of itemsByText.get(request.key) || []) {
+          resolvedCandidates.push(item);
+        }
+      });
+
+      await emitProgress(resolvedCandidates);
     }
-
-    apiBaseUrl = response.apiBaseUrl || apiBaseUrl;
-    backendDurationMs += Number(response.durationMs || 0);
-    backendStatus = response.backendStatus || backendStatus;
-    backendCacheHitCount += Number(response.cacheHitCount || 0);
-    const resolvedCandidates = [];
-
-    response.results.forEach((result, index) => {
-      const request = pendingRequests[index];
-      if (!request) {
-        return;
-      }
-
-      const skippedResult = result?.__shieldtextSkipped === true;
-      const cacheableResult =
-        skippedResult
-          ? null
-          : result && typeof result === "object"
-          ? {
-              ...result,
-              text: String(result.text || result.original || request.text || "")
-            }
-          : result || null;
-      resultsByText.set(request.key, cacheableResult || null);
-      setCachedAnalysis(request.entry, cacheableResult || null);
-
-      for (const item of itemsByText.get(request.key) || []) {
-        resolvedCandidates.push(item);
-      }
-    });
-
-    await emitProgress(resolvedCandidates);
   }
 
   const orderedResults = items.map((item) => resultsByText.get(getAnalysisCacheKey(item)) || null);
@@ -2997,6 +3009,9 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
     backendDurationMs,
     backendStatus,
     requestedCount: pendingRequests.length,
+    requestCount: requestBatches.length,
+    splitRetryCount: Math.max(0, requestBatches.length - 1),
+    chunkSize: requestBatchSize,
     cacheHitCount,
     backendCacheHitCount
   };
@@ -4617,15 +4632,12 @@ function markTextNodeDirty(textNode) {
 
 function markDirtyFromTarget(target) {
   if (target instanceof Text) {
-    if (isShieldTextManagedElement(target.parentElement)) return false;
-    if (SKIP_TAGS.has(target.parentElement?.tagName || "")) return false;
+    if (shouldSkipTextNodeParent(target.parentElement)) return false;
     return markTextNodeDirty(target);
   }
 
   if (!(target instanceof Element)) return false;
-  if (SKIP_TAGS.has(target.tagName)) return false;
-  if (isSpeculationRulesElement(target)) return false;
-  if (isShieldTextManagedElement(target)) return false;
+  if (shouldSkipTextNodeParent(target)) return false;
   const registeredCount = registerTextNodesInTree(target, {
     markDirty: true,
     limit: MAX_DIRTY_TEXT_NODES_PER_MUTATION
