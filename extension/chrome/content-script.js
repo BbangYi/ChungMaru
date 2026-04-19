@@ -457,12 +457,16 @@ function isEditableElement(element) {
   return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 }
 
-function shouldAllowGoogleInteractiveElement(element) {
+function getGoogleInteractiveRoot(element) {
   if (!isGoogleSearchPage() || !(element instanceof Element)) {
-    return false;
+    return null;
   }
 
-  const interactiveRoot = element.closest("button, [role='button']");
+  return element.closest("button, [role='button'], a[href]");
+}
+
+function shouldAllowGoogleInteractiveElement(element) {
+  const interactiveRoot = getGoogleInteractiveRoot(element);
   if (!(interactiveRoot instanceof Element)) {
     return false;
   }
@@ -1113,7 +1117,6 @@ function collectTextCandidatesFromElements(elements, limit = Number.POSITIVE_INF
     if (!isElementNearViewport(element.getBoundingClientRect())) continue;
 
     registerTextNodesInTree(element, {
-      markDirty: true,
       onlyVisible: true,
       limit: 24
     });
@@ -4555,7 +4558,6 @@ function scheduleStartupFollowupPipelines() {
     window.setTimeout(() => {
       if (extensionContextInvalidated || isUnsupportedPage()) return;
       const registeredCount = registerTextNodesInTree(document.body, {
-        markDirty: true,
         onlyVisible: true,
         limit: MAX_INITIAL_TEXT_NODES
       });
@@ -4573,7 +4575,6 @@ function refreshVisibleCandidateRegistrations() {
     const containers = getGoogleVisibleAnalysisContainers(MAX_HOT_PATH_CONTAINERS);
     for (const container of containers) {
       registeredCount += registerTextNodesInTree(container, {
-        markDirty: true,
         onlyVisible: true,
         limit: MAX_GOOGLE_CANDIDATES_PER_CONTAINER
       });
@@ -4582,7 +4583,6 @@ function refreshVisibleCandidateRegistrations() {
   }
 
   return registerTextNodesInTree(document.body, {
-    markDirty: true,
     onlyVisible: true,
     limit: SCROLL_REFRESH_TEXT_NODE_LIMIT
   });
