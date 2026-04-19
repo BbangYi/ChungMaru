@@ -98,8 +98,8 @@ const HOT_PATH_WORKER_INIT_TIMEOUT_MS = 900;
 const HOT_PATH_WORKER_BACKOFF_MS = 8000;
 const MAX_HOT_PATH_CONTEXT_LENGTH = 320;
 const INPUT_PIPELINE_DEBOUNCE_MS = 0;
-const VISIBILITY_PIPELINE_DEBOUNCE_MS = 0;
-const RECONCILE_FLUSH_DELAY_MS = 12;
+const VISIBILITY_PIPELINE_DEBOUNCE_MS = 24;
+const RECONCILE_FLUSH_DELAY_MS = 20;
 const RECONCILE_FAST_FLUSH_DELAY_MS = 0;
 const RECONCILE_CHUNK_SIZE = 2;
 const MAX_FOREGROUND_CANDIDATES = 12;
@@ -3895,7 +3895,7 @@ async function executeHotPathForCandidates(candidates, runReason) {
   );
 
   if (Number(decision.maskedSpanCount || 0) > 0) {
-    ignoreMutationsUntil = Date.now() + 80;
+    ignoreMutationsUntil = Date.now() + 180;
   }
 
   applyDecision(unitCandidates, decision, settings, {
@@ -4147,7 +4147,7 @@ async function executePipeline(runReason) {
     const hostname = location.hostname || "unknown";
 
     if (!settings.enabled) {
-      ignoreMutationsUntil = Date.now() + 120;
+      ignoreMutationsUntil = Date.now() + 220;
       for (const state of NODE_STATE_BY_ID.values()) {
         restoreNodeState(state);
       }
@@ -4319,7 +4319,7 @@ async function executePipeline(runReason) {
           firstMaskLatencyMs = Math.round(performance.now() - startedAt);
         }
 
-        ignoreMutationsUntil = Date.now() + 120;
+        ignoreMutationsUntil = Date.now() + 220;
         applyDecision(
           collectUnitCandidates(partialMeta.items),
           partialDecision,
@@ -4403,7 +4403,7 @@ async function executePipeline(runReason) {
       firstMaskLatencyMs = Math.round(performance.now() - startedAt);
     }
 
-    ignoreMutationsUntil = Date.now() + 120;
+    ignoreMutationsUntil = Date.now() + 220;
     applyDecision(unitCandidates, decision, settings, {
       generation: analysisGeneration,
       stage: "foreground"
