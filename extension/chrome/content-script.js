@@ -455,6 +455,8 @@ function invalidateAnalysisForSettingsChange() {
     state.analysisGeneration = latestAnalysisGeneration;
     state.hasProcessed = false;
     state.lastFingerprint = "";
+    state.lastSkippedAnalysisAt = 0;
+    state.lastSkippedFingerprint = "";
     state.lastAppliedFingerprint = "";
     state.lastAppliedStage = "";
     state.lastReconcileFingerprint = "";
@@ -469,6 +471,8 @@ function invalidateAnalysisForSettingsChange() {
     state.analysisGeneration = latestAnalysisGeneration;
     state.hasProcessed = false;
     state.lastFingerprint = "";
+    state.lastSkippedAnalysisAt = 0;
+    state.lastSkippedFingerprint = "";
     state.lastAppliedFingerprint = "";
     state.lastAppliedStage = "";
     state.lastReconcileFingerprint = "";
