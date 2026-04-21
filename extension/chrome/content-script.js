@@ -1545,6 +1545,28 @@ function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDI
   return candidates;
 }
 
+function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
+  if (!isYouTubePage()) {
+    return [];
+  }
+
+  const containers = getYouTubeVisibleAnalysisContainers(
+    Math.max(MAX_HOT_PATH_CONTAINERS, Number(limit || 0))
+  );
+
+  return collectTextCandidatesFromElements(
+    containers,
+    Math.max(1, containers.length) * MAX_GOOGLE_CANDIDATES_PER_CONTAINER,
+    {
+      perElementLimit: Math.min(6, MAX_GOOGLE_CANDIDATES_PER_CONTAINER),
+      candidateFilter(candidate) {
+        const text = normalizeText(candidate?.text || "");
+        return Boolean(text) && isCandidateTextUseful(text, candidate?.element);
+      }
+    }
+  ).slice(0, limit * 2);
+}
+
 function collectCandidates() {
   cleanupDisconnectedStates();
 
@@ -1552,6 +1574,12 @@ function collectCandidates() {
   const seenNodeIds = new Set();
 
   for (const candidate of collectGoogleSearchPriorityCandidates()) {
+    if (seenNodeIds.has(candidate.nodeId)) continue;
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+  }
+
+  for (const candidate of collectYouTubePriorityCandidates()) {
     if (seenNodeIds.has(candidate.nodeId)) continue;
     seenNodeIds.add(candidate.nodeId);
     candidates.push(candidate);
@@ -2964,6 +2992,15 @@ function normalizeEvidenceSpans(spans, originalText) {
   return merged;
 }
 
+function countRawEvidenceSpans(spans, originalText) {
+  const sourceText = String(originalText || "");
+  return (Array.isArray(spans) ? spans : []).filter((span) => {
+    const start = Math.max(0, Number(span?.start ?? 0));
+    const end = Math.min(sourceText.length, Number(span?.end ?? 0));
+    return Number.isFinite(start) && Number.isFinite(end) && end > start;
+  }).length;
+}
+
 function expandMaskSpansForDisplay(text, spans) {
   const sourceText = String(text || "");
   if (!sourceText) {
@@ -3461,10 +3498,10 @@ function buildDecisionFromBackend(analysisUnits, analysisResults, settings, back
       return;
     }
 
-    returnedSpanCount += normalizeEvidenceSpans(
+    returnedSpanCount += countRawEvidenceSpans(
       Array.isArray(analysis?.evidence_spans) ? analysis.evidence_spans : [],
       unit?.text || ""
-    ).length;
+    );
 
     for (const member of unit.members || []) {
       const candidate = member.candidate;
