@@ -903,9 +903,14 @@ function getYouTubeAnalysisContainer(element) {
     return null;
   }
 
+  const commentText = element.closest("#content-text, [id='content-text']");
+  if (commentText instanceof Element) {
+    return commentText;
+  }
+
   return (
     element.closest(
-      "ytd-comment-thread-renderer, ytd-comment-view-model, #content-text, ytd-watch-metadata, ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer"
+      "ytd-watch-metadata, ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-comment-thread-renderer, ytd-comment-view-model"
     ) ||
     null
   );
@@ -917,9 +922,10 @@ function getYouTubeVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
   }
 
   const selectors = [
+    "#content-text",
+    "[id='content-text']",
     "ytd-comment-thread-renderer",
     "ytd-comment-view-model",
-    "#content-text",
     "ytd-watch-metadata",
     "ytd-video-renderer",
     "ytd-rich-item-renderer",
