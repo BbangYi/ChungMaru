@@ -195,6 +195,7 @@ let immediateInputTimerId = null;
 let overlaySyncFrameId = null;
 let pendingEditableOverlaySyncFrames = 0;
 let scrollVisibilityRefreshFrameId = null;
+let suppressedMutationRefreshTimerId = null;
 let reconcileFlushTimerId = null;
 let scheduledReconcileDelayMs = 0;
 let isReconcileRunning = false;
@@ -292,6 +293,10 @@ function teardownInvalidatedExtensionContext() {
   if (routeRefreshFrameId) {
     window.cancelAnimationFrame(routeRefreshFrameId);
     routeRefreshFrameId = null;
+  }
+  if (suppressedMutationRefreshTimerId) {
+    window.clearTimeout(suppressedMutationRefreshTimerId);
+    suppressedMutationRefreshTimerId = null;
   }
   if (navigationPollTimerId) {
     window.clearInterval(navigationPollTimerId);
@@ -4968,6 +4973,22 @@ function scheduleScrollVisibilityRefresh() {
   });
 }
 
+function scheduleSuppressedMutationRefresh() {
+  if (suppressedMutationRefreshTimerId || extensionContextInvalidated || isUnsupportedPage()) {
+    return;
+  }
+
+  const delayMs = Math.max(16, Math.min(260, ignoreMutationsUntil - Date.now() + 24));
+  suppressedMutationRefreshTimerId = window.setTimeout(() => {
+    suppressedMutationRefreshTimerId = null;
+    if (extensionContextInvalidated || isUnsupportedPage()) {
+      return;
+    }
+
+    scheduleScrollVisibilityRefresh();
+  }, delayMs);
+}
+
 function markTextNodeDirty(textNode) {
   if (!(textNode instanceof Text)) return false;
   const state = registerTextNode(textNode);
@@ -5038,7 +5059,10 @@ function initializeObserver() {
 
   observer = new MutationObserver((mutationList) => {
     if (!mutationList || mutationList.length === 0) return;
-    if (Date.now() < ignoreMutationsUntil) return;
+    if (Date.now() < ignoreMutationsUntil) {
+      scheduleSuppressedMutationRefresh();
+      return;
+    }
     let shouldSchedule = false;
     let sawAddedContent = false;
 
