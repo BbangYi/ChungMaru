@@ -649,6 +649,12 @@ function getEditableElementText(element) {
   return String(element.innerText || element.textContent || "");
 }
 
+function isLikelyChungmaruTooltipTitle(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return /(?:공격|모욕|혐오|스팸|유해|콘텐츠|\d{1,3}%)/.test(text);
+}
+
 function getEditableValueId(element) {
   let nodeId = EDITABLE_VALUE_ID_MAP.get(element);
   if (!nodeId) {
@@ -676,7 +682,9 @@ function getEditableValueState(element) {
       analysisGeneration: 0,
       isMasked: false,
       isPending: false,
-      originalTitle: element.getAttribute("title") || "",
+      originalTitle: isLikelyChungmaruTooltipTitle(element.getAttribute("title"))
+        ? ""
+        : element.getAttribute("title") || "",
       originalColor: element.style.color || "",
       originalWebkitTextFillColor: element.style.webkitTextFillColor || "",
       originalCaretColor: element.style.caretColor || "",

@@ -1,6 +1,6 @@
 function restoreEditableValueState(state) {
   if (!state?.element) return;
-  if (state.originalTitle) {
+  if (state.originalTitle && !isLikelyChungmaruTooltipTitle(state.originalTitle)) {
     state.element.title = state.originalTitle;
   } else {
     state.element.removeAttribute("title");
@@ -550,23 +550,14 @@ function shouldUseEditableSingleLineBarMask(element, spans, text) {
   const sourceText = String(text || "");
   const compactLength = sourceText.replace(/\s+/g, "").length;
   const maskedCoverage = getEditableMaskedCoverage(spans, sourceText);
-  const fullTextComboboxTextarea =
-    element instanceof HTMLTextAreaElement &&
-    String(element.getAttribute("role") || "").toLowerCase() === "combobox" &&
-    doSpansCoverFullText(spans, sourceText);
 
   return (
     isSingleLineEditableElement(element) &&
     Array.isArray(spans) &&
     spans.length > 0 &&
-    (
-      fullTextComboboxTextarea ||
-      (
-        !doSpansCoverFullText(spans, sourceText) &&
-        compactLength >= 6 &&
-        maskedCoverage < 0.6
-      )
-    )
+    !doSpansCoverFullText(spans, sourceText) &&
+    compactLength >= 6 &&
+    maskedCoverage < 0.6
   );
 }
 
