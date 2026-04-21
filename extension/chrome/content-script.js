@@ -220,6 +220,7 @@ let reconcileUnmaskCount = 0;
 let inputMaskResetCount = 0;
 let overlayLayoutReuseCount = 0;
 let overlayLayoutRebuildCount = 0;
+let backendWarmupStarted = false;
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -5043,6 +5044,45 @@ function scheduleStartupFollowupPipelines() {
   }
 }
 
+function scheduleBackendWarmup() {
+  if (backendWarmupStarted || extensionContextInvalidated || isUnsupportedPage()) {
+    return;
+  }
+  backendWarmupStarted = true;
+
+  const runWarmup = async () => {
+    try {
+      const settings = await loadSettings();
+      if (!settings.enabled) {
+        return;
+      }
+
+      await safeRuntimeSendMessage({
+        type: "ANALYZE_TEXT_BATCH",
+        texts: BACKEND_WARMUP_TEXTS.slice(0, 1),
+        requestTimeoutMsOverride: 1200,
+        sensitivity: settings.sensitivity,
+        analysisMode: "foreground"
+      });
+    } catch (error) {
+      if (!handleExtensionContextError(error)) {
+        scheduleHotPathStatsPersist({
+          hotPathStatus: "degraded",
+          hotPathErrorCode: "BACKEND_WARMUP_FAILED"
+        });
+      }
+    }
+  };
+
+  window.setTimeout(() => {
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(runWarmup, { timeout: 1000 });
+      return;
+    }
+    runWarmup();
+  }, 400);
+}
+
 function invalidatePendingAnalysisForNavigation() {
   latestAnalysisGeneration += 1;
   latestPipelineSequence += 1;
@@ -5572,6 +5612,7 @@ async function bootstrap() {
   });
   scheduleInitialEditablePass();
   scheduleStartupFollowupPipelines();
+  scheduleBackendWarmup();
   initializeObserver();
 
   window.requestAnimationFrame(() => {
