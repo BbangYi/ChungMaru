@@ -247,7 +247,7 @@ async function runFilterLabSelfTest() {
         return (
           renderState.editableTitle === "" &&
           !renderState.suspiciousEditableBar &&
-          renderState.maskElementCount > 0
+          (renderState.maskMode === "native-mask" || renderState.maskElementCount > 0)
         );
       }
 

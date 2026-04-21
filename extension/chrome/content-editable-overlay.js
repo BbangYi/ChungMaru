@@ -545,7 +545,10 @@ function getEditableMaskedCoverage(spans, text) {
 }
 
 function shouldUseEditableNativeMask(element, spans, text) {
-  return false;
+  return (
+    isSingleLineEditableElement(element) &&
+    doSpansCoverFullText(spans, text)
+  );
 }
 
 function shouldUseEditableSingleLineBarMask(element, spans, text) {
