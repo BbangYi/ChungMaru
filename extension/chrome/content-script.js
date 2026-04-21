@@ -118,6 +118,7 @@ const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
 const FOREGROUND_ANALYZE_TIMEOUT_MS = 900;
 const RECONCILE_ANALYZE_TIMEOUT_MS = 3000;
+const SKIPPED_ANALYSIS_RETRY_BACKOFF_MS = 1200;
 const FOREGROUND_BACKEND_BATCH_SIZE = 2;
 const RECONCILE_BACKEND_BATCH_SIZE = 3;
 const BACKEND_WARMUP_TEXTS = ["안녕하세요", "검색 테스트", "청마루 실시간 필터"];
@@ -677,6 +678,8 @@ function getEditableValueState(element) {
       element,
       hasProcessed: false,
       lastFingerprint: "",
+      lastSkippedAnalysisAt: 0,
+      lastSkippedFingerprint: "",
       lastDecisionKey: "",
       lastAppliedFingerprint: "",
       lastAppliedStage: "",
@@ -729,6 +732,8 @@ function getNodeState(textNode) {
       originalText: String(textNode.nodeValue || ""),
       hasProcessed: false,
       lastFingerprint: "",
+      lastSkippedAnalysisAt: 0,
+      lastSkippedFingerprint: "",
       lastDecisionKey: "",
       lastAppliedFingerprint: "",
       lastAppliedStage: "",
@@ -901,8 +906,25 @@ function buildFingerprint(text) {
   return normalizeText(text);
 }
 
+function isStateInSkippedRetryBackoff(state, currentFingerprint) {
+  if (!state?.lastSkippedAnalysisAt || !state.lastSkippedFingerprint) {
+    return false;
+  }
+
+  if (String(state.lastSkippedFingerprint || "") !== String(currentFingerprint || "")) {
+    return false;
+  }
+
+  return Date.now() - Number(state.lastSkippedAnalysisAt || 0) < SKIPPED_ANALYSIS_RETRY_BACKOFF_MS;
+}
+
 function doesRegisteredStateNeedAnalysis(state, options = {}) {
   if (!state?.nodeId) {
+    return false;
+  }
+
+  const currentFingerprint = buildFingerprint(normalizeText(getSourceText(state)));
+  if (isStateInSkippedRetryBackoff(state, currentFingerprint)) {
     return false;
   }
 
@@ -910,7 +932,6 @@ function doesRegisteredStateNeedAnalysis(state, options = {}) {
     return true;
   }
 
-  const currentFingerprint = buildFingerprint(normalizeText(getSourceText(state)));
   return !state.hasProcessed || String(state.lastFingerprint || "") !== String(currentFingerprint || "");
 }
 
@@ -4059,6 +4080,8 @@ function markCandidatesSettled(candidates, generation) {
     }
     candidate.state.lastFingerprint = candidate.fingerprint;
     candidate.state.hasProcessed = true;
+    candidate.state.lastSkippedAnalysisAt = 0;
+    candidate.state.lastSkippedFingerprint = "";
     DIRTY_NODE_IDS.delete(candidate.nodeId);
   }
 }
@@ -4086,6 +4109,28 @@ function collectSettledCandidatesFromAnalysisUnits(analysisUnits, analysisResult
   return settledCandidates;
 }
 
+function markSkippedCandidatesForRetryBackoff(analysisUnits, analysisResults, generation) {
+  const now = Date.now();
+
+  (Array.isArray(analysisUnits) ? analysisUnits : []).forEach((unit, index) => {
+    const result = Array.isArray(analysisResults) ? analysisResults[index] : null;
+    if (result && result.__shieldtextSkipped !== true) {
+      return;
+    }
+
+    for (const member of unit.members || []) {
+      const candidate = member?.candidate;
+      if (!candidate?.state || !isCandidateGenerationCurrent(candidate, generation)) {
+        continue;
+      }
+
+      candidate.state.lastSkippedAnalysisAt = now;
+      candidate.state.lastSkippedFingerprint = candidate.fingerprint;
+      DIRTY_NODE_IDS.delete(candidate.nodeId);
+    }
+  });
+}
+
 function getDirtyCandidates(candidates, runReason) {
   const forceRefresh =
     runReason === "initial-load" ||
@@ -4096,6 +4141,7 @@ function getDirtyCandidates(candidates, runReason) {
 
   return candidates.filter((candidate) => {
     if (forceRefresh) return true;
+    if (isStateInSkippedRetryBackoff(candidate.state, candidate.fingerprint)) return false;
     if (DIRTY_NODE_IDS.has(candidate.nodeId)) return true;
     if (!candidate.state.hasProcessed) return true;
     return candidate.state.lastFingerprint !== candidate.fingerprint;
@@ -4249,6 +4295,7 @@ async function executeHotPathForCandidates(candidates, runReason) {
     collectSettledCandidatesFromAnalysisUnits(analysisUnits, hotPathMeta.results),
     analysisGeneration
   );
+  markSkippedCandidatesForRetryBackoff(analysisUnits, hotPathMeta.results, analysisGeneration);
 
   const firstMaskLatencyMs =
     Number(decision.maskedSpanCount || 0) > 0 ? Math.round(performance.now() - startedAt) : 0;
@@ -4429,6 +4476,7 @@ async function reconcileAnalysisUnitsWithBackend(
       collectSettledCandidatesFromAnalysisUnits(analysisUnits, fullMeta.results),
       analysisGeneration
     );
+    markSkippedCandidatesForRetryBackoff(analysisUnits, fullMeta.results, analysisGeneration);
 
     await persistReconcileDecision(
       payload,
@@ -4804,6 +4852,7 @@ async function executePipeline(runReason) {
       collectSettledCandidatesFromAnalysisUnits(analysisUnits, hotPathMeta.results),
       analysisGeneration
     );
+    markSkippedCandidatesForRetryBackoff(analysisUnits, hotPathMeta.results, analysisGeneration);
 
     if (contextualReconcileCandidates.length > 0) {
       enqueueReconcileCandidates(
