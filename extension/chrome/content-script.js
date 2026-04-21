@@ -109,6 +109,8 @@ const MAX_BACKGROUND_CANDIDATES = 16;
 const MAX_HOT_PATH_CONTAINERS = 6;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
 const STARTUP_FOLLOWUP_DELAYS_MS = [48];
+const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [80, 220, 520];
+const NAVIGATION_POLL_INTERVAL_MS = 120;
 const MAX_DOMAIN_PRIORITY_CANDIDATES = 6;
 const MAX_GOOGLE_CANDIDATES_PER_CONTAINER = 12;
 const MAX_SELF_TEST_CASES = 32;
@@ -205,6 +207,8 @@ let bootstrapRetryTimerId = null;
 let navigationListenersInitialized = false;
 let routeRefreshFrameId = null;
 let navigationPollTimerId = null;
+let routeRefreshSequence = 0;
+const ROUTE_REFRESH_TIMEOUT_IDS = new Set();
 let lastObservedLocationHref = String(location.href || "");
 let staleResponseDropCount = 0;
 let foregroundApplyCount = 0;
@@ -293,6 +297,10 @@ function teardownInvalidatedExtensionContext() {
     window.clearInterval(navigationPollTimerId);
     navigationPollTimerId = null;
   }
+  for (const timeoutId of ROUTE_REFRESH_TIMEOUT_IDS) {
+    window.clearTimeout(timeoutId);
+  }
+  ROUTE_REFRESH_TIMEOUT_IDS.clear();
 
   cleanupRealtimeWorker();
 }
@@ -4684,6 +4692,38 @@ function refreshCurrentRouteCandidates() {
   return registeredCount;
 }
 
+function runRouteRefreshWave(sequence) {
+  if (sequence !== routeRefreshSequence) {
+    return;
+  }
+
+  const registeredCount = refreshCurrentRouteCandidates();
+  if (registeredCount > 0) {
+    schedulePipeline("route-change");
+  } else {
+    scheduleScrollVisibilityRefresh();
+  }
+}
+
+function clearRouteRefreshFollowups() {
+  for (const timeoutId of ROUTE_REFRESH_TIMEOUT_IDS) {
+    window.clearTimeout(timeoutId);
+  }
+  ROUTE_REFRESH_TIMEOUT_IDS.clear();
+}
+
+function scheduleRouteRefreshFollowups(sequence) {
+  clearRouteRefreshFollowups();
+
+  for (const delayMs of ROUTE_CHANGE_FOLLOWUP_DELAYS_MS) {
+    const timeoutId = window.setTimeout(() => {
+      ROUTE_REFRESH_TIMEOUT_IDS.delete(timeoutId);
+      runRouteRefreshWave(sequence);
+    }, delayMs);
+    ROUTE_REFRESH_TIMEOUT_IDS.add(timeoutId);
+  }
+}
+
 function scheduleRouteRefresh(reason = "route-change") {
   if (extensionContextInvalidated || isUnsupportedPage()) {
     return;
@@ -4695,8 +4735,11 @@ function scheduleRouteRefresh(reason = "route-change") {
     return;
   }
 
-  lastObservedLocationHref = currentHref;
-  invalidatePendingAnalysisForNavigation();
+  if (isActualRouteChange) {
+    lastObservedLocationHref = currentHref;
+    invalidatePendingAnalysisForNavigation();
+  }
+  const sequence = ++routeRefreshSequence;
 
   if (routeRefreshFrameId) {
     window.cancelAnimationFrame(routeRefreshFrameId);
@@ -4704,12 +4747,8 @@ function scheduleRouteRefresh(reason = "route-change") {
 
   routeRefreshFrameId = window.requestAnimationFrame(() => {
     routeRefreshFrameId = null;
-    const registeredCount = refreshCurrentRouteCandidates();
-    if (registeredCount > 0) {
-      schedulePipeline("route-change");
-    } else {
-      scheduleScrollVisibilityRefresh();
-    }
+    runRouteRefreshWave(sequence);
+    scheduleRouteRefreshFollowups(sequence);
   });
 }
 
@@ -4742,6 +4781,22 @@ function initializeNavigationListeners() {
   window.addEventListener("popstate", () => scheduleRouteRefresh("popstate"), true);
   window.addEventListener("hashchange", () => scheduleRouteRefresh("hashchange"), true);
   window.addEventListener("pageshow", () => scheduleRouteRefresh("pageshow"), true);
+  try {
+    if (window.navigation?.addEventListener) {
+      window.navigation.addEventListener(
+        "currententrychange",
+        () => scheduleRouteRefresh("navigation-api"),
+        true
+      );
+      window.navigation.addEventListener(
+        "navigate",
+        () => window.setTimeout(() => scheduleRouteRefresh("navigation-api"), 0),
+        true
+      );
+    }
+  } catch {
+    // Navigation API is optional and can be blocked by the page.
+  }
   document.addEventListener(
     "visibilitychange",
     () => {
@@ -4760,7 +4815,7 @@ function initializeNavigationListeners() {
     if (String(location.href || "") !== lastObservedLocationHref) {
       scheduleRouteRefresh("location-poll");
     }
-  }, 250);
+  }, NAVIGATION_POLL_INTERVAL_MS);
 }
 
 function refreshVisibleCandidateRegistrations() {
