@@ -3187,6 +3187,44 @@ function scheduleHotPathStatsPersist(partialStats) {
   }, 140);
 }
 
+function isRetryableBackendErrorCode(errorCode) {
+  return (
+    errorCode === "TIMEOUT" ||
+    errorCode === "NETWORK_UNREACHABLE" ||
+    errorCode === "ABORTED" ||
+    errorCode === "HTTP_503" ||
+    errorCode === "HTTP_504" ||
+    errorCode === "ANALYZE_TEXT_BATCH_FAILED"
+  );
+}
+
+function shouldSkipTransientAnalyzeFailure(response, analysisMode) {
+  const mode = String(analysisMode || "");
+  if (mode !== "foreground" && mode !== "reconcile" && mode !== "background-validation") {
+    return false;
+  }
+
+  const errorCode = String(response?.errorCode || response?.error?.errorCode || "");
+  return Boolean(response?.retryable) || isRetryableBackendErrorCode(errorCode);
+}
+
+function createSkippedAnalysisResult(text) {
+  return {
+    __shieldtextSkipped: true,
+    original: String(text || ""),
+    is_offensive: false,
+    is_profane: false,
+    is_toxic: false,
+    is_hate: false,
+    scores: {
+      profanity: 0,
+      toxicity: 0,
+      hate: 0
+    },
+    evidence_spans: []
+  };
+}
+
 async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   const cacheSensitivity = normalizeSensitivity(
     options.sensitivity ?? cachedSettings?.sensitivity ?? DEFAULT_SETTINGS.sensitivity
@@ -3287,6 +3325,46 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
       });
 
       if (!response?.ok) {
+        if (shouldSkipTransientAnalyzeFailure(response, analysisMode)) {
+          const skippedResults = requestBatch.map((request) =>
+            createSkippedAnalysisResult(request?.text || "")
+          );
+          const resolvedCandidates = [];
+
+          skippedResults.forEach((result, index) => {
+            const request = requestBatch[index];
+            if (!request) {
+              return;
+            }
+
+            resultsByText.set(request.key, result);
+            for (const item of itemsByText.get(request.key) || []) {
+              resolvedCandidates.push(item);
+            }
+          });
+
+          serviceWorkerRequestCount += Math.max(1, Number(response?.requestCount || 0));
+          serviceWorkerSkippedChunkCount += Math.max(1, Number(response?.skippedChunkCount || 0));
+          serviceWorkerFailedTextCount += Number(response?.failedTextCount || requestBatch.length);
+          serviceWorkerChunkSize = Number(response?.chunkSize || serviceWorkerChunkSize || requestBatchSize);
+          serviceWorkerLastBackendErrorCode =
+            String(response?.lastBackendErrorCode || response?.errorCode || serviceWorkerLastBackendErrorCode || "");
+          serviceWorkerRequestTimeoutMs = Number(
+            response?.requestTimeoutMs || serviceWorkerRequestTimeoutMs || requestTimeoutMs || 0
+          );
+          if (Array.isArray(response?.requestTimings)) {
+            backendRequestTimings.push(...response.requestTimings);
+            while (backendRequestTimings.length > 12) {
+              backendRequestTimings.shift();
+            }
+          }
+          backendStatus = response?.backendStatus || "degraded";
+          apiBaseUrl = response?.apiBaseUrl || apiBaseUrl;
+
+          await emitProgress(resolvedCandidates);
+          continue;
+        }
+
         return {
           ok: false,
           error: {
