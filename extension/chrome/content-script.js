@@ -436,6 +436,36 @@ function updateCachedSettings(storedSettings) {
   return cachedSettings;
 }
 
+function invalidateAnalysisForSettingsChange() {
+  ANALYSIS_CACHE.clear();
+  latestAnalysisGeneration += 1;
+  latestPipelineSequence += 1;
+
+  for (const state of NODE_STATE_BY_ID.values()) {
+    state.analysisGeneration = latestAnalysisGeneration;
+    state.hasProcessed = false;
+    state.lastFingerprint = "";
+    state.lastAppliedFingerprint = "";
+    state.lastAppliedStage = "";
+    state.lastReconcileFingerprint = "";
+    if (state.nodeId) {
+      DIRTY_NODE_IDS.add(state.nodeId);
+    }
+  }
+
+  for (const state of EDITABLE_VALUE_STATE_BY_ID.values()) {
+    state.analysisGeneration = latestAnalysisGeneration;
+    state.hasProcessed = false;
+    state.lastFingerprint = "";
+    state.lastAppliedFingerprint = "";
+    state.lastAppliedStage = "";
+    state.lastReconcileFingerprint = "";
+    if (state.nodeId) {
+      DIRTY_NODE_IDS.add(state.nodeId);
+    }
+  }
+}
+
 async function loadSettings(options = {}) {
   if (!isExtensionContextAvailable()) {
     return getMergedSettings(cachedSettings || {});
@@ -5256,6 +5286,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "sync") return;
   if (!changes?.settings) return;
   updateCachedSettings(changes.settings.newValue || {});
+  invalidateAnalysisForSettingsChange();
   schedulePipeline("settings-updated");
 });
 
