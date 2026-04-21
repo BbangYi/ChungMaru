@@ -806,6 +806,16 @@ function getGoogleSearchAnalysisContainer(element) {
     return null;
   }
 
+  const interactiveRoot = element.closest(
+    "#bres a[href], #bres [role='button'], #botstuff a[href], #botstuff [role='button'], main [role='button']"
+  );
+  if (
+    interactiveRoot instanceof Element &&
+    shouldAllowGoogleInteractiveElement(interactiveRoot)
+  ) {
+    return interactiveRoot;
+  }
+
   return (
     element.closest(
       "#search .MjjYud, #search .g, #search .tF2Cxc, #search .yuRUbf, #search .ULSxyf, #botstuff, #bres, g-section-with-header, #rhs [data-attrid], #rhs .kp-wholepage, #rhs"
@@ -832,6 +842,10 @@ function getGoogleVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
     "#search .g",
     "#search .tF2Cxc",
     "#search .ULSxyf",
+    "#bres a[href]",
+    "#bres [role='button']",
+    "#botstuff a[href]",
+    "#botstuff [role='button']",
     "#botstuff",
     "#bres",
     "g-section-with-header",
@@ -871,12 +885,78 @@ function getGoogleVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
   return containers.slice(0, limit);
 }
 
+function isYouTubePage() {
+  return /(^|\.)youtube\.com$/i.test(location.hostname || "");
+}
+
+function getYouTubeAnalysisContainer(element) {
+  if (!isYouTubePage() || !(element instanceof Element)) {
+    return null;
+  }
+
+  return (
+    element.closest(
+      "ytd-comment-thread-renderer, ytd-comment-view-model, #content-text, ytd-watch-metadata, ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer"
+    ) ||
+    null
+  );
+}
+
+function getYouTubeVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
+  if (!isYouTubePage()) {
+    return [];
+  }
+
+  const selectors = [
+    "ytd-comment-thread-renderer",
+    "ytd-comment-view-model",
+    "#content-text",
+    "ytd-watch-metadata",
+    "ytd-video-renderer",
+    "ytd-rich-item-renderer",
+    "ytd-compact-video-renderer"
+  ];
+  const containers = [];
+  const seenContainers = new Set();
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      if (!(element instanceof Element)) continue;
+
+      const container = getYouTubeAnalysisContainer(element) || element;
+      if (!(container instanceof Element)) continue;
+      if (seenContainers.has(container)) continue;
+      if (!container.isConnected || !isElementVisible(container)) continue;
+      if (!isElementNearViewport(container.getBoundingClientRect())) continue;
+
+      seenContainers.add(container);
+      containers.push(container);
+    }
+  }
+
+  containers.sort((left, right) => {
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    if (leftRect.top !== rightRect.top) {
+      return leftRect.top - rightRect.top;
+    }
+    return leftRect.left - rightRect.left;
+  });
+
+  return containers.slice(0, limit);
+}
+
 function getAnalysisContainer(element) {
   if (!(element instanceof Element)) return null;
 
   const googleContainer = getGoogleSearchAnalysisContainer(element);
   if (googleContainer) {
     return googleContainer;
+  }
+
+  const youtubeContainer = getYouTubeAnalysisContainer(element);
+  if (youtubeContainer) {
+    return youtubeContainer;
   }
 
   const elementText = getElementReadableText(element);
@@ -5317,6 +5397,20 @@ function refreshVisibleCandidateRegistrations(options = {}) {
       });
     }
     return registeredCount;
+  }
+
+  if (isYouTubePage()) {
+    const containers = getYouTubeVisibleAnalysisContainers(MAX_HOT_PATH_CONTAINERS);
+    for (const container of containers) {
+      registeredCount += registerTextNodesInTree(container, {
+        markDirty,
+        onlyVisible: true,
+        limit: MAX_GOOGLE_CANDIDATES_PER_CONTAINER
+      });
+    }
+    if (registeredCount > 0) {
+      return registeredCount;
+    }
   }
 
   return registerTextNodesInTree(document.body, {
