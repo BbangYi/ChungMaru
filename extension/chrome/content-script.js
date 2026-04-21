@@ -110,7 +110,7 @@ const MAX_BACKGROUND_CANDIDATES = 16;
 const MAX_HOT_PATH_CONTAINERS = 6;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
 const STARTUP_FOLLOWUP_DELAYS_MS = [48, 180, 420, 900];
-const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [80, 220, 520];
+const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [80, 220, 520, 1100, 1800];
 const NAVIGATION_POLL_INTERVAL_MS = 80;
 const MAX_DOMAIN_PRIORITY_CANDIDATES = 6;
 const MAX_GOOGLE_CANDIDATES_PER_CONTAINER = 16;
@@ -4830,10 +4830,13 @@ function scheduleStartupFollowupPipelines() {
   for (const delayMs of STARTUP_FOLLOWUP_DELAYS_MS) {
     window.setTimeout(() => {
       if (extensionContextInvalidated || isUnsupportedPage()) return;
-      const registeredCount = registerTextNodesInTree(document.body, {
-        onlyVisible: true,
-        limit: MAX_INITIAL_TEXT_NODES
-      });
+      const registeredCount = isGoogleSearchPage()
+        ? refreshVisibleCandidateRegistrations({ markDirty: true })
+        : registerTextNodesInTree(document.body, {
+            markDirty: true,
+            onlyVisible: true,
+            limit: MAX_INITIAL_TEXT_NODES
+          });
       if (registeredCount > 0) {
         schedulePipeline("visibility");
       }
@@ -4862,11 +4865,13 @@ function refreshCurrentRouteCandidates() {
   }
 
   cleanupDisconnectedStates();
-  const registeredCount = registerTextNodesInTree(document.body, {
-    markDirty: true,
-    onlyVisible: true,
-    limit: MAX_INITIAL_TEXT_NODES
-  });
+  const registeredCount = isGoogleSearchPage()
+    ? refreshVisibleCandidateRegistrations({ markDirty: true })
+    : registerTextNodesInTree(document.body, {
+        markDirty: true,
+        onlyVisible: true,
+        limit: MAX_INITIAL_TEXT_NODES
+      });
   scheduleInitialEditablePass();
   scheduleStartupFollowupPipelines();
   return registeredCount;
@@ -5017,13 +5022,15 @@ function initializeNavigationListeners() {
   }, NAVIGATION_POLL_INTERVAL_MS);
 }
 
-function refreshVisibleCandidateRegistrations() {
+function refreshVisibleCandidateRegistrations(options = {}) {
   let registeredCount = 0;
+  const markDirty = options.markDirty === true;
 
   if (isGoogleSearchPage()) {
     const containers = getGoogleVisibleAnalysisContainers(MAX_HOT_PATH_CONTAINERS);
     for (const container of containers) {
       registeredCount += registerTextNodesInTree(container, {
+        markDirty,
         onlyVisible: true,
         limit: MAX_GOOGLE_CANDIDATES_PER_CONTAINER
       });
@@ -5032,6 +5039,7 @@ function refreshVisibleCandidateRegistrations() {
   }
 
   return registerTextNodesInTree(document.body, {
+    markDirty,
     onlyVisible: true,
     limit: SCROLL_REFRESH_TEXT_NODE_LIMIT
   });
@@ -5177,7 +5185,9 @@ function initializeObserver() {
 
     if (shouldSchedule) {
       schedulePipeline("mutation");
-    } else if (sawAddedContent) {
+    }
+
+    if (sawAddedContent) {
       scheduleScrollVisibilityRefresh();
     }
   });
