@@ -526,15 +526,18 @@ function looksLikeRawUrl(text) {
 }
 
 function isCandidateTextUseful(text, element) {
-  if (text.length < 2) return false;
-  if (/^[\d\s.,\-:/|]+$/.test(text)) return false;
-  if (looksLikeRawUrl(text)) return false;
-  if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(text))) return false;
+  const normalizedText = normalizeText(text);
+  if (!normalizedText) return false;
+  if (/^[\d\s.,\-:/|]+$/.test(normalizedText)) return false;
+  if (looksLikeRawUrl(normalizedText)) return false;
+  if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(normalizedText))) return false;
+  if (HIGH_SIGNAL_PROFANITY_PATTERN.test(normalizedText)) return true;
+  if (normalizedText.length < 2) return false;
 
   if (element instanceof Element) {
     const tagName = element.tagName;
     if (tagName === "CITE") return false;
-    if (tagName === "A" && looksLikeRawUrl(text)) return false;
+    if (tagName === "A" && looksLikeRawUrl(normalizedText)) return false;
     if (element.closest("cite")) return false;
   }
 
