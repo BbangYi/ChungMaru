@@ -360,6 +360,39 @@ function normalizeBackendError(error, fallbackCode = "UNKNOWN_BACKEND_ERROR") {
   };
 }
 
+function summarizeBackendRequestError(error, fallbackCode = "REQUEST_FAILED") {
+  const normalized = normalizeBackendError(error, fallbackCode);
+  return {
+    errorCode: normalized.errorCode,
+    reason: normalized.reason,
+    retryable: Boolean(normalized.retryable),
+    status: normalized.status ?? null
+  };
+}
+
+function createAnalyzeBatchTiming({
+  mode,
+  textCount,
+  effectiveTimeoutMs,
+  durationMs,
+  ok,
+  error
+}) {
+  const timing = {
+    mode: normalizeAnalyzeBatchMode(mode),
+    textCount: Math.max(0, Number(textCount || 0)),
+    effectiveTimeoutMs: Math.max(0, Number(effectiveTimeoutMs || 0)),
+    durationMs: Math.max(0, Number(durationMs || 0)),
+    ok: Boolean(ok)
+  };
+
+  if (error) {
+    Object.assign(timing, summarizeBackendRequestError(error));
+  }
+
+  return timing;
+}
+
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = DEFAULT_SETTINGS.requestTimeoutMs) {
   const controller = new AbortController();
   let didTimeout = false;
@@ -494,6 +527,7 @@ async function performAnalyzeBatchRequestWithSplits(
   mode = "foreground"
 ) {
   const effectiveTimeoutMs = getAnalyzeBatchRequestTimeoutMs(requestTimeoutMs, mode);
+  const requestStartedAt = Date.now();
 
   try {
     const results = await performAnalyzeBatchRequest(
@@ -506,33 +540,70 @@ async function performAnalyzeBatchRequestWithSplits(
     return {
       results,
       requestCount: 1,
-      splitRetryCount: 0
+      splitRetryCount: 0,
+      requestTimings: [
+        createAnalyzeBatchTiming({
+          mode,
+          textCount: texts.length,
+          effectiveTimeoutMs,
+          durationMs: Date.now() - requestStartedAt,
+          ok: true
+        })
+      ]
     };
   } catch (error) {
+    const failedTiming = createAnalyzeBatchTiming({
+      mode,
+      textCount: texts.length,
+      effectiveTimeoutMs,
+      durationMs: Date.now() - requestStartedAt,
+      ok: false,
+      error
+    });
+
     if (!shouldSplitAnalyzeBatchRequest(error, texts.length)) {
+      error.requestTimings = [
+        ...(Array.isArray(error.requestTimings) ? error.requestTimings : []),
+        failedTiming
+      ];
       throw error;
     }
 
     const midpoint = Math.ceil(texts.length / 2);
-    const left = await performAnalyzeBatchRequestWithSplits(
-      apiBaseUrl,
-      texts.slice(0, midpoint),
-      requestTimeoutMs,
-      sensitivity,
-      mode
-    );
-    const right = await performAnalyzeBatchRequestWithSplits(
-      apiBaseUrl,
-      texts.slice(midpoint),
-      requestTimeoutMs,
-      sensitivity,
-      mode
-    );
+    let left;
+    let right;
+    try {
+      left = await performAnalyzeBatchRequestWithSplits(
+        apiBaseUrl,
+        texts.slice(0, midpoint),
+        requestTimeoutMs,
+        sensitivity,
+        mode
+      );
+      right = await performAnalyzeBatchRequestWithSplits(
+        apiBaseUrl,
+        texts.slice(midpoint),
+        requestTimeoutMs,
+        sensitivity,
+        mode
+      );
+    } catch (splitError) {
+      splitError.requestTimings = [
+        failedTiming,
+        ...(Array.isArray(splitError.requestTimings) ? splitError.requestTimings : [])
+      ];
+      throw splitError;
+    }
 
     return {
       results: [...left.results, ...right.results],
       requestCount: 1 + left.requestCount + right.requestCount,
-      splitRetryCount: 1 + left.splitRetryCount + right.splitRetryCount
+      splitRetryCount: 1 + left.splitRetryCount + right.splitRetryCount,
+      requestTimings: [
+        failedTiming,
+        ...(Array.isArray(left.requestTimings) ? left.requestTimings : []),
+        ...(Array.isArray(right.requestTimings) ? right.requestTimings : [])
+      ]
     };
   }
 }
@@ -541,9 +612,12 @@ async function performAnalyzeBatchRequests(apiBaseUrl, texts, requestTimeoutMs, 
   const chunkSize = getAnalyzeBatchChunkSize(requestTimeoutMs, texts.length, mode);
   const chunks = chunkArray(texts, chunkSize);
   const results = [];
+  const requestTimings = [];
   let requestCount = 0;
   let splitRetryCount = 0;
   let skippedChunkCount = 0;
+  let failedTextCount = 0;
+  let lastBackendError = null;
 
   for (const chunk of chunks) {
     let chunkResult;
@@ -556,19 +630,32 @@ async function performAnalyzeBatchRequests(apiBaseUrl, texts, requestTimeoutMs, 
         mode
       );
     } catch (error) {
+      const errorTimings = Array.isArray(error.requestTimings) ? error.requestTimings : [];
+      requestTimings.push(...errorTimings);
+      lastBackendError = summarizeBackendRequestError(error, "ANALYZE_BATCH_FAILED");
+
       if (!shouldTolerateAnalyzeBatchChunkFailure(error, mode)) {
+        error.analysisDiagnostics = {
+          mode: normalizeAnalyzeBatchMode(mode),
+          chunkSize,
+          failedTextCount: chunk.length,
+          lastBackendError,
+          requestTimings: requestTimings.slice(-12)
+        };
         throw error;
       }
 
       results.push(...createSkippedAnalyzeBatchResults(chunk));
-      requestCount += 1;
+      requestCount += Math.max(1, errorTimings.length);
       skippedChunkCount += 1;
+      failedTextCount += chunk.length;
       continue;
     }
 
     results.push(...chunkResult.results);
     requestCount += chunkResult.requestCount;
     splitRetryCount += chunkResult.splitRetryCount;
+    requestTimings.push(...(Array.isArray(chunkResult.requestTimings) ? chunkResult.requestTimings : []));
   }
 
   return {
@@ -576,7 +663,11 @@ async function performAnalyzeBatchRequests(apiBaseUrl, texts, requestTimeoutMs, 
     requestCount,
     splitRetryCount,
     skippedChunkCount,
-    chunkSize
+    failedTextCount,
+    chunkSize,
+    lastBackendError,
+    lastBackendErrorCode: lastBackendError?.errorCode || "",
+    requestTimings: requestTimings.slice(-12)
   };
 }
 
@@ -670,6 +761,7 @@ async function analyzeTextBatch(message) {
       });
 
       const skippedChunkCount = Number(batchResponse.skippedChunkCount || 0);
+      const failedTextCount = Number(batchResponse.failedTextCount || 0);
 
       return {
         ok: true,
@@ -683,6 +775,12 @@ async function analyzeTextBatch(message) {
         splitRetryCount: Number(batchResponse.splitRetryCount || 0),
         chunkSize: Number(batchResponse.chunkSize || 0),
         skippedChunkCount,
+        failedTextCount,
+        lastBackendErrorCode: String(batchResponse.lastBackendErrorCode || ""),
+        requestTimeoutMs,
+        requestTimings: Array.isArray(batchResponse.requestTimings)
+          ? batchResponse.requestTimings
+          : [],
         results: texts.map((text) => resultsByText.get(text) || null)
       };
     }
@@ -698,10 +796,16 @@ async function analyzeTextBatch(message) {
       requestCount: 0,
       splitRetryCount: 0,
       chunkSize: 0,
+      skippedChunkCount: 0,
+      failedTextCount: 0,
+      lastBackendErrorCode: "",
+      requestTimeoutMs,
+      requestTimings: [],
       results: texts.map((text) => resultsByText.get(text) || null)
     };
   } catch (error) {
     const normalized = normalizeBackendError(error, "ANALYZE_BATCH_FAILED");
+    const analysisDiagnostics = error?.analysisDiagnostics || null;
     if (analysisMode === "foreground") {
       console.error("[청마루] analyzeTextBatch failed", error);
     } else {
@@ -720,6 +824,15 @@ async function analyzeTextBatch(message) {
       analysisMode,
       apiBaseUrl,
       durationMs: Date.now() - startedAt,
+      requestedCount: texts.length,
+      requestTimeoutMs,
+      chunkSize: Number(analysisDiagnostics?.chunkSize || 0),
+      failedTextCount: Number(analysisDiagnostics?.failedTextCount || texts.length),
+      lastBackendErrorCode:
+        String(analysisDiagnostics?.lastBackendError?.errorCode || normalized.errorCode || ""),
+      requestTimings: Array.isArray(analysisDiagnostics?.requestTimings)
+        ? analysisDiagnostics.requestTimings
+        : [],
       detail: normalized.detail || undefined
     };
   }

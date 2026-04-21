@@ -2803,7 +2803,17 @@ async function analyzePayloadWithRealtimeWorker(analysisUnits, settings, onProgr
         ok: false,
         error: failure,
         apiBaseUrl: response?.apiBaseUrl || settings?.backendApiBaseUrl || "",
-        backendStatus: response?.error?.backendStatus || "degraded"
+        backendStatus: response?.error?.backendStatus || "degraded",
+        requestCount: Number(response?.requestCount || 0),
+        splitRetryCount: Number(response?.splitRetryCount || 0),
+        skippedChunkCount: Number(response?.skippedChunkCount || 0),
+        failedTextCount: Number(response?.failedTextCount || 0),
+        chunkSize: Number(response?.chunkSize || 0),
+        requestTimeoutMs: Number(response?.requestTimeoutMs || 0),
+        lastBackendErrorCode: String(response?.lastBackendErrorCode || ""),
+        backendRequestTimings: Array.isArray(response?.backendRequestTimings)
+          ? response.backendRequestTimings
+          : []
       };
     }
 
@@ -2821,7 +2831,14 @@ async function analyzePayloadWithRealtimeWorker(analysisUnits, settings, onProgr
       backendCacheHitCount: Number(response?.backendCacheHitCount || 0),
       requestCount: Number(response?.requestCount || 0),
       splitRetryCount: Number(response?.splitRetryCount || 0),
+      skippedChunkCount: Number(response?.skippedChunkCount || 0),
+      failedTextCount: Number(response?.failedTextCount || 0),
       chunkSize: Number(response?.chunkSize || 0),
+      requestTimeoutMs: Number(response?.requestTimeoutMs || 0),
+      lastBackendErrorCode: String(response?.lastBackendErrorCode || ""),
+      backendRequestTimings: Array.isArray(response?.backendRequestTimings)
+        ? response.backendRequestTimings
+        : [],
       durationMs: Math.max(
         Number(response?.backendDurationMs || 0),
         Math.round(performance.now() - startedAt)
@@ -2940,6 +2957,14 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   let backendDurationMs = 0;
   let apiBaseUrl = "";
   let backendStatus = "ready";
+  let serviceWorkerRequestCount = 0;
+  let serviceWorkerSplitRetryCount = 0;
+  let serviceWorkerSkippedChunkCount = 0;
+  let serviceWorkerFailedTextCount = 0;
+  let serviceWorkerChunkSize = 0;
+  let serviceWorkerLastBackendErrorCode = "";
+  let serviceWorkerRequestTimeoutMs = 0;
+  const backendRequestTimings = [];
   const requestBatchSize = Math.max(
     1,
     getBackendRequestBatchSize(String(options.analysisMode || ""))
@@ -2997,7 +3022,19 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
             backendStatus: response?.backendStatus || "degraded"
           },
           apiBaseUrl: response?.apiBaseUrl || apiBaseUrl,
-          backendDurationMs
+          backendDurationMs,
+          requestCount: serviceWorkerRequestCount + Number(response?.requestCount || 0),
+          splitRetryCount: serviceWorkerSplitRetryCount + Number(response?.splitRetryCount || 0),
+          skippedChunkCount: serviceWorkerSkippedChunkCount + Number(response?.skippedChunkCount || 0),
+          failedTextCount: serviceWorkerFailedTextCount + Number(response?.failedTextCount || 0),
+          chunkSize: serviceWorkerChunkSize || Number(response?.chunkSize || requestBatchSize),
+          lastBackendErrorCode:
+            serviceWorkerLastBackendErrorCode || String(response?.lastBackendErrorCode || response?.errorCode || ""),
+          requestTimeoutMs: serviceWorkerRequestTimeoutMs || Number(response?.requestTimeoutMs || requestTimeoutMs || 0),
+          backendRequestTimings: [
+            ...backendRequestTimings,
+            ...(Array.isArray(response?.requestTimings) ? response.requestTimings : [])
+          ].slice(-12)
         };
       }
 
@@ -3005,6 +3042,22 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
       backendDurationMs += Number(response.durationMs || 0);
       backendStatus = response.backendStatus || backendStatus;
       backendCacheHitCount += Number(response.cacheHitCount || 0);
+      serviceWorkerRequestCount += Number(response.requestCount || 0);
+      serviceWorkerSplitRetryCount += Number(response.splitRetryCount || 0);
+      serviceWorkerSkippedChunkCount += Number(response.skippedChunkCount || 0);
+      serviceWorkerFailedTextCount += Number(response.failedTextCount || 0);
+      serviceWorkerChunkSize = Number(response.chunkSize || serviceWorkerChunkSize || requestBatchSize);
+      serviceWorkerLastBackendErrorCode =
+        String(response.lastBackendErrorCode || serviceWorkerLastBackendErrorCode || "");
+      serviceWorkerRequestTimeoutMs = Number(
+        response.requestTimeoutMs || serviceWorkerRequestTimeoutMs || requestTimeoutMs || 0
+      );
+      if (Array.isArray(response.requestTimings)) {
+        backendRequestTimings.push(...response.requestTimings);
+        while (backendRequestTimings.length > 12) {
+          backendRequestTimings.shift();
+        }
+      }
       const resolvedCandidates = [];
 
       response.results.forEach((result, index) => {
@@ -3044,9 +3097,14 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
     backendDurationMs,
     backendStatus,
     requestedCount: pendingRequests.length,
-    requestCount: requestBatches.length,
-    splitRetryCount: Math.max(0, requestBatches.length - 1),
-    chunkSize: requestBatchSize,
+    requestCount: serviceWorkerRequestCount || requestBatches.length,
+    splitRetryCount: serviceWorkerSplitRetryCount,
+    skippedChunkCount: serviceWorkerSkippedChunkCount,
+    failedTextCount: serviceWorkerFailedTextCount,
+    chunkSize: serviceWorkerChunkSize || requestBatchSize,
+    requestTimeoutMs: serviceWorkerRequestTimeoutMs || requestTimeoutMs || 0,
+    lastBackendErrorCode: serviceWorkerLastBackendErrorCode,
+    backendRequestTimings: backendRequestTimings.slice(-12),
     cacheHitCount,
     backendCacheHitCount
   };
@@ -3523,13 +3581,20 @@ function buildAnalysisDiagnostics(analysisUnits, analysisResults, meta = {}) {
     requestedTextCount: Number(meta.requestedTextCount || 0),
     requestCount: Number(meta.requestCount || 0),
     splitRetryCount: Number(meta.splitRetryCount || 0),
+    skippedChunkCount: Number(meta.skippedChunkCount || 0),
+    failedTextCount: Number(meta.failedTextCount || 0),
     chunkSize: Number(meta.chunkSize || 0),
+    requestTimeoutMs: Number(meta.requestTimeoutMs || 0),
+    lastBackendErrorCode: String(meta.lastBackendErrorCode || ""),
     cacheHitCount: Number(meta.cacheHitCount || 0),
     backendCacheHitCount: Number(meta.backendCacheHitCount || 0),
     durationMs: Number(meta.durationMs || 0),
     returnedSpanCount: Number(meta.returnedSpanCount || 0),
     appliedSpanCount: Number(meta.appliedSpanCount || 0),
     droppedSpanCount: Number(meta.droppedSpanCount || 0),
+    backendRequestTimings: Array.isArray(meta.backendRequestTimings)
+      ? meta.backendRequestTimings.slice(-8)
+      : [],
     batchSize: units.length,
     items: units.slice(0, 4).map((unit, index) => ({
       text: truncateDiagnosticText(unit?.text, 180),
@@ -4002,7 +4067,14 @@ async function executeHotPathForCandidates(candidates, runReason) {
         requestedTextCount: Number(hotPathMeta.requestedCount || 0),
         requestCount: Number(hotPathMeta.requestCount || 0),
         splitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+        skippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+        failedTextCount: Number(hotPathMeta.failedTextCount || 0),
         chunkSize: Number(hotPathMeta.chunkSize || 0),
+        requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+        lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+        backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
+          ? hotPathMeta.backendRequestTimings
+          : [],
         cacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
         backendCacheHitCount: Number(hotPathMeta.backendCacheHitCount || 0),
         durationMs: Number(hotPathMeta.durationMs || 0),
@@ -4025,6 +4097,12 @@ async function executeHotPathForCandidates(candidates, runReason) {
     workerCacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
     backendCacheHitCount: Number(hotPathMeta.backendCacheHitCount || 0),
     foregroundBackendSource: hotPathMeta.foregroundBackendSource || "",
+    foregroundRequestCount: Number(hotPathMeta.requestCount || 0),
+    foregroundSplitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+    foregroundSkippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+    foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
+    foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+    foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
     returnedSpanCount: Number(decision.returnedSpanCount || 0),
     droppedSpanCount: Number(decision.droppedSpanCount || 0)
   });
@@ -4169,7 +4247,14 @@ async function reconcileAnalysisUnitsWithBackend(
             requestedTextCount: Number(fullMeta.requestedCount || 0),
             requestCount: Number(fullMeta.requestCount || 0),
             splitRetryCount: Number(fullMeta.splitRetryCount || 0),
+            skippedChunkCount: Number(fullMeta.skippedChunkCount || 0),
+            failedTextCount: Number(fullMeta.failedTextCount || 0),
             chunkSize: Number(fullMeta.chunkSize || 0),
+            requestTimeoutMs: Number(fullMeta.requestTimeoutMs || 0),
+            lastBackendErrorCode: String(fullMeta.lastBackendErrorCode || ""),
+            backendRequestTimings: Array.isArray(fullMeta.backendRequestTimings)
+              ? fullMeta.backendRequestTimings
+              : [],
             cacheHitCount: Number(fullMeta.cacheHitCount || 0),
             backendCacheHitCount: Number(fullMeta.backendCacheHitCount || 0),
             durationMs: Number(fullMeta.backendDurationMs || 0),
@@ -4435,7 +4520,12 @@ async function executePipeline(runReason) {
         backendStatus: hotPathMeta.backendStatus || "degraded",
         foregroundBackendLatencyMs: Number(hotPathMeta.durationMs || 0),
         foregroundBackendSource: hotPathMeta.foregroundBackendSource || "fallback-none",
-        foregroundRequestCount: Number(hotPathMeta.requestedCount || 0) > 0 ? 1 : 0,
+        foregroundRequestCount: Number(hotPathMeta.requestCount || 0),
+        foregroundSplitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+        foregroundSkippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+        foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
+        foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+        foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
         reconcileRequestCount: 0,
         totalCandidateCount: candidates.length,
         requestedAnalysisCount: analysisUnits.length,
@@ -4447,6 +4537,16 @@ async function executePipeline(runReason) {
           backendStatus: hotPathMeta.backendStatus || "degraded",
           foregroundBackendSource: hotPathMeta.foregroundBackendSource || "fallback-none",
           durationMs: Number(hotPathMeta.durationMs || 0),
+          requestCount: Number(hotPathMeta.requestCount || 0),
+          splitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+          skippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+          failedTextCount: Number(hotPathMeta.failedTextCount || 0),
+          chunkSize: Number(hotPathMeta.chunkSize || 0),
+          requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+          lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+          backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
+            ? hotPathMeta.backendRequestTimings.slice(-8)
+            : [],
           batchSize: analysisUnits.length,
           items: analysisUnits.slice(0, 4).map((unit) => ({
             text: truncateDiagnosticText(unit?.text, 180),
@@ -4529,7 +4629,12 @@ async function executePipeline(runReason) {
       backendCacheHitCount: Number(hotPathMeta.backendCacheHitCount || 0),
       backendReconcileLatencyMs: 0,
       cacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
-      foregroundRequestCount: Number(hotPathMeta.requestedCount || 0) > 0 ? 1 : 0,
+      foregroundRequestCount: Number(hotPathMeta.requestCount || 0),
+      foregroundSplitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+      foregroundSkippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+      foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
+      foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+      foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
       reconcileRequestCount: contextualReconcileCandidates.length > 0 ? 1 : 0,
       foregroundUnitBuildMs,
       firstPaintMaskMs: firstMaskLatencyMs,
@@ -4561,7 +4666,14 @@ async function executePipeline(runReason) {
           requestedTextCount: Number(hotPathMeta.requestedCount || 0),
           requestCount: Number(hotPathMeta.requestCount || 0),
           splitRetryCount: Number(hotPathMeta.splitRetryCount || 0),
+          skippedChunkCount: Number(hotPathMeta.skippedChunkCount || 0),
+          failedTextCount: Number(hotPathMeta.failedTextCount || 0),
           chunkSize: Number(hotPathMeta.chunkSize || 0),
+          requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
+          lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+          backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
+            ? hotPathMeta.backendRequestTimings
+            : [],
           cacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
           backendCacheHitCount: Number(hotPathMeta.backendCacheHitCount || 0),
           durationMs: Number(hotPathMeta.durationMs || 0),
