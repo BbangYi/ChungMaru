@@ -4577,7 +4577,16 @@ async function executePipeline(runReason) {
       backendStatus: "degraded"
     };
 
-    await persistFailure(failure, failureStats);
+    if (shouldPersistHotPathFailure(runReason)) {
+      await persistFailure(failure, failureStats);
+    } else {
+      scheduleHotPathStatsPersist({
+        ...failureStats,
+        lastDecisionSource: "backend-transient-failed",
+        hotPathErrorCode: failure.errorCode,
+        hotPathStatus: "degraded"
+      });
+    }
     return {
       ok: false,
       reason: failure.reason,

@@ -121,8 +121,10 @@ function renderEditableNativeMask(state, tooltip, settings) {
     settings?.interventionMode === "hide" ? "disc" : "square";
   state.element.style.textSecurity =
     settings?.interventionMode === "hide" ? "disc" : "square";
-  state.element.style.setProperty("color", "transparent", "important");
-  state.element.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+  const computedStyle = window.getComputedStyle(state.element);
+  const visibleMaskColor = computedStyle.color || state.originalColor || "currentColor";
+  state.element.style.setProperty("color", visibleMaskColor, "important");
+  state.element.style.setProperty("-webkit-text-fill-color", visibleMaskColor, "important");
   state.element.style.setProperty("text-shadow", "none", "important");
   state.nativeMaskApplied = true;
   MASKED_EDITABLE_STATE_IDS.add(state.nodeId);
