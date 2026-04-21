@@ -3600,6 +3600,17 @@ function shouldScheduleBackgroundValidation(runReason) {
   return true;
 }
 
+function shouldPersistHotPathFailure(runReason) {
+  if (
+    (runReason === "mutation" || runReason === "visibility") &&
+    isRapidlyChangingRealtimeHost()
+  ) {
+    return false;
+  }
+
+  return !isBroadAnalysisReason(runReason);
+}
+
 async function persistFailure(failure, stats) {
   const serialized = serializeFailure(failure?.reason, failure?.errorCode, failure?.retryable);
   const runtimeStats = {
@@ -4421,8 +4432,14 @@ async function executePipeline(runReason) {
         }
       };
 
-      if (!isBroadAnalysisReason(runReason)) {
+      if (shouldPersistHotPathFailure(runReason)) {
         await persistFailure(hotPathMeta.error, failureStats);
+      } else {
+        scheduleHotPathStatsPersist({
+          ...failureStats,
+          lastDecisionSource: "backend-foreground-transient-failed",
+          lastForegroundDiagnostics: failureStats.lastForegroundDiagnostics
+        });
       }
       return {
         ok: false,

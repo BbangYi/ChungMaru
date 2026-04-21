@@ -73,18 +73,18 @@
 }
 
 .shieldtext-editable-mask {
-  background: rgba(18, 18, 18, 0.76);
+  background: rgb(18, 18, 18);
 }
 
 .shieldtext-editable-hide {
-  background: rgba(24, 24, 24, 0.9);
+  background: rgb(24, 24, 24);
 }
 
 .shieldtext-editable-bar-mask {
   position: absolute;
   display: block;
   border-radius: 0.18em;
-  background: rgba(18, 18, 18, 0.82);
+  background: rgb(18, 18, 18);
 }
 
 .shieldtext-editable-bar-mask-single {

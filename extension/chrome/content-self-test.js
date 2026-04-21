@@ -59,6 +59,59 @@ function getLabCaseMaskedState(element) {
   );
 }
 
+function getLabCaseRenderState(element, sampleText) {
+  if (!(element instanceof Element)) {
+    return {
+      editable: false,
+      maskMode: "",
+      maskElementCount: 0,
+      editableTitle: "",
+      editableConcealsText: false,
+      suspiciousEditableBar: false
+    };
+  }
+
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    const candidate = buildEditableValueCandidate(element);
+    const state = candidate?.state || null;
+    const text = String(sampleText || candidate?.text || "");
+    const compactLength = text.replace(/\s+/g, "").length;
+    const maskMode = state?.nativeMaskApplied
+      ? "native-mask"
+      : String(state?.overlayMode || "");
+    const inlineColor = String(element.style.getPropertyValue("color") || "").trim();
+    const inlineFill = String(element.style.getPropertyValue("-webkit-text-fill-color") || "").trim();
+    const editableConcealsText =
+      inlineColor === "transparent" ||
+      inlineFill === "transparent" ||
+      Boolean(state?.nativeMaskApplied);
+
+    return {
+      editable: true,
+      maskMode,
+      maskElementCount: state?.overlayRoot?.isConnected
+        ? state.overlayRoot.querySelectorAll(
+            ".shieldtext-editable-mask, .shieldtext-editable-hide, .shieldtext-editable-bar-mask"
+          ).length
+        : 0,
+      editableTitle: String(element.getAttribute("title") || ""),
+      editableConcealsText,
+      suspiciousEditableBar: maskMode === "single-line-bars" && compactLength <= 8
+    };
+  }
+
+  return {
+    editable: false,
+    maskMode: "",
+    maskElementCount: element.querySelectorAll(
+      ".shieldtext-inline-mask, .shieldtext-inline-hide, .shieldtext-editable-mask, .shieldtext-editable-hide, .shieldtext-editable-bar-mask"
+    ).length,
+    editableTitle: "",
+    editableConcealsText: false,
+    suspiciousEditableBar: false
+  };
+}
+
 function collectLabCaseEntries() {
   const entries = [...document.querySelectorAll("[data-chungmaru-case-id][data-chungmaru-expectation]")]
     .map((element) => {
@@ -170,16 +223,36 @@ async function runFilterLabSelfTest() {
     );
     const backendOffensive = Boolean(backendResult?.is_offensive);
     const extensionMasked = getLabCaseMaskedState(entry.element);
+    const renderState = getLabCaseRenderState(entry.element, entry.sampleText);
     const expectedOffensive = entry.expectationKind === "offensive";
     const expectedSafe = entry.expectationKind === "safe";
     const backendMatchesExpectation =
       entry.expectationKind === "unknown"
         ? null
         : backendOffensive === expectedOffensive;
-    const extensionMatchesExpectation =
-      entry.expectationKind === "unknown"
-        ? null
-        : extensionMasked === expectedOffensive;
+    const extensionMatchesExpectation = (() => {
+      if (entry.expectationKind === "unknown") {
+        return null;
+      }
+
+      if (expectedSafe) {
+        return !extensionMasked;
+      }
+
+      if (!extensionMasked) {
+        return false;
+      }
+
+      if (renderState.editable) {
+        return (
+          renderState.editableTitle === "" &&
+          !renderState.suspiciousEditableBar &&
+          renderState.maskElementCount > 0
+        );
+      }
+
+      return renderState.maskElementCount > 0;
+    })();
 
     return {
       caseId: entry.caseId,
@@ -191,6 +264,7 @@ async function runFilterLabSelfTest() {
       extensionMasked,
       backendOffensive,
       backendSpanCount: backendSpans.length,
+      renderState,
       backendErrorCode: backendResponse?.ok ? null : String(backendResponse?.errorCode || backendResponse?.reason || ""),
       backendMatchesExpectation,
       extensionMatchesExpectation,

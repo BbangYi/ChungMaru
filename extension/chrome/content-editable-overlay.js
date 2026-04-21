@@ -525,16 +525,41 @@ function doSpansCoverFullText(spans, text) {
   return Number(span.start) <= 0 && Number(span.end) >= fullLength;
 }
 
+function getEditableMaskedCoverage(spans, text) {
+  const sourceText = String(text || "");
+  if (!sourceText) {
+    return 0;
+  }
+
+  const normalizedSpans = normalizeEvidenceSpans(spans, sourceText);
+  if (normalizedSpans.length === 0) {
+    return 0;
+  }
+
+  const maskedLength = normalizedSpans.reduce(
+    (total, span) => total + Math.max(0, Number(span.end) - Number(span.start)),
+    0
+  );
+  const meaningfulLength = Math.max(1, sourceText.replace(/\s+/g, "").length);
+  return Math.min(1, maskedLength / meaningfulLength);
+}
+
 function shouldUseEditableNativeMask(element, spans, text) {
   return false;
 }
 
 function shouldUseEditableSingleLineBarMask(element, spans, text) {
+  const sourceText = String(text || "");
+  const compactLength = sourceText.replace(/\s+/g, "").length;
+  const maskedCoverage = getEditableMaskedCoverage(spans, sourceText);
+
   return (
     isSingleLineEditableElement(element) &&
     Array.isArray(spans) &&
     spans.length > 0 &&
-    !doSpansCoverFullText(spans, text)
+    !doSpansCoverFullText(spans, sourceText) &&
+    compactLength >= 6 &&
+    maskedCoverage < 0.6
   );
 }
 
@@ -560,11 +585,12 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
         ? "single-line-bars"
         : "overlay";
 
+  const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,
     interventionMode: settings?.interventionMode || "mask",
-    tooltip: buildMaskTooltip(outcome.categories, outcome.reasons, settings),
+    tooltip,
     renderMode,
     spans
   });
@@ -579,7 +605,6 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
     return;
   }
 
-  const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
   if (renderMode === "native-mask") {
     renderEditableNativeMask(state, tooltip, settings);
   } else if (renderMode === "single-line-bars") {
