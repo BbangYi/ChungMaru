@@ -202,6 +202,10 @@ let editableTextMeasureCanvas = null;
 const RECONCILE_QUEUE = new Map();
 let bootstrapStarted = false;
 let bootstrapRetryTimerId = null;
+let navigationListenersInitialized = false;
+let routeRefreshFrameId = null;
+let navigationPollTimerId = null;
+let lastObservedLocationHref = String(location.href || "");
 let staleResponseDropCount = 0;
 let foregroundApplyCount = 0;
 let reconcileOverwriteCount = 0;
@@ -280,6 +284,14 @@ function teardownInvalidatedExtensionContext() {
   if (bootstrapRetryTimerId) {
     window.clearTimeout(bootstrapRetryTimerId);
     bootstrapRetryTimerId = null;
+  }
+  if (routeRefreshFrameId) {
+    window.cancelAnimationFrame(routeRefreshFrameId);
+    routeRefreshFrameId = null;
+  }
+  if (navigationPollTimerId) {
+    window.clearInterval(navigationPollTimerId);
+    navigationPollTimerId = null;
   }
 
   cleanupRealtimeWorker();
@@ -3605,7 +3617,7 @@ function shouldScheduleBackgroundValidation(runReason) {
 
 function shouldPersistHotPathFailure(runReason) {
   if (
-    (runReason === "mutation" || runReason === "visibility") &&
+    (runReason === "mutation" || runReason === "visibility" || runReason === "route-change") &&
     isRapidlyChangingRealtimeHost()
   ) {
     return false;
@@ -4641,6 +4653,116 @@ function scheduleStartupFollowupPipelines() {
   }
 }
 
+function invalidatePendingAnalysisForNavigation() {
+  latestAnalysisGeneration += 1;
+  latestPipelineSequence += 1;
+
+  for (const state of NODE_STATE_BY_ID.values()) {
+    state.analysisGeneration = latestAnalysisGeneration;
+    state.lastAppliedStage = "";
+  }
+
+  for (const state of EDITABLE_VALUE_STATE_BY_ID.values()) {
+    state.analysisGeneration = latestAnalysisGeneration;
+    state.lastAppliedStage = "";
+  }
+}
+
+function refreshCurrentRouteCandidates() {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return 0;
+  }
+
+  cleanupDisconnectedStates();
+  const registeredCount = registerTextNodesInTree(document.body, {
+    markDirty: true,
+    onlyVisible: true,
+    limit: MAX_INITIAL_TEXT_NODES
+  });
+  scheduleInitialEditablePass();
+  scheduleStartupFollowupPipelines();
+  return registeredCount;
+}
+
+function scheduleRouteRefresh(reason = "route-change") {
+  if (extensionContextInvalidated || isUnsupportedPage()) {
+    return;
+  }
+
+  const currentHref = String(location.href || "");
+  const isActualRouteChange = currentHref !== lastObservedLocationHref;
+  if (!isActualRouteChange && reason !== "pageshow") {
+    return;
+  }
+
+  lastObservedLocationHref = currentHref;
+  invalidatePendingAnalysisForNavigation();
+
+  if (routeRefreshFrameId) {
+    window.cancelAnimationFrame(routeRefreshFrameId);
+  }
+
+  routeRefreshFrameId = window.requestAnimationFrame(() => {
+    routeRefreshFrameId = null;
+    const registeredCount = refreshCurrentRouteCandidates();
+    if (registeredCount > 0) {
+      schedulePipeline("route-change");
+    } else {
+      scheduleScrollVisibilityRefresh();
+    }
+  });
+}
+
+function initializeNavigationListeners() {
+  if (navigationListenersInitialized) {
+    return;
+  }
+  navigationListenersInitialized = true;
+
+  const wrapHistoryMethod = (methodName) => {
+    const original = history?.[methodName];
+    if (typeof original !== "function") {
+      return;
+    }
+
+    history[methodName] = function patchedHistoryMethod(...args) {
+      const result = original.apply(this, args);
+      window.setTimeout(() => scheduleRouteRefresh(methodName), 0);
+      return result;
+    };
+  };
+
+  try {
+    wrapHistoryMethod("pushState");
+    wrapHistoryMethod("replaceState");
+  } catch {
+    // Some pages expose non-writable history methods in the isolated world.
+  }
+
+  window.addEventListener("popstate", () => scheduleRouteRefresh("popstate"), true);
+  window.addEventListener("hashchange", () => scheduleRouteRefresh("hashchange"), true);
+  window.addEventListener("pageshow", () => scheduleRouteRefresh("pageshow"), true);
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      if (document.visibilityState === "visible") {
+        scheduleRouteRefresh("pageshow");
+      }
+    },
+    true
+  );
+
+  navigationPollTimerId = window.setInterval(() => {
+    if (extensionContextInvalidated || isUnsupportedPage()) {
+      return;
+    }
+
+    if (String(location.href || "") !== lastObservedLocationHref) {
+      scheduleRouteRefresh("location-poll");
+    }
+  }, 250);
+}
+
 function refreshVisibleCandidateRegistrations() {
   let registeredCount = 0;
 
@@ -4917,6 +5039,7 @@ async function bootstrap() {
   initializeVisibilityObserver();
   initializeInputListeners();
   initializeViewportListeners();
+  initializeNavigationListeners();
   initializeLabSelfTestListeners();
   registerTextNodesInTree(document.body, {
     markDirty: true,
