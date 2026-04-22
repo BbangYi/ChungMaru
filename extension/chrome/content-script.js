@@ -432,12 +432,16 @@ function isShieldTextManagedElement(element) {
 
 // runtime-status helpers are loaded from content-runtime-status.js
 
-function isUnsupportedPage() {
-  if (!document.body) return true;
+function isUnsupportedDocumentTarget() {
   if (!location || !location.href) return true;
   if (location.protocol === "chrome:" || location.protocol === "chrome-extension:") return true;
   if ((document.contentType || "").toLowerCase().includes("pdf")) return true;
   return false;
+}
+
+function isUnsupportedPage() {
+  if (!document.body) return true;
+  return isUnsupportedDocumentTarget();
 }
 
 function getMergedSettings(storedSettings) {
@@ -5284,7 +5288,7 @@ function scheduleStartupFollowupPipelines() {
 }
 
 function scheduleBackendWarmup(options = {}) {
-  if (backendWarmupStarted || extensionContextInvalidated || isUnsupportedPage()) {
+  if (backendWarmupStarted || extensionContextInvalidated || isUnsupportedDocumentTarget()) {
     return;
   }
   backendWarmupStarted = true;
