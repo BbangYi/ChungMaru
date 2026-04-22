@@ -259,12 +259,13 @@ function normalizeSensitivity(value) {
   return Math.max(0, Math.min(100, Math.round(numberValue)));
 }
 
-function normalizeCacheKey(value, sensitivity = DEFAULT_SETTINGS.sensitivity) {
-  return `${RESPONSE_CACHE_SCHEMA_VERSION}::${normalizeSensitivity(sensitivity)}::${String(value || "").replace(/\s+/g, " ").trim()}`;
+function normalizeCacheKey(value, sensitivity = DEFAULT_SETTINGS.sensitivity, apiBaseUrl = DEFAULT_SETTINGS.backendApiBaseUrl) {
+  const backendKey = sanitizeApiBaseUrl(apiBaseUrl || DEFAULT_SETTINGS.backendApiBaseUrl);
+  return `${RESPONSE_CACHE_SCHEMA_VERSION}::${backendKey}::${normalizeSensitivity(sensitivity)}::${String(value || "").replace(/\s+/g, " ").trim()}`;
 }
 
-function getCachedResponse(cache, text, sensitivity) {
-  const key = normalizeCacheKey(text, sensitivity);
+function getCachedResponse(cache, text, sensitivity, apiBaseUrl) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
   if (!key || !cache.has(key)) return null;
 
   const cached = cache.get(key);
@@ -289,14 +290,14 @@ function getCachedResponse(cache, text, sensitivity) {
   return value;
 }
 
-function getInFlightAnalysisResponse(text, sensitivity) {
-  const key = normalizeCacheKey(text, sensitivity);
+function getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
   if (!key) return null;
   return FULL_ANALYSIS_IN_FLIGHT_REQUESTS.get(key) || null;
 }
 
-function createInFlightAnalysisEntry(text, sensitivity) {
-  const key = normalizeCacheKey(text, sensitivity);
+function createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
   let resolveEntry;
   const promise = new Promise((resolve) => {
     resolveEntry = resolve;
@@ -337,8 +338,8 @@ function shouldCacheAnalyzeBatchResult(value) {
   );
 }
 
-function setCachedResponse(cache, text, value, sensitivity) {
-  const key = normalizeCacheKey(text, sensitivity);
+function setCachedResponse(cache, text, value, sensitivity, apiBaseUrl) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
   if (!key) return;
 
   if (!shouldCacheAnalyzeBatchResult(value)) {
@@ -776,14 +777,14 @@ async function analyzeTextBatch(message) {
     let inFlightHitCount = 0;
 
     for (const text of texts) {
-      const cached = getCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, sensitivity);
+      const cached = getCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, sensitivity, apiBaseUrl);
       if (cached) {
         resultsByText.set(text, cached);
         cacheHitCount += 1;
         continue;
       }
 
-      const inFlight = getInFlightAnalysisResponse(text, sensitivity);
+      const inFlight = getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl);
       if (inFlight) {
         inFlightHitCount += 1;
         inFlightResultPromises.push(
@@ -807,7 +808,7 @@ async function analyzeTextBatch(message) {
     if (pendingTexts.length > 0) {
       const inFlightEntries = pendingTexts.map((text) => ({
         text,
-        entry: createInFlightAnalysisEntry(text, sensitivity)
+        entry: createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl)
       }));
       let batchResponse;
       try {
@@ -822,7 +823,7 @@ async function analyzeTextBatch(message) {
           const text = pendingTexts[index];
           const value = result || null;
           resultsByText.set(text, value);
-          setCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, value, sensitivity);
+          setCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, value, sensitivity, apiBaseUrl);
           inFlightEntries[index]?.entry?.resolve(value);
         });
       } catch (error) {
