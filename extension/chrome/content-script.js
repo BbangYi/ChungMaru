@@ -198,6 +198,7 @@ let inputMaskResetCount = 0;
 let overlayLayoutReuseCount = 0;
 let overlayLayoutRebuildCount = 0;
 let backendWarmupStarted = false;
+let extensionContextInvalidatedLogged = false;
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -304,7 +305,10 @@ function handleExtensionContextError(error) {
   }
 
   teardownInvalidatedExtensionContext();
-  console.warn("[청마루] extension context invalidated");
+  if (!extensionContextInvalidatedLogged) {
+    extensionContextInvalidatedLogged = true;
+    console.warn("[청마루] extension context invalidated");
+  }
   return true;
 }
 
