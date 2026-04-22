@@ -1870,6 +1870,13 @@ function isGooglePriorityCandidate(candidate) {
     return true;
   }
 
+  if (
+    shouldAllowGoogleInteractiveElement(element) &&
+    HIGH_SIGNAL_PROFANITY_PATTERN.test(candidate?.text || "")
+  ) {
+    return true;
+  }
+
   if (element.matches("h3, [role='heading']") || element.closest("h3, [role='heading']")) {
     return true;
   }
