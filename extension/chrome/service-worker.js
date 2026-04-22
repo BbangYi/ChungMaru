@@ -264,6 +264,15 @@ function normalizeCacheKey(value, sensitivity = DEFAULT_SETTINGS.sensitivity, ap
   return `${RESPONSE_CACHE_SCHEMA_VERSION}::${backendKey}::${normalizeSensitivity(sensitivity)}::${String(value || "").replace(/\s+/g, " ").trim()}`;
 }
 
+function normalizeInFlightCacheKey(
+  value,
+  sensitivity = DEFAULT_SETTINGS.sensitivity,
+  apiBaseUrl = DEFAULT_SETTINGS.backendApiBaseUrl,
+  mode = "foreground"
+) {
+  return `${normalizeAnalyzeBatchMode(mode)}::${normalizeCacheKey(value, sensitivity, apiBaseUrl)}`;
+}
+
 function getCachedResponse(cache, text, sensitivity, apiBaseUrl) {
   const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
   if (!key || !cache.has(key)) return null;
@@ -290,14 +299,14 @@ function getCachedResponse(cache, text, sensitivity, apiBaseUrl) {
   return value;
 }
 
-function getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl) {
-  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
+function getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl, mode) {
+  const key = normalizeInFlightCacheKey(text, sensitivity, apiBaseUrl, mode);
   if (!key) return null;
   return FULL_ANALYSIS_IN_FLIGHT_REQUESTS.get(key) || null;
 }
 
-function createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl) {
-  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
+function createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl, mode) {
+  const key = normalizeInFlightCacheKey(text, sensitivity, apiBaseUrl, mode);
   let resolveEntry;
   const promise = new Promise((resolve) => {
     resolveEntry = resolve;
@@ -784,7 +793,7 @@ async function analyzeTextBatch(message) {
         continue;
       }
 
-      const inFlight = getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl);
+      const inFlight = getInFlightAnalysisResponse(text, sensitivity, apiBaseUrl, analysisMode);
       if (inFlight) {
         inFlightHitCount += 1;
         inFlightResultPromises.push(
@@ -808,7 +817,7 @@ async function analyzeTextBatch(message) {
     if (pendingTexts.length > 0) {
       const inFlightEntries = pendingTexts.map((text) => ({
         text,
-        entry: createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl)
+        entry: createInFlightAnalysisEntry(text, sensitivity, apiBaseUrl, analysisMode)
       }));
       let batchResponse;
       try {
