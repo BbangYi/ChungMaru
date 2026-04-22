@@ -70,32 +70,6 @@ function isSingleLineEditableElement(element) {
   return false;
 }
 
-function renderEditableNativeMask(state, tooltip, settings) {
-  if (!state?.element) return;
-
-  if (state.overlayRoot?.isConnected) {
-    state.overlayRoot.remove();
-  }
-  state.overlayRoot = null;
-  state.overlayContent = null;
-  state.overlayMode = "";
-
-  state.overlayTooltip = tooltip || "";
-  state.element.removeAttribute("title");
-  state.element.style.webkitTextSecurity =
-    settings?.interventionMode === "hide" ? "disc" : "square";
-  state.element.style.textSecurity =
-    settings?.interventionMode === "hide" ? "disc" : "square";
-  const computedStyle = window.getComputedStyle(state.element);
-  const visibleMaskColor = computedStyle.color || state.originalColor || "currentColor";
-  state.element.style.setProperty("color", visibleMaskColor, "important");
-  state.element.style.setProperty("-webkit-text-fill-color", visibleMaskColor, "important");
-  state.element.style.setProperty("text-shadow", "none", "important");
-  state.element.classList.remove("shieldtext-editable-source-concealed");
-  state.nativeMaskApplied = true;
-  MASKED_EDITABLE_STATE_IDS.add(state.nodeId);
-}
-
 function concealEditableSourceText(state) {
   if (!state?.element) return;
 
@@ -367,10 +341,6 @@ function doSpansCoverFullText(spans, text) {
   return Number(span.start) <= 0 && Number(span.end) >= fullLength;
 }
 
-function shouldUseEditableNativeMask(element, spans, text) {
-  return false;
-}
-
 function renderEditableValueOutcome(candidate, outcome, settings) {
   const state = candidate?.state;
   if (!state?.element) return;
@@ -386,34 +356,20 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
     return;
   }
 
-  const renderMode =
-    shouldUseEditableNativeMask(state.element, spans, candidate.text)
-      ? "native-mask"
-      : "overlay";
-
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,
     interventionMode: settings?.interventionMode || "mask",
     tooltip,
-    renderMode,
     spans
   });
   if (decisionKey === state.lastDecisionKey) {
-    if (renderMode === "native-mask") {
-      renderEditableNativeMask(state, tooltip, settings);
-    } else {
-      renderEditableOverlay(state, candidate.text, spans, settings, tooltip);
-    }
+    renderEditableOverlay(state, candidate.text, spans, settings, tooltip);
     return;
   }
 
-  if (renderMode === "native-mask") {
-    renderEditableNativeMask(state, tooltip, settings);
-  } else {
-    renderEditableOverlay(state, candidate.text, spans, settings, tooltip);
-  }
+  renderEditableOverlay(state, candidate.text, spans, settings, tooltip);
   state.isMasked = true;
   state.isPending = false;
   state.lastDecisionKey = decisionKey;
