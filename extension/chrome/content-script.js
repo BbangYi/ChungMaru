@@ -98,6 +98,7 @@ const SKIPPED_ANALYSIS_RETRY_BACKOFF_MS = 1200;
 const FOREGROUND_BACKEND_BATCH_SIZE = 2;
 const RECONCILE_BACKEND_BATCH_SIZE = 3;
 const BACKEND_WARMUP_TEXTS = ["안녕하세요", "검색 테스트", "청마루 실시간 필터"];
+const BACKEND_WARMUP_DELAY_MS = 1800;
 const FOREGROUND_STANDALONE_SAFE_CACHE_TTL_MS = 7000;
 const FOREGROUND_CONTEXTUAL_SAFE_CACHE_TTL_MS = 800;
 const RECONCILE_CONTEXTUAL_SAFE_CACHE_TTL_MS = 600;
@@ -5412,9 +5413,9 @@ function scheduleBackendWarmup(options = {}) {
       await safeRuntimeSendMessage({
         type: "ANALYZE_TEXT_BATCH",
         texts: BACKEND_WARMUP_TEXTS.slice(0, 1),
-        requestTimeoutMsOverride: 1200,
+        requestTimeoutMsOverride: 900,
         sensitivity: settings.sensitivity,
-        analysisMode: "foreground"
+        analysisMode: "background-validation"
       });
     } catch (error) {
       if (!handleExtensionContextError(error)) {
@@ -5432,7 +5433,7 @@ function scheduleBackendWarmup(options = {}) {
       return;
     }
     runWarmup();
-  }, options.immediate ? 0 : 400);
+  }, options.immediate ? 0 : BACKEND_WARMUP_DELAY_MS);
 }
 
 function invalidatePendingAnalysisForNavigation() {
