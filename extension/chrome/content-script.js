@@ -3271,6 +3271,10 @@ function shouldSkipTransientAnalyzeFailure(response, analysisMode) {
     return false;
   }
 
+  if (!response) {
+    return true;
+  }
+
   const errorCode = String(response?.errorCode || response?.error?.errorCode || "");
   return Boolean(response?.retryable) || isRetryableBackendErrorCode(errorCode);
 }
