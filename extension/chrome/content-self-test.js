@@ -69,7 +69,9 @@ function getLabCaseRenderState(element, sampleText) {
       editableTitle: "",
       editableConcealsText: false,
       suspiciousEditableBar: false,
-      suspiciousNativeTextareaMask: false
+      suspiciousNativeTextareaMask: false,
+      overlayDriftPx: 0,
+      suspiciousOverlayDrift: false
     };
   }
 
@@ -87,6 +89,18 @@ function getLabCaseRenderState(element, sampleText) {
       inlineColor === "transparent" ||
       inlineFill === "transparent" ||
       Boolean(state?.nativeMaskApplied);
+    const overlayRect = state?.overlayRoot?.isConnected
+      ? state.overlayRoot.getBoundingClientRect()
+      : null;
+    const elementRect = element.getBoundingClientRect();
+    const overlayDriftPx = overlayRect
+      ? Math.max(
+          Math.abs(overlayRect.left - elementRect.left),
+          Math.abs(overlayRect.top - elementRect.top),
+          Math.abs(overlayRect.width - elementRect.width),
+          Math.abs(overlayRect.height - elementRect.height)
+        )
+      : 0;
 
     return {
       editable: true,
@@ -101,7 +115,9 @@ function getLabCaseRenderState(element, sampleText) {
       editableConcealsText,
       suspiciousEditableBar: maskMode === "single-line-bars" && compactLength <= 8,
       suspiciousNativeTextareaMask:
-        element instanceof HTMLTextAreaElement && maskMode === "native-mask"
+        element instanceof HTMLTextAreaElement && maskMode === "native-mask",
+      overlayDriftPx: Math.round(overlayDriftPx),
+      suspiciousOverlayDrift: Boolean(overlayRect && overlayDriftPx > 4)
     };
   }
 
@@ -115,7 +131,9 @@ function getLabCaseRenderState(element, sampleText) {
     editableTitle: "",
     editableConcealsText: false,
     suspiciousEditableBar: false,
-    suspiciousNativeTextareaMask: false
+    suspiciousNativeTextareaMask: false,
+    overlayDriftPx: 0,
+    suspiciousOverlayDrift: false
   };
 }
 
@@ -138,8 +156,10 @@ function isLabRenderStateHealthy(renderState, extensionMasked) {
     return (
       !renderState.editableConcealsText &&
       String(renderState.editableTitle || "") === "" &&
+      Number(renderState.maskElementCount || 0) === 0 &&
       !renderState.suspiciousEditableBar &&
-      !renderState.suspiciousNativeTextareaMask
+      !renderState.suspiciousNativeTextareaMask &&
+      !renderState.suspiciousOverlayDrift
     );
   }
 
@@ -148,6 +168,7 @@ function isLabRenderStateHealthy(renderState, extensionMasked) {
       String(renderState.editableTitle || "") === "" &&
       !renderState.suspiciousEditableBar &&
       !renderState.suspiciousNativeTextareaMask &&
+      !renderState.suspiciousOverlayDrift &&
       (renderState.maskMode === "native-mask" || Number(renderState.maskElementCount || 0) > 0)
     );
   }
