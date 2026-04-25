@@ -157,6 +157,8 @@ let nextEditableValueId = 1;
 let observer = null;
 let visibilityObserver = null;
 let debounceTimerId = null;
+let scheduledPipelineReason = "";
+let scheduledPipelineDeadlineMs = 0;
 let isPipelineRunning = false;
 let queuedReason = null;
 let ignoreMutationsUntil = 0;
@@ -252,6 +254,8 @@ function teardownInvalidatedExtensionContext() {
     window.clearTimeout(debounceTimerId);
     debounceTimerId = null;
   }
+  scheduledPipelineReason = "";
+  scheduledPipelineDeadlineMs = 0;
   if (reconcileFlushTimerId) {
     window.clearTimeout(reconcileFlushTimerId);
     reconcileFlushTimerId = null;
@@ -2996,6 +3000,14 @@ function isRenderableEvidenceSpan(spanText) {
     return false;
   }
 
+  if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(text))) {
+    return false;
+  }
+
+  if (/^[a-z0-9._:/-]+$/i.test(text) && !HIGH_SIGNAL_PROFANITY_PATTERN.test(text)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -4900,7 +4912,7 @@ async function executePipeline(runReason) {
   }
 
   if (isPipelineRunning) {
-    queuedReason = runReason;
+    queuedReason = chooseHigherPriorityPipelineReason(queuedReason, runReason);
     return { ok: true, queued: true };
   }
 
@@ -5363,24 +5375,90 @@ async function executePipeline(runReason) {
   }
 }
 
+function getPipelineScheduleDelayMs(reason) {
+  if (reason === "input") {
+    return INPUT_PIPELINE_DEBOUNCE_MS;
+  }
+
+  if (reason === "visibility" || reason === "mutation" || reason === "route-change") {
+    return VISIBILITY_PIPELINE_DEBOUNCE_MS;
+  }
+
+  if (reason === "background-validation") {
+    return BACKGROUND_PIPELINE_DEBOUNCE_MS;
+  }
+
+  return PIPELINE_DEBOUNCE_MS;
+}
+
+function getPipelineReasonPriority(reason) {
+  const normalizedReason = String(reason || "");
+  if (normalizedReason === "input" || normalizedReason === "input-hot-path") {
+    return 6;
+  }
+
+  if (
+    normalizedReason === "visibility" ||
+    normalizedReason === "mutation" ||
+    normalizedReason === "route-change"
+  ) {
+    return 5;
+  }
+
+  if (
+    normalizedReason === "initial-load" ||
+    normalizedReason === "settings-updated" ||
+    normalizedReason === "manual" ||
+    normalizedReason === "manual-request" ||
+    normalizedReason === "manual-request-after-inject"
+  ) {
+    return 4;
+  }
+
+  if (normalizedReason === "background-validation") {
+    return 1;
+  }
+
+  return 2;
+}
+
+function chooseHigherPriorityPipelineReason(currentReason, nextReason) {
+  if (!currentReason) {
+    return nextReason;
+  }
+
+  return getPipelineReasonPriority(nextReason) > getPipelineReasonPriority(currentReason)
+    ? nextReason
+    : currentReason;
+}
+
 function schedulePipeline(reason) {
   if (extensionContextInvalidated || isUnsupportedPage()) return;
 
+  const delay = getPipelineScheduleDelayMs(reason);
+  const deadlineMs = performance.now() + delay;
+
   if (debounceTimerId) {
+    const currentPriority = getPipelineReasonPriority(scheduledPipelineReason);
+    const nextPriority = getPipelineReasonPriority(reason);
+    const existingDeadlineMs = Number(scheduledPipelineDeadlineMs || 0);
+    const keepExisting =
+      currentPriority > nextPriority ||
+      (currentPriority === nextPriority && existingDeadlineMs > 0 && existingDeadlineMs <= deadlineMs);
+
+    if (keepExisting) {
+      return;
+    }
+
     window.clearTimeout(debounceTimerId);
   }
 
-  let delay = PIPELINE_DEBOUNCE_MS;
-  if (reason === "input") {
-    delay = INPUT_PIPELINE_DEBOUNCE_MS;
-  } else if (reason === "visibility" || reason === "mutation" || reason === "route-change") {
-    delay = VISIBILITY_PIPELINE_DEBOUNCE_MS;
-  } else if (reason === "background-validation") {
-    delay = BACKGROUND_PIPELINE_DEBOUNCE_MS;
-  }
-
+  scheduledPipelineReason = reason;
+  scheduledPipelineDeadlineMs = deadlineMs;
   debounceTimerId = window.setTimeout(() => {
     debounceTimerId = null;
+    scheduledPipelineReason = "";
+    scheduledPipelineDeadlineMs = 0;
     executePipeline(reason);
   }, delay);
 }
