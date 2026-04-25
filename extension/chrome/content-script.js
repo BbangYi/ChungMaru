@@ -3103,6 +3103,8 @@ async function analyzePayloadWithRealtimeWorker(analysisUnits, settings, onProgr
         chunkSize: Number(response?.chunkSize || 0),
         requestTimeoutMs: Number(response?.requestTimeoutMs || 0),
         lastBackendErrorCode: String(response?.lastBackendErrorCode || ""),
+        backendQueueWaitMs: Number(response?.backendQueueWaitMs || 0),
+        backendQueueDepthAtEnqueue: Number(response?.backendQueueDepthAtEnqueue || 0),
         backendRequestTimings: Array.isArray(response?.backendRequestTimings)
           ? response.backendRequestTimings
           : []
@@ -3128,6 +3130,8 @@ async function analyzePayloadWithRealtimeWorker(analysisUnits, settings, onProgr
       chunkSize: Number(response?.chunkSize || 0),
       requestTimeoutMs: Number(response?.requestTimeoutMs || 0),
       lastBackendErrorCode: String(response?.lastBackendErrorCode || ""),
+      backendQueueWaitMs: Number(response?.backendQueueWaitMs || 0),
+      backendQueueDepthAtEnqueue: Number(response?.backendQueueDepthAtEnqueue || 0),
       backendRequestTimings: Array.isArray(response?.backendRequestTimings)
         ? response.backendRequestTimings
         : [],
@@ -3243,6 +3247,28 @@ function createSkippedAnalysisResult(text) {
   };
 }
 
+function summarizeBackendRequestTimings(requestTimings) {
+  const timings = Array.isArray(requestTimings) ? requestTimings : [];
+  return timings.reduce(
+    (summary, timing) => ({
+      maxQueueWaitMs: Math.max(summary.maxQueueWaitMs, Number(timing?.queueWaitMs || 0)),
+      maxQueueDepthAtEnqueue: Math.max(
+        summary.maxQueueDepthAtEnqueue,
+        Number(timing?.queueDepthAtEnqueue || 0)
+      ),
+      maxQueueDepthAtStart: Math.max(
+        summary.maxQueueDepthAtStart,
+        Number(timing?.queueDepthAtStart || 0)
+      )
+    }),
+    {
+      maxQueueWaitMs: 0,
+      maxQueueDepthAtEnqueue: 0,
+      maxQueueDepthAtStart: 0
+    }
+  );
+}
+
 async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   const cacheSensitivity = normalizeSensitivity(
     options.sensitivity ?? cachedSettings?.sensitivity ?? DEFAULT_SETTINGS.sensitivity
@@ -3294,6 +3320,8 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   let serviceWorkerChunkSize = 0;
   let serviceWorkerLastBackendErrorCode = "";
   let serviceWorkerRequestTimeoutMs = 0;
+  let serviceWorkerBackendQueueWaitMs = 0;
+  let serviceWorkerBackendQueueDepth = 0;
   const backendRequestTimings = [];
   const requestBatchSize = Math.max(
     1,
@@ -3376,6 +3404,17 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
               backendRequestTimings.shift();
             }
           }
+          serviceWorkerBackendQueueWaitMs = Math.max(
+            serviceWorkerBackendQueueWaitMs,
+            Number(response?.backendQueueWaitMs || summarizeBackendRequestTimings(response?.requestTimings).maxQueueWaitMs)
+          );
+          serviceWorkerBackendQueueDepth = Math.max(
+            serviceWorkerBackendQueueDepth,
+            Number(
+              response?.backendQueueDepthAtEnqueue ||
+                summarizeBackendRequestTimings(response?.requestTimings).maxQueueDepthAtEnqueue
+            )
+          );
           backendStatus = response?.backendStatus || "degraded";
           apiBaseUrl = response?.apiBaseUrl || apiBaseUrl;
 
@@ -3401,6 +3440,17 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
           lastBackendErrorCode:
             serviceWorkerLastBackendErrorCode || String(response?.lastBackendErrorCode || response?.errorCode || ""),
           requestTimeoutMs: serviceWorkerRequestTimeoutMs || Number(response?.requestTimeoutMs || requestTimeoutMs || 0),
+          backendQueueWaitMs: Math.max(
+            serviceWorkerBackendQueueWaitMs,
+            Number(response?.backendQueueWaitMs || summarizeBackendRequestTimings(response?.requestTimings).maxQueueWaitMs)
+          ),
+          backendQueueDepthAtEnqueue: Math.max(
+            serviceWorkerBackendQueueDepth,
+            Number(
+              response?.backendQueueDepthAtEnqueue ||
+                summarizeBackendRequestTimings(response?.requestTimings).maxQueueDepthAtEnqueue
+            )
+          ),
           backendRequestTimings: [
             ...backendRequestTimings,
             ...(Array.isArray(response?.requestTimings) ? response.requestTimings : [])
@@ -3428,6 +3478,17 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
           backendRequestTimings.shift();
         }
       }
+      serviceWorkerBackendQueueWaitMs = Math.max(
+        serviceWorkerBackendQueueWaitMs,
+        Number(response.backendQueueWaitMs || summarizeBackendRequestTimings(response.requestTimings).maxQueueWaitMs)
+      );
+      serviceWorkerBackendQueueDepth = Math.max(
+        serviceWorkerBackendQueueDepth,
+        Number(
+          response.backendQueueDepthAtEnqueue ||
+            summarizeBackendRequestTimings(response.requestTimings).maxQueueDepthAtEnqueue
+        )
+      );
       const resolvedCandidates = [];
 
       response.results.forEach((result, index) => {
@@ -3474,6 +3535,8 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
     chunkSize: serviceWorkerChunkSize || requestBatchSize,
     requestTimeoutMs: serviceWorkerRequestTimeoutMs || requestTimeoutMs || 0,
     lastBackendErrorCode: serviceWorkerLastBackendErrorCode,
+    backendQueueWaitMs: serviceWorkerBackendQueueWaitMs,
+    backendQueueDepthAtEnqueue: serviceWorkerBackendQueueDepth,
     backendRequestTimings: backendRequestTimings.slice(-12),
     cacheHitCount,
     backendCacheHitCount
@@ -3970,6 +4033,8 @@ function buildAnalysisDiagnostics(analysisUnits, analysisResults, meta = {}) {
     chunkSize: Number(meta.chunkSize || 0),
     requestTimeoutMs: Number(meta.requestTimeoutMs || 0),
     lastBackendErrorCode: String(meta.lastBackendErrorCode || ""),
+    backendQueueWaitMs: Number(meta.backendQueueWaitMs || 0),
+    backendQueueDepthAtEnqueue: Number(meta.backendQueueDepthAtEnqueue || 0),
     cacheHitCount: Number(meta.cacheHitCount || 0),
     backendCacheHitCount: Number(meta.backendCacheHitCount || 0),
     durationMs: Number(meta.durationMs || 0),
@@ -4070,6 +4135,16 @@ function shouldScheduleBackgroundValidation(runReason) {
   }
 
   return true;
+}
+
+function shouldPersistEmptyPipelineRun(runReason) {
+  return (
+    runReason === "initial-load" ||
+    runReason === "manual" ||
+    runReason === "manual-request" ||
+    runReason === "manual-request-after-inject" ||
+    runReason === "settings-updated"
+  );
 }
 
 function shouldPersistHotPathFailure(runReason) {
@@ -4585,6 +4660,8 @@ async function executeHotPathForCandidates(candidates, runReason) {
         chunkSize: Number(hotPathMeta.chunkSize || 0),
         requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
         lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+        backendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+        backendQueueDepthAtEnqueue: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
         backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
           ? hotPathMeta.backendRequestTimings
           : [],
@@ -4616,6 +4693,8 @@ async function executeHotPathForCandidates(candidates, runReason) {
     foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
     foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
     foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+    foregroundBackendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+    foregroundBackendQueueDepth: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
     returnedSpanCount: Number(decision.returnedSpanCount || 0),
     droppedSpanCount: Number(decision.droppedSpanCount || 0)
   });
@@ -4749,6 +4828,8 @@ async function reconcileAnalysisUnitsWithBackend(
         backendCacheHitCount: Number(fullMeta.cacheHitCount || 0),
         backendDurationMs: Number(fullMeta.backendDurationMs || 0),
         backendEndpoint: fullMeta.apiBaseUrl || settings.backendApiBaseUrl,
+        backendReconcileQueueWaitMs: Number(fullMeta.backendQueueWaitMs || 0),
+        backendReconcileQueueDepth: Number(fullMeta.backendQueueDepthAtEnqueue || 0),
         backendReconcileLatencyMs: Math.round(performance.now() - startedAt),
         backendStatus: fullMeta.backendStatus || "ready",
         blockedNodeCount: decision.blockedNodeCount,
@@ -4769,6 +4850,8 @@ async function reconcileAnalysisUnitsWithBackend(
             chunkSize: Number(fullMeta.chunkSize || 0),
             requestTimeoutMs: Number(fullMeta.requestTimeoutMs || 0),
             lastBackendErrorCode: String(fullMeta.lastBackendErrorCode || ""),
+            backendQueueWaitMs: Number(fullMeta.backendQueueWaitMs || 0),
+            backendQueueDepthAtEnqueue: Number(fullMeta.backendQueueDepthAtEnqueue || 0),
             backendRequestTimings: Array.isArray(fullMeta.backendRequestTimings)
               ? fullMeta.backendRequestTimings
               : [],
@@ -4967,7 +5050,19 @@ async function executePipeline(runReason) {
           items: []
         }
       };
-      await persistDebug(payload, decision, stats);
+      if (shouldPersistEmptyPipelineRun(runReason)) {
+        await persistDebug(payload, decision, stats);
+      } else {
+        scheduleHotPathStatsPersist({
+          hostname,
+          durationMs: Math.round(performance.now() - startedAt),
+          runReason,
+          totalCandidateCount: candidates.length,
+          requestedAnalysisCount: 0,
+          reconcileQueueDepth: RECONCILE_QUEUE.size,
+          visibleContainerBatchSize: 0
+        });
+      }
 
       if (
         dirtyCandidates.length > 0 &&
@@ -5045,6 +5140,8 @@ async function executePipeline(runReason) {
         foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
         foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
         foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+        foregroundBackendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+        foregroundBackendQueueDepth: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
         reconcileRequestCount: 0,
         totalCandidateCount: candidates.length,
         requestedAnalysisCount: analysisUnits.length,
@@ -5063,6 +5160,8 @@ async function executePipeline(runReason) {
           chunkSize: Number(hotPathMeta.chunkSize || 0),
           requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
           lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+          backendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+          backendQueueDepthAtEnqueue: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
           backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
             ? hotPathMeta.backendRequestTimings.slice(-8)
             : [],
@@ -5158,6 +5257,8 @@ async function executePipeline(runReason) {
       foregroundFailedTextCount: Number(hotPathMeta.failedTextCount || 0),
       foregroundRequestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
       foregroundLastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+      foregroundBackendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+      foregroundBackendQueueDepth: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
       reconcileRequestCount: contextualReconcileCandidates.length > 0 ? 1 : 0,
       foregroundUnitBuildMs,
       firstPaintMaskMs: firstMaskLatencyMs,
@@ -5194,6 +5295,8 @@ async function executePipeline(runReason) {
           chunkSize: Number(hotPathMeta.chunkSize || 0),
           requestTimeoutMs: Number(hotPathMeta.requestTimeoutMs || 0),
           lastBackendErrorCode: String(hotPathMeta.lastBackendErrorCode || ""),
+          backendQueueWaitMs: Number(hotPathMeta.backendQueueWaitMs || 0),
+          backendQueueDepthAtEnqueue: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
           backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
             ? hotPathMeta.backendRequestTimings
             : [],

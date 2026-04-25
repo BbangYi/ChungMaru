@@ -77,6 +77,14 @@ function dequeueNextBackendRequest() {
   return null;
 }
 
+function getBackendQueuedRequestCount() {
+  let count = 0;
+  for (const queue of BACKEND_REQUEST_QUEUES.values()) {
+    count += queue.length;
+  }
+  return count;
+}
+
 function drainBackendRequestQueue() {
   if (isBackendRequestRunning) {
     return;
@@ -89,7 +97,12 @@ function drainBackendRequestQueue() {
 
   isBackendRequestRunning = true;
   Promise.resolve()
-    .then(nextRequest.operation)
+    .then(() => nextRequest.operation({
+      mode: nextRequest.mode,
+      queueWaitMs: Date.now() - nextRequest.queuedAt,
+      queueDepthAtEnqueue: nextRequest.queueDepthAtEnqueue,
+      queueDepthAtStart: getBackendQueuedRequestCount() + 1
+    }))
     .then(nextRequest.resolve, nextRequest.reject)
     .finally(() => {
       isBackendRequestRunning = false;
@@ -100,9 +113,13 @@ function drainBackendRequestQueue() {
 function enqueueBackendRequest(mode, operation) {
   const normalizedMode = normalizeAnalyzeBatchMode(mode);
   const queue = BACKEND_REQUEST_QUEUES.get(normalizedMode) || BACKEND_REQUEST_QUEUES.get("foreground");
+  const queuedAt = Date.now();
 
   return new Promise((resolve, reject) => {
     queue.push({
+      mode: normalizedMode,
+      queuedAt,
+      queueDepthAtEnqueue: getBackendQueuedRequestCount() + (isBackendRequestRunning ? 1 : 0),
       operation,
       resolve,
       reject
@@ -488,6 +505,9 @@ function createAnalyzeBatchTiming({
   textCount,
   effectiveTimeoutMs,
   durationMs,
+  queueWaitMs,
+  queueDepthAtEnqueue,
+  queueDepthAtStart,
   ok,
   error
 }) {
@@ -496,6 +516,9 @@ function createAnalyzeBatchTiming({
     textCount: Math.max(0, Number(textCount || 0)),
     effectiveTimeoutMs: Math.max(0, Number(effectiveTimeoutMs || 0)),
     durationMs: Math.max(0, Number(durationMs || 0)),
+    queueWaitMs: Math.max(0, Number(queueWaitMs || 0)),
+    queueDepthAtEnqueue: Math.max(0, Number(queueDepthAtEnqueue || 0)),
+    queueDepthAtStart: Math.max(0, Number(queueDepthAtStart || 0)),
     ok: Boolean(ok)
   };
 
@@ -504,6 +527,28 @@ function createAnalyzeBatchTiming({
   }
 
   return timing;
+}
+
+function summarizeAnalyzeBatchTimings(requestTimings) {
+  const timings = Array.isArray(requestTimings) ? requestTimings : [];
+  return timings.reduce(
+    (summary, timing) => ({
+      maxQueueWaitMs: Math.max(summary.maxQueueWaitMs, Number(timing?.queueWaitMs || 0)),
+      maxQueueDepthAtEnqueue: Math.max(
+        summary.maxQueueDepthAtEnqueue,
+        Number(timing?.queueDepthAtEnqueue || 0)
+      ),
+      maxQueueDepthAtStart: Math.max(
+        summary.maxQueueDepthAtStart,
+        Number(timing?.queueDepthAtStart || 0)
+      )
+    }),
+    {
+      maxQueueWaitMs: 0,
+      maxQueueDepthAtEnqueue: 0,
+      maxQueueDepthAtStart: 0
+    }
+  );
 }
 
 async function fetchJsonWithTimeout(url, options = {}, timeoutMs = DEFAULT_SETTINGS.requestTimeoutMs) {
@@ -604,22 +649,44 @@ function validateAnalyzeBatchResponse(body, texts) {
 }
 
 async function performAnalyzeBatchRequest(apiBaseUrl, texts, requestTimeoutMs, sensitivity, mode = "foreground") {
-  const body = await enqueueBackendRequest(
-    mode,
-    () => fetchJsonWithTimeout(
-      `${apiBaseUrl}/analyze_batch`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          texts,
-          sensitivity: normalizeSensitivity(sensitivity)
-        })
-      },
-      requestTimeoutMs
-    )
-  );
+  let queueDiagnostics = {
+    queueWaitMs: 0,
+    queueDepthAtEnqueue: 0,
+    queueDepthAtStart: 0
+  };
 
-  return validateAnalyzeBatchResponse(body, texts);
+  try {
+    const body = await enqueueBackendRequest(
+      mode,
+      (diagnostics = {}) => {
+        queueDiagnostics = {
+          queueWaitMs: Math.max(0, Number(diagnostics.queueWaitMs || 0)),
+          queueDepthAtEnqueue: Math.max(0, Number(diagnostics.queueDepthAtEnqueue || 0)),
+          queueDepthAtStart: Math.max(0, Number(diagnostics.queueDepthAtStart || 0))
+        };
+
+        return fetchJsonWithTimeout(
+          `${apiBaseUrl}/analyze_batch`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              texts,
+              sensitivity: normalizeSensitivity(sensitivity)
+            })
+          },
+          requestTimeoutMs
+        );
+      }
+    );
+
+    return {
+      results: validateAnalyzeBatchResponse(body, texts),
+      queueDiagnostics
+    };
+  } catch (error) {
+    error.queueDiagnostics = queueDiagnostics;
+    throw error;
+  }
 }
 
 function getAnalyzeBatchRequestTimeoutMs(requestTimeoutMs, mode = "foreground") {
@@ -670,7 +737,7 @@ async function performAnalyzeBatchRequestWithSplits(
   const requestStartedAt = Date.now();
 
   try {
-    const results = await performAnalyzeBatchRequest(
+    const requestResult = await performAnalyzeBatchRequest(
       apiBaseUrl,
       texts,
       effectiveTimeoutMs,
@@ -679,7 +746,7 @@ async function performAnalyzeBatchRequestWithSplits(
     );
 
     return {
-      results,
+      results: requestResult.results,
       requestCount: 1,
       splitRetryCount: 0,
       requestTimings: [
@@ -688,6 +755,9 @@ async function performAnalyzeBatchRequestWithSplits(
           textCount: texts.length,
           effectiveTimeoutMs,
           durationMs: Date.now() - requestStartedAt,
+          queueWaitMs: requestResult.queueDiagnostics?.queueWaitMs,
+          queueDepthAtEnqueue: requestResult.queueDiagnostics?.queueDepthAtEnqueue,
+          queueDepthAtStart: requestResult.queueDiagnostics?.queueDepthAtStart,
           ok: true
         })
       ]
@@ -698,6 +768,9 @@ async function performAnalyzeBatchRequestWithSplits(
       textCount: texts.length,
       effectiveTimeoutMs,
       durationMs: Date.now() - requestStartedAt,
+      queueWaitMs: error?.queueDiagnostics?.queueWaitMs,
+      queueDepthAtEnqueue: error?.queueDiagnostics?.queueDepthAtEnqueue,
+      queueDepthAtStart: error?.queueDiagnostics?.queueDepthAtStart,
       ok: false,
       error
     });
@@ -943,6 +1016,7 @@ async function analyzeTextBatch(message) {
 
       const skippedChunkCount = Number(batchResponse.skippedChunkCount || 0);
       const failedTextCount = Number(batchResponse.failedTextCount || 0);
+      const timingSummary = summarizeAnalyzeBatchTimings(batchResponse.requestTimings);
 
       return {
         ok: true,
@@ -963,6 +1037,9 @@ async function analyzeTextBatch(message) {
         requestTimings: Array.isArray(batchResponse.requestTimings)
           ? batchResponse.requestTimings
           : [],
+        backendQueueWaitMs: timingSummary.maxQueueWaitMs,
+        backendQueueDepthAtEnqueue: timingSummary.maxQueueDepthAtEnqueue,
+        backendQueueDepthAtStart: timingSummary.maxQueueDepthAtStart,
         results: texts.map((text) => resultsByText.get(text) || null)
       };
     }
@@ -988,6 +1065,9 @@ async function analyzeTextBatch(message) {
       lastBackendErrorCode: "",
       requestTimeoutMs,
       requestTimings: [],
+      backendQueueWaitMs: 0,
+      backendQueueDepthAtEnqueue: 0,
+      backendQueueDepthAtStart: 0,
       results: texts.map((text) => resultsByText.get(text) || null)
     };
   } catch (error) {
@@ -1002,6 +1082,7 @@ async function analyzeTextBatch(message) {
       normalized.errorCode !== "INVALID_RESPONSE";
 
     if (canDegradeWithoutFailing) {
+      const timingSummary = summarizeAnalyzeBatchTimings(analysisDiagnostics?.requestTimings);
       return {
         ok: true,
         apiBaseUrl,
@@ -1022,9 +1103,14 @@ async function analyzeTextBatch(message) {
         requestTimings: Array.isArray(analysisDiagnostics?.requestTimings)
           ? analysisDiagnostics.requestTimings
           : [],
+        backendQueueWaitMs: timingSummary.maxQueueWaitMs,
+        backendQueueDepthAtEnqueue: timingSummary.maxQueueDepthAtEnqueue,
+        backendQueueDepthAtStart: timingSummary.maxQueueDepthAtStart,
         results: createSkippedAnalyzeBatchResults(texts)
       };
     }
+
+    const timingSummary = summarizeAnalyzeBatchTimings(analysisDiagnostics?.requestTimings);
 
     if (analysisMode === "foreground") {
       console.error("[청마루] analyzeTextBatch failed", error);
@@ -1053,6 +1139,9 @@ async function analyzeTextBatch(message) {
       requestTimings: Array.isArray(analysisDiagnostics?.requestTimings)
         ? analysisDiagnostics.requestTimings
         : [],
+      backendQueueWaitMs: timingSummary.maxQueueWaitMs,
+      backendQueueDepthAtEnqueue: timingSummary.maxQueueDepthAtEnqueue,
+      backendQueueDepthAtStart: timingSummary.maxQueueDepthAtStart,
       detail: normalized.detail || undefined
     };
   }
