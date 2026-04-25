@@ -94,6 +94,9 @@
 
 .shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-mask,
 .shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-hide {
+  display: inline-flex;
+  align-items: center;
+  height: calc(100% - 2px);
   border-radius: 0.18em;
   box-shadow: 0 0 0 0.08em rgb(18, 18, 18);
 }

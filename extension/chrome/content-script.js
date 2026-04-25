@@ -577,7 +577,7 @@ function shouldAllowGoogleInteractiveElement(element) {
     return false;
   }
 
-  if (!interactiveRoot.closest("#search, main, [role='main'], #rhs")) {
+  if (!interactiveRoot.closest("#search, main, [role='main'], #rhs, #bres, #botstuff")) {
     return false;
   }
 
@@ -5771,7 +5771,7 @@ function refreshVisibleCandidateRegistrations(options = {}) {
   const markDirty = options.markDirty === true;
 
   if (isGoogleSearchPage()) {
-    const containers = getGoogleVisibleAnalysisContainers(MAX_HOT_PATH_CONTAINERS);
+    const containers = getGoogleVisibleAnalysisContainers(MAX_BACKGROUND_CONTAINERS);
     for (const container of containers) {
       registeredCount += registerTextNodesInTree(container, {
         markDirty,
@@ -5779,11 +5779,13 @@ function refreshVisibleCandidateRegistrations(options = {}) {
         limit: MAX_GOOGLE_CANDIDATES_PER_CONTAINER
       });
     }
-    return registeredCount;
+    if (registeredCount > 0) {
+      return registeredCount;
+    }
   }
 
   if (isYouTubePage()) {
-    const containers = getYouTubeVisibleAnalysisContainers(MAX_HOT_PATH_CONTAINERS);
+    const containers = getYouTubeVisibleAnalysisContainers(MAX_BACKGROUND_CONTAINERS);
     for (const container of containers) {
       registeredCount += registerTextNodesInTree(container, {
         markDirty,
