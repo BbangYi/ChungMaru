@@ -192,6 +192,7 @@ let routeRefreshFrameId = null;
 let navigationPollTimerId = null;
 let routeRefreshSequence = 0;
 const ROUTE_REFRESH_TIMEOUT_IDS = new Set();
+const STARTUP_FOLLOWUP_TIMEOUT_IDS = new Set();
 let lastObservedLocationHref = String(location.href || "");
 let staleResponseDropCount = 0;
 let foregroundApplyCount = 0;
@@ -300,6 +301,7 @@ function teardownInvalidatedExtensionContext() {
     window.clearTimeout(timeoutId);
   }
   ROUTE_REFRESH_TIMEOUT_IDS.clear();
+  clearStartupFollowupPipelines();
 
   cleanupRealtimeWorker();
 }
@@ -5464,15 +5466,26 @@ function schedulePipeline(reason) {
 }
 
 function scheduleStartupFollowupPipelines() {
+  clearStartupFollowupPipelines();
+
   for (const delayMs of STARTUP_FOLLOWUP_DELAYS_MS) {
-    window.setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
+      STARTUP_FOLLOWUP_TIMEOUT_IDS.delete(timeoutId);
       if (extensionContextInvalidated || isUnsupportedPage()) return;
       const registeredCount = refreshVisibleCandidateRegistrations({ markDirty: false });
       if (registeredCount > 0) {
         schedulePipeline("visibility");
       }
     }, delayMs);
+    STARTUP_FOLLOWUP_TIMEOUT_IDS.add(timeoutId);
   }
+}
+
+function clearStartupFollowupPipelines() {
+  for (const timeoutId of STARTUP_FOLLOWUP_TIMEOUT_IDS) {
+    window.clearTimeout(timeoutId);
+  }
+  STARTUP_FOLLOWUP_TIMEOUT_IDS.clear();
 }
 
 function scheduleBackendWarmup(options = {}) {
