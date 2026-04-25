@@ -84,6 +84,24 @@ class FakeClassifier:
                 "is_hate": False,
                 "scores": {"profanity": 0.92, "toxicity": 0.9, "hate": 0.01},
             },
+            "abstract factory method": {
+                "is_profane": True,
+                "is_toxic": True,
+                "is_hate": False,
+                "scores": {"profanity": 0.89, "toxicity": 0.87, "hate": 0.01},
+            },
+            "Factory Method Pattern": {
+                "is_profane": True,
+                "is_toxic": True,
+                "is_hate": False,
+                "scores": {"profanity": 0.9, "toxicity": 0.88, "hate": 0.01},
+            },
+            "strategy pattern": {
+                "is_profane": True,
+                "is_toxic": True,
+                "is_hate": False,
+                "scores": {"profanity": 0.86, "toxicity": 0.84, "hate": 0.01},
+            },
             "Warp Terminal": {
                 "is_profane": True,
                 "is_toxic": True,
@@ -274,6 +292,9 @@ class PipelineContextTests(unittest.TestCase):
             "abstract factory",
             "factory pattern",
             "abstract factory pattern",
+            "abstract factory method",
+            "Factory Method Pattern",
+            "strategy pattern",
         ]
 
         results = pipeline.analyze_batch(texts)
