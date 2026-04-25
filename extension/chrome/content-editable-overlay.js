@@ -174,11 +174,7 @@ function syncEditableOverlayLayout(state) {
       ? overlayHost.getBoundingClientRect()
       : { left: 0, top: 0 };
   const isSingleLineEditable = isSingleLineEditableElement(element);
-  const paddingTop = Number.parseFloat(style.paddingTop || "0") || 0;
-  const paddingBottom = Number.parseFloat(style.paddingBottom || "0") || 0;
-  const computedLineHeight = style.lineHeight === "normal"
-    ? `${Math.max(0, rect.height - paddingTop - paddingBottom)}px`
-    : style.lineHeight;
+  const computedLineHeight = style.lineHeight || "normal";
   const overlayWidth = Math.max(rect.width, isSingleLineEditable ? rect.width : element.scrollWidth || 0);
   const overlayHeight = Math.max(rect.height, isSingleLineEditable ? rect.height : element.scrollHeight || 0);
   const layoutKey = JSON.stringify({
