@@ -9,6 +9,10 @@ function isEditableTooltipTitleFromChungmaru(value) {
 
 function restoreEditableValueState(state) {
   if (!state?.element) return;
+  if (typeof suppressMutationFeedback === "function") {
+    suppressMutationFeedback(140);
+  }
+
   if (state.originalTitle && !isEditableTooltipTitleFromChungmaru(state.originalTitle)) {
     state.element.title = state.originalTitle;
   } else {
@@ -72,6 +76,9 @@ function isSingleLineEditableElement(element) {
 
 function concealEditableSourceText(state) {
   if (!state?.element) return;
+  if (typeof suppressMutationFeedback === "function") {
+    suppressMutationFeedback(140);
+  }
 
   const computedStyle = window.getComputedStyle(state.element);
   const caretColor = computedStyle.caretColor && computedStyle.caretColor !== "auto"
@@ -89,6 +96,14 @@ function concealEditableSourceText(state) {
 
 function applyNativeFullEditableMask(state) {
   if (!state?.element) return false;
+  if (typeof suppressMutationFeedback === "function") {
+    suppressMutationFeedback(140);
+  }
+
+  // Chrome applies text-security reliably to text/search inputs, but not to
+  // textarea-based comboboxes such as Google Search. Treat textarea as overlay
+  // only; otherwise state says "masked" while the original value remains shown.
+  if (!(state.element instanceof HTMLInputElement)) return false;
   if (!isSingleLineEditableElement(state.element)) return false;
 
   if (state.overlayRoot?.isConnected) {
@@ -285,6 +300,10 @@ function syncEditableOverlayLayout(state) {
 }
 
 function renderEditableOverlay(state, text, spans, settings, tooltip) {
+  if (typeof suppressMutationFeedback === "function") {
+    suppressMutationFeedback(180);
+  }
+
   ensureEditableOverlay(state);
   state.overlayMode = "full-overlay";
   state.maskedText = text;

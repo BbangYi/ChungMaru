@@ -454,11 +454,16 @@ function updateCachedSettings(storedSettings) {
   return cachedSettings;
 }
 
+function suppressMutationFeedback(ms = 160) {
+  const nextUntil = Date.now() + Math.max(40, Number(ms || 0));
+  ignoreMutationsUntil = Math.max(ignoreMutationsUntil, nextUntil);
+}
+
 function invalidateAnalysisForSettingsChange() {
   ANALYSIS_CACHE.clear();
   latestAnalysisGeneration += 1;
   latestPipelineSequence += 1;
-  ignoreMutationsUntil = Date.now() + 180;
+  suppressMutationFeedback(180);
 
   for (const state of NODE_STATE_BY_ID.values()) {
     state.analysisGeneration = latestAnalysisGeneration;
@@ -3790,6 +3795,7 @@ function ensureWrapper(state) {
 
 function clearRenderedContent(state) {
   if (!(state.wrapper instanceof Element)) return;
+  suppressMutationFeedback(120);
 
   for (const child of [...state.wrapper.children]) {
     if (child.dataset?.shieldtextRendered === "true") {
@@ -3803,6 +3809,7 @@ function clearRenderedContent(state) {
 
 function restoreNodeState(state) {
   if (!state) return;
+  suppressMutationFeedback(120);
 
   clearRenderedContent(state);
   if (state.textNode?.isConnected) {
@@ -3818,6 +3825,8 @@ function restoreNodeState(state) {
 
 function renderOutcome(state, outcome, settings) {
   if (!state) return;
+  suppressMutationFeedback(180);
+
   if (!outcome?.blocked) {
     restoreNodeState(state);
     return;
@@ -4662,7 +4671,7 @@ async function executeHotPathForCandidates(candidates, runReason) {
   );
 
   if (Number(decision.maskedSpanCount || 0) > 0) {
-    ignoreMutationsUntil = Date.now() + 180;
+    suppressMutationFeedback(180);
   }
 
   applyDecision(unitCandidates, decision, settings, {
@@ -4849,7 +4858,7 @@ async function reconcileAnalysisUnitsWithBackend(
       }
     );
 
-    ignoreMutationsUntil = Date.now() + 120;
+    suppressMutationFeedback(120);
     applyDecision(unitCandidates, decision, settings, {
       generation: analysisGeneration,
       stage: "reconcile"
@@ -4952,7 +4961,7 @@ async function executePipeline(runReason) {
     const hostname = location.hostname || "unknown";
 
     if (!settings.enabled) {
-      ignoreMutationsUntil = Date.now() + 220;
+      suppressMutationFeedback(220);
       for (const state of NODE_STATE_BY_ID.values()) {
         restoreNodeState(state);
       }
@@ -5136,7 +5145,7 @@ async function executePipeline(runReason) {
           firstMaskLatencyMs = Math.round(performance.now() - startedAt);
         }
 
-        ignoreMutationsUntil = Date.now() + 220;
+        suppressMutationFeedback(220);
         applyDecision(
           collectUnitCandidates(partialMeta.items),
           partialDecision,
@@ -5245,7 +5254,7 @@ async function executePipeline(runReason) {
       firstMaskLatencyMs = Math.round(performance.now() - startedAt);
     }
 
-    ignoreMutationsUntil = Date.now() + 220;
+    suppressMutationFeedback(220);
     applyDecision(unitCandidates, decision, settings, {
       generation: analysisGeneration,
       stage: "foreground"

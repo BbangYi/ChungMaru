@@ -112,6 +112,40 @@ function getLabCaseRenderState(element, sampleText) {
   };
 }
 
+function getBackendMaskExpectation(backendResponse, backendOffensive, backendSpans) {
+  if (!backendResponse?.ok) {
+    return null;
+  }
+
+  // The extension renderer must never infer a mask from the boolean alone.
+  // A positive backend decision still needs at least one exact, valid span.
+  return Boolean(backendOffensive && Array.isArray(backendSpans) && backendSpans.length > 0);
+}
+
+function isLabRenderStateHealthy(renderState, extensionMasked) {
+  if (!renderState || typeof renderState !== "object") {
+    return !extensionMasked;
+  }
+
+  if (!extensionMasked) {
+    return (
+      !renderState.editableConcealsText &&
+      String(renderState.editableTitle || "") === "" &&
+      !renderState.suspiciousEditableBar
+    );
+  }
+
+  if (renderState.editable) {
+    return (
+      String(renderState.editableTitle || "") === "" &&
+      !renderState.suspiciousEditableBar &&
+      (renderState.maskMode === "native-mask" || Number(renderState.maskElementCount || 0) > 0)
+    );
+  }
+
+  return Number(renderState.maskElementCount || 0) > 0;
+}
+
 function collectLabCaseEntries() {
   const entries = [...document.querySelectorAll("[data-chungmaru-case-id][data-chungmaru-expectation]")]
     .map((element) => {
@@ -222,8 +256,14 @@ async function runFilterLabSelfTest() {
       entry.sampleText
     );
     const backendOffensive = Boolean(backendResult?.is_offensive);
+    const backendExpectedMasked = getBackendMaskExpectation(
+      backendResponse,
+      backendOffensive,
+      backendSpans
+    );
     const extensionMasked = getLabCaseMaskedState(entry.element);
     const renderState = getLabCaseRenderState(entry.element, entry.sampleText);
+    const renderHealthy = isLabRenderStateHealthy(renderState, extensionMasked);
     const expectedOffensive = entry.expectationKind === "offensive";
     const expectedSafe = entry.expectationKind === "safe";
     const backendMatchesExpectation =
@@ -236,23 +276,19 @@ async function runFilterLabSelfTest() {
       }
 
       if (expectedSafe) {
-        return !extensionMasked;
+        return !extensionMasked && renderHealthy;
       }
 
       if (!extensionMasked) {
         return false;
       }
 
-      if (renderState.editable) {
-        return (
-          renderState.editableTitle === "" &&
-          !renderState.suspiciousEditableBar &&
-          (renderState.maskMode === "native-mask" || renderState.maskElementCount > 0)
-        );
-      }
-
-      return renderState.maskElementCount > 0;
+      return renderHealthy;
     })();
+    const extensionMatchesBackend =
+      backendExpectedMasked === null
+        ? null
+        : extensionMasked === backendExpectedMasked && renderHealthy;
 
     return {
       caseId: entry.caseId,
@@ -264,14 +300,16 @@ async function runFilterLabSelfTest() {
       extensionMasked,
       backendOffensive,
       backendSpanCount: backendSpans.length,
+      backendExpectedMasked,
       renderState,
+      renderHealthy,
       backendErrorCode: backendResponse?.ok ? null : String(backendResponse?.errorCode || backendResponse?.reason || ""),
       backendMatchesExpectation,
       extensionMatchesExpectation,
-      extensionMatchesBackend: backendResponse?.ok ? extensionMasked === backendOffensive : null,
+      extensionMatchesBackend,
       pass:
         expectedSafe || expectedOffensive
-          ? Boolean(backendMatchesExpectation && extensionMatchesExpectation)
+          ? Boolean(backendMatchesExpectation && extensionMatchesExpectation && extensionMatchesBackend !== false)
           : null
     };
   });
