@@ -2132,6 +2132,22 @@ function selectForegroundWaveCandidates(candidates, settings, runReason) {
     const candidatesByContainer = new Map();
 
     for (const candidate of textCandidates) {
+      if (selected.length >= MAX_FOREGROUND_WAVE_CANDIDATES) {
+        break;
+      }
+
+      if (
+        !selectedNodeIds.has(candidate.nodeId) &&
+        candidate.element instanceof Element &&
+        shouldAllowGoogleInteractiveElement(candidate.element) &&
+        isShortHighSignalCandidate(candidate)
+      ) {
+        selected.push(candidate);
+        selectedNodeIds.add(candidate.nodeId);
+      }
+    }
+
+    for (const candidate of textCandidates) {
       const container = candidate.analysisContainer;
       if (!container) continue;
       if (!candidatesByContainer.has(container)) {
