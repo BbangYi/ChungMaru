@@ -308,7 +308,7 @@ function syncEditableOverlayLayout(state) {
   overlayRoot.style.borderRadius = style.borderRadius;
   overlayRoot.style.overflow = "hidden";
 
-  overlayContent.style.display = "block";
+  overlayContent.style.display = isSingleLineEditable ? "flex" : "block";
   overlayContent.style.position = "absolute";
   overlayContent.style.left = "0";
   overlayContent.style.top = "0";
@@ -337,6 +337,8 @@ function syncEditableOverlayLayout(state) {
   overlayContent.style.writingMode = style.writingMode;
   overlayContent.style.color = overlayTextColor || style.color;
   overlayContent.style.webkitTextFillColor = overlayTextFillColor || overlayTextColor || style.color;
+  overlayContent.style.alignItems = isSingleLineEditable ? "center" : "";
+  overlayContent.style.flexWrap = "nowrap";
   overlayContent.style.whiteSpace = isSingleLineEditable
     ? "pre"
     : element instanceof HTMLTextAreaElement
@@ -345,6 +347,7 @@ function syncEditableOverlayLayout(state) {
 
   if (isSingleLineEditable) {
     overlayContent.style.height = `${Math.round(rect.height)}px`;
+    overlayContent.style.minHeight = `${Math.round(rect.height)}px`;
   }
 
   overlayContent.style.width = `${Math.round(overlayWidth)}px`;
@@ -401,6 +404,13 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     mask.className = settings?.interventionMode === "hide"
       ? "shieldtext-editable-hide"
       : "shieldtext-editable-mask";
+    if (doSpansCoverFullText(spans, text)) {
+      mask.style.display = "inline-flex";
+      mask.style.alignItems = "center";
+      mask.style.alignSelf = "stretch";
+      mask.style.height = "100%";
+      mask.style.minHeight = "100%";
+    }
     mask.style.setProperty("color", "transparent", "important");
     mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
     mask.style.setProperty("text-shadow", "none", "important");
