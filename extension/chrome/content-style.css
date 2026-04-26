@@ -115,6 +115,14 @@
   align-items: stretch;
 }
 
+.shieldtext-editable-full-mask {
+  flex: 1 1 auto;
+  align-self: stretch;
+  height: 100%;
+  min-height: 100%;
+  min-width: 2em;
+}
+
 .shieldtext-editable-mask {
   background: rgb(18, 18, 18);
   box-shadow: 0 0 0 0.06em rgb(18, 18, 18);

@@ -390,6 +390,27 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
 
   state.overlayContent.textContent = "";
   const fragment = document.createDocumentFragment();
+  const fullSpanMask = doSpansCoverFullText(spans, text);
+
+  if (fullSpanMask && isSingleLineEditableElement(state.element)) {
+    const mask = document.createElement("span");
+    mask.className = settings?.interventionMode === "hide"
+      ? "shieldtext-editable-hide shieldtext-editable-full-mask"
+      : "shieldtext-editable-mask shieldtext-editable-full-mask";
+    mask.setAttribute("aria-hidden", "true");
+    mask.style.setProperty("color", "transparent", "important");
+    mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+    mask.style.setProperty("text-shadow", "none", "important");
+    fragment.appendChild(mask);
+    state.overlayContent.appendChild(fragment);
+    state.overlayRenderKey = renderKey;
+    state.overlayRoot.removeAttribute("title");
+    state.element.removeAttribute("title");
+    MASKED_EDITABLE_STATE_IDS.add(state.nodeId);
+    scheduleEditableOverlaySync(2);
+    return;
+  }
+
   let cursor = 0;
 
   for (const span of spans) {

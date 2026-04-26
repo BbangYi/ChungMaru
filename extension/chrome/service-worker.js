@@ -45,8 +45,8 @@ const SELF_TEST_ANALYZE_TIMEOUT_CAP_MS = 5000;
 const FULL_ANALYSIS_RESPONSE_CACHE = new Map();
 const FULL_ANALYSIS_IN_FLIGHT_REQUESTS = new Map();
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([
-  ["foreground", 8],
-  ["reconcile", 2],
+  ["foreground", 2],
+  ["reconcile", 1],
   ["background-validation", 1],
   ["self-test", 1]
 ]);
@@ -90,6 +90,21 @@ function getBackendQueuedRequestCount() {
     count += queue.length;
   }
   return count;
+}
+
+function dropQueuedBackendRequests(queue, mode, reasonCode = "QUEUE_DROPPED") {
+  while (queue?.length) {
+    const dropped = queue.shift();
+    if (typeof dropped?.reject === "function") {
+      dropped.reject(new BackendRequestError(reasonCode, "오래된 백엔드 분석 요청을 건너뛰었습니다.", {
+        retryable: true,
+        detail: {
+          mode,
+          queueAgeMs: Math.max(0, Date.now() - Number(dropped.queuedAt || Date.now()))
+        }
+      }));
+    }
+  }
 }
 
 function drainBackendRequestQueue() {
@@ -142,19 +157,13 @@ function enqueueBackendRequest(mode, operation) {
       activeBackendRequest.abortController.abort("PREEMPTED_BY_FOREGROUND");
     }
 
+    if (normalizedMode === "foreground") {
+      dropQueuedBackendRequests(queue, normalizedMode);
+    }
+
     const queueLimit = Math.max(1, Number(BACKEND_QUEUE_LIMIT_BY_MODE.get(normalizedMode) || 1));
     while (queue.length >= queueLimit) {
-      const dropped = queue.shift();
-      if (typeof dropped?.reject === "function") {
-        dropped.reject(new BackendRequestError("QUEUE_DROPPED", "오래된 백엔드 분석 요청을 건너뛰었습니다.", {
-          retryable: true,
-          detail: {
-            mode: normalizedMode,
-            queueLimit,
-            queueAgeMs: Math.max(0, Date.now() - Number(dropped.queuedAt || Date.now()))
-          }
-        }));
-      }
+      dropQueuedBackendRequests(queue, normalizedMode);
     }
 
     queue.push({

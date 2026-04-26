@@ -1219,6 +1219,58 @@ function isStateInSkippedRetryBackoff(state, currentFingerprint) {
   return Date.now() - Number(state.lastSkippedAnalysisAt || 0) < backoffMs;
 }
 
+function isStateSettledForFingerprint(state, fingerprint) {
+  if (!state?.nodeId || !fingerprint) {
+    return false;
+  }
+
+  if (DIRTY_NODE_IDS.has(state.nodeId)) {
+    return false;
+  }
+
+  return Boolean(
+    state.hasProcessed &&
+      String(state.lastFingerprint || "") === String(fingerprint || "")
+  );
+}
+
+function shouldForceHighSignalDirty(state, fingerprint) {
+  if (!state?.nodeId || !fingerprint) {
+    return false;
+  }
+
+  if (isStateInSkippedRetryBackoff(state, fingerprint)) {
+    return false;
+  }
+
+  if (String(state.lastReconcileFingerprint || "") === String(fingerprint || "")) {
+    return false;
+  }
+
+  return !isStateSettledForFingerprint(state, fingerprint);
+}
+
+function shouldMarkStateDirtyForVisibility(state) {
+  if (!state?.nodeId) {
+    return false;
+  }
+
+  const currentFingerprint = getCurrentStateFingerprint(state);
+  if (!currentFingerprint) {
+    return false;
+  }
+
+  if (isStateInSkippedRetryBackoff(state, currentFingerprint)) {
+    return false;
+  }
+
+  if (DIRTY_NODE_IDS.has(state.nodeId)) {
+    return true;
+  }
+
+  return !isStateSettledForFingerprint(state, currentFingerprint);
+}
+
 function doesRegisteredStateNeedAnalysis(state, options = {}) {
   if (!state?.nodeId) {
     return false;
@@ -1339,7 +1391,7 @@ function registerTextNodesInTree(root, options = {}) {
       highSignalDirtyCount < highSignalDirtyLimit &&
       !state.isMasked &&
       HIGH_SIGNAL_PROFANITY_PATTERN.test(normalizedText) &&
-      !isStateInSkippedRetryBackoff(state, buildFingerprint(normalizedText))
+      shouldForceHighSignalDirty(state, buildFingerprint(normalizedText))
     ) {
       DIRTY_NODE_IDS.add(state.nodeId);
       highSignalDirtyCount += 1;
@@ -6402,7 +6454,8 @@ function initializeVisibilityObserver() {
           const wasVisible = VISIBLE_NODE_IDS.has(nodeId);
           if (entry.isIntersecting) {
             VISIBLE_NODE_IDS.add(nodeId);
-            if (!wasVisible) {
+            const state = NODE_STATE_BY_ID.get(nodeId) || EDITABLE_VALUE_STATE_BY_ID.get(nodeId);
+            if (!wasVisible && shouldMarkStateDirtyForVisibility(state)) {
               DIRTY_NODE_IDS.add(nodeId);
               shouldSchedule = true;
             }
