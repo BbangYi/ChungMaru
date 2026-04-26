@@ -88,10 +88,13 @@ function getLabCaseRenderState(element, sampleText) {
     const inlineColor = String(element.style.getPropertyValue("color") || "").trim();
     const inlineFill = String(element.style.getPropertyValue("-webkit-text-fill-color") || "").trim();
     const inlineFilter = String(element.style.getPropertyValue("filter") || "").trim();
+    const inlineOpacity = String(element.style.getPropertyValue("opacity") || "").trim();
     const requiresHardConcealment =
       typeof shouldUseHardEditableConcealment === "function" &&
       shouldUseHardEditableConcealment(element);
-    const editableHardConcealed = /opacity\s*\(\s*0\s*\)/i.test(inlineFilter);
+    const editableHardConcealed =
+      /opacity\s*\(\s*0\s*\)/i.test(inlineFilter) ||
+      Number(inlineOpacity || 1) === 0;
     const editableConcealsText =
       inlineColor === "transparent" ||
       inlineFill === "transparent" ||
@@ -127,6 +130,7 @@ function getLabCaseRenderState(element, sampleText) {
       editableHardConcealed,
       requiresHardConcealment,
       sourceFilter: inlineFilter,
+      sourceOpacity: inlineOpacity,
       suspiciousHardConcealmentMissing:
         Boolean(state?.isMasked) &&
         requiresHardConcealment &&
