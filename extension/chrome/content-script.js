@@ -178,6 +178,7 @@ let realtimeWorkerInitLatencyMs = 0;
 let realtimeWorkerStrategy = null;
 let pendingImmediateInputElement = null;
 let immediateInputTimerId = null;
+let initialEditablePassFrameId = null;
 let overlaySyncFrameId = null;
 let pendingEditableOverlaySyncFrames = 0;
 let scrollVisibilityRefreshFrameId = null;
@@ -288,6 +289,10 @@ function teardownInvalidatedExtensionContext() {
   if (immediateInputTimerId) {
     window.cancelAnimationFrame(immediateInputTimerId);
     immediateInputTimerId = null;
+  }
+  if (initialEditablePassFrameId) {
+    window.cancelAnimationFrame(initialEditablePassFrameId);
+    initialEditablePassFrameId = null;
   }
   if (overlaySyncFrameId) {
     window.cancelAnimationFrame(overlaySyncFrameId);
@@ -4983,7 +4988,10 @@ function scheduleImmediateInputPipeline(element, runReason = "input-hot-path") {
 
 function scheduleInitialEditablePass() {
   if (extensionContextInvalidated) return;
-  window.requestAnimationFrame(() => {
+  if (initialEditablePassFrameId) return;
+
+  initialEditablePassFrameId = window.requestAnimationFrame(() => {
+    initialEditablePassFrameId = null;
     const candidates = collectEditableValueCandidates(INITIAL_EDITABLE_PASS_LIMIT);
     if (candidates.length === 0) {
       return;
