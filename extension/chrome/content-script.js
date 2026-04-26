@@ -912,6 +912,55 @@ function isExcludedGoogleAnalysisContainer(element) {
   return Boolean(element.closest("g-scrolling-carousel"));
 }
 
+function getGoogleHighSignalInteractiveContainers(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
+  if (!isGoogleSearchPage()) {
+    return [];
+  }
+
+  const selectors = [
+    "#bres a[href]",
+    "#bres [role='button']",
+    "#botstuff a[href]",
+    "#botstuff [role='button']",
+    "main a[href]",
+    "main [role='button']",
+    "#rhs a[href]",
+    "#rhs [role='button']"
+  ];
+  const containers = [];
+  const seenContainers = new Set();
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      if (!(element instanceof Element)) continue;
+
+      const interactiveRoot = getGoogleInteractiveRoot(element) || element;
+      if (!(interactiveRoot instanceof Element)) continue;
+      if (seenContainers.has(interactiveRoot)) continue;
+      if (!interactiveRoot.isConnected || !isElementVisible(interactiveRoot)) continue;
+      if (!isElementNearViewport(interactiveRoot.getBoundingClientRect())) continue;
+      if (!shouldAllowGoogleInteractiveElement(interactiveRoot)) continue;
+
+      seenContainers.add(interactiveRoot);
+      containers.push(interactiveRoot);
+      if (containers.length >= limit) {
+        return containers;
+      }
+    }
+  }
+
+  containers.sort((left, right) => {
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    if (leftRect.top !== rightRect.top) {
+      return leftRect.top - rightRect.top;
+    }
+    return leftRect.left - rightRect.left;
+  });
+
+  return containers.slice(0, limit);
+}
+
 function getGoogleVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
   if (!isGoogleSearchPage()) {
     return [];
@@ -936,20 +985,28 @@ function getGoogleVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
   ];
   const containers = [];
   const seenContainers = new Set();
+  const addContainer = (container, options = {}) => {
+    if (!(container instanceof Element)) return false;
+    if (seenContainers.has(container)) return false;
+    if (!options.allowExcluded && isExcludedGoogleAnalysisContainer(container)) return false;
+    if (!container.isConnected || !isElementVisible(container)) return false;
+    if (!isElementNearViewport(container.getBoundingClientRect())) return false;
+
+    seenContainers.add(container);
+    containers.push(container);
+    return true;
+  };
+
+  for (const container of getGoogleHighSignalInteractiveContainers(limit)) {
+    addContainer(container, { allowExcluded: true });
+  }
 
   for (const selector of selectors) {
     for (const element of document.querySelectorAll(selector)) {
       if (!(element instanceof Element)) continue;
 
       const container = getGoogleSearchAnalysisContainer(element) || element;
-      if (!(container instanceof Element)) continue;
-      if (seenContainers.has(container)) continue;
-      if (isExcludedGoogleAnalysisContainer(container)) continue;
-      if (!container.isConnected || !isElementVisible(container)) continue;
-      if (!isElementNearViewport(container.getBoundingClientRect())) continue;
-
-      seenContainers.add(container);
-      containers.push(container);
+      addContainer(container);
     }
   }
 
