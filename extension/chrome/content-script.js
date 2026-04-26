@@ -5812,16 +5812,30 @@ function invalidatePendingAnalysisForNavigation() {
 
   for (const state of NODE_STATE_BY_ID.values()) {
     state.analysisGeneration = latestAnalysisGeneration;
+    state.hasProcessed = false;
+    state.lastFingerprint = "";
+    state.lastSkippedAnalysisAt = 0;
+    state.lastSkippedFingerprint = "";
     state.lastAppliedStage = "";
     state.lastQueuedReconcileFingerprint = "";
     state.reconcileInFlightFingerprint = "";
+    if (state.nodeId) {
+      DIRTY_NODE_IDS.add(state.nodeId);
+    }
   }
 
   for (const state of EDITABLE_VALUE_STATE_BY_ID.values()) {
     state.analysisGeneration = latestAnalysisGeneration;
+    state.hasProcessed = false;
+    state.lastFingerprint = "";
+    state.lastSkippedAnalysisAt = 0;
+    state.lastSkippedFingerprint = "";
     state.lastAppliedStage = "";
     state.lastQueuedReconcileFingerprint = "";
     state.reconcileInFlightFingerprint = "";
+    if (state.nodeId) {
+      DIRTY_NODE_IDS.add(state.nodeId);
+    }
   }
 
   RECONCILE_QUEUE.clear();
