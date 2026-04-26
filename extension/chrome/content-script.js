@@ -2566,6 +2566,20 @@ function shouldSkipCandidateApply(candidate, state, stage) {
   return getDecisionStageRank(stage) < getDecisionStageRank(state.lastAppliedStage);
 }
 
+function markCandidateSettledAfterLowerPriorityApplySkip(candidate) {
+  const state = candidate?.state;
+  if (!state?.nodeId || !candidate?.fingerprint) {
+    return;
+  }
+
+  state.hasProcessed = true;
+  state.lastFingerprint = String(candidate.fingerprint || "");
+  state.lastSkippedAnalysisAt = 0;
+  state.lastSkippedFingerprint = "";
+  state.lastSkippedRetryBackoffMs = 0;
+  DIRTY_NODE_IDS.delete(state.nodeId);
+}
+
 function markCandidateApplied(candidate, stage, blocked) {
   if (!candidate?.state) {
     return;
@@ -4265,6 +4279,7 @@ function applyDecision(candidates, decision, settings, options = {}) {
     }
     if (shouldSkipCandidateApply(candidate, state, stage)) {
       staleResponseDropCount += 1;
+      markCandidateSettledAfterLowerPriorityApplySkip(candidate);
       continue;
     }
 
