@@ -42,6 +42,7 @@ const FOREGROUND_ANALYZE_MIN_TIMEOUT_MS = 900;
 const RECONCILE_ANALYZE_TIMEOUT_CAP_MS = 1400;
 const BACKGROUND_ANALYZE_TIMEOUT_CAP_MS = 1000;
 const SELF_TEST_ANALYZE_TIMEOUT_CAP_MS = 5000;
+const FOREGROUND_ACTIVE_PREEMPT_AFTER_MS = 420;
 const FULL_ANALYSIS_RESPONSE_CACHE = new Map();
 const FULL_ANALYSIS_IN_FLIGHT_REQUESTS = new Map();
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([
@@ -121,6 +122,7 @@ function drainBackendRequestQueue() {
   isBackendRequestRunning = true;
   activeBackendRequest = {
     mode: nextRequest.mode,
+    startedAt: Date.now(),
     abortController
   };
   Promise.resolve()
@@ -153,6 +155,16 @@ function enqueueBackendRequest(mode, operation) {
       activeBackendRequest?.mode &&
       activeBackendRequest.mode !== "foreground" &&
       activeBackendRequest.abortController instanceof AbortController
+    ) {
+      activeBackendRequest.abortController.abort("PREEMPTED_BY_FOREGROUND");
+    }
+
+    if (
+      normalizedMode === "foreground" &&
+      isBackendRequestRunning &&
+      activeBackendRequest?.mode === "foreground" &&
+      activeBackendRequest.abortController instanceof AbortController &&
+      Date.now() - Number(activeBackendRequest.startedAt || Date.now()) >= FOREGROUND_ACTIVE_PREEMPT_AFTER_MS
     ) {
       activeBackendRequest.abortController.abort("PREEMPTED_BY_FOREGROUND");
     }
