@@ -3551,6 +3551,48 @@ function createSkippedAnalysisResult(text) {
   };
 }
 
+function createTransientAnalyzeFailureResponse(error, requestBatch, analysisMode) {
+  const rawErrorCode = String(
+    error?.errorCode ||
+      error?.code ||
+      error?.reason ||
+      error?.message ||
+      "ANALYZE_TEXT_BATCH_FAILED"
+  );
+  const errorCode = [
+    "ANALYZE_TEXT_BATCH_FAILED",
+    "TIMEOUT",
+    "NETWORK_UNREACHABLE",
+    "ABORTED",
+    "QUEUE_DROPPED",
+    "PREEMPTED_BY_FOREGROUND",
+    "HTTP_503",
+    "HTTP_504"
+  ].find((code) => rawErrorCode.includes(code)) || rawErrorCode;
+  if (!isRetryableBackendErrorCode(errorCode)) {
+    return null;
+  }
+
+  return {
+    ok: false,
+    reason: String(error?.reason || error?.message || errorCode),
+    errorCode,
+    retryable: true,
+    backendStatus: "degraded",
+    requestCount: 1,
+    skippedChunkCount: 1,
+    failedTextCount: Array.isArray(requestBatch) ? requestBatch.length : 0,
+    chunkSize: Array.isArray(requestBatch) ? requestBatch.length : 0,
+    requestTimings: [
+      {
+        mode: String(analysisMode || ""),
+        textCount: Array.isArray(requestBatch) ? requestBatch.length : 0,
+        errorCode
+      }
+    ]
+  };
+}
+
 function summarizeBackendRequestTimings(requestTimings) {
   const timings = Array.isArray(requestTimings) ? requestTimings : [];
   return timings.reduce(
@@ -3666,13 +3708,21 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
     const analysisMode = String(options.analysisMode || "");
 
     for (const requestBatch of requestBatches) {
-      const response = await safeRuntimeSendMessage({
-        type: "ANALYZE_TEXT_BATCH",
-        texts: requestBatch.map((request) => request.text),
-        requestTimeoutMsOverride: requestTimeoutMs || undefined,
-        sensitivity: cacheSensitivity,
-        analysisMode
-      });
+      let response = null;
+      try {
+        response = await safeRuntimeSendMessage({
+          type: "ANALYZE_TEXT_BATCH",
+          texts: requestBatch.map((request) => request.text),
+          requestTimeoutMsOverride: requestTimeoutMs || undefined,
+          sensitivity: cacheSensitivity,
+          analysisMode
+        });
+      } catch (error) {
+        response = createTransientAnalyzeFailureResponse(error, requestBatch, analysisMode);
+        if (!response) {
+          throw error;
+        }
+      }
 
       if (!response?.ok) {
         if (shouldSkipTransientAnalyzeFailure(response, analysisMode)) {
