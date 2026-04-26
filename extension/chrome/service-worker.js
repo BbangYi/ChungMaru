@@ -1368,6 +1368,15 @@ chrome.runtime.onStartup.addListener(() => {
   });
 });
 
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" || !changes?.settings) {
+    return;
+  }
+
+  FULL_ANALYSIS_RESPONSE_CACHE.clear();
+  FULL_ANALYSIS_IN_FLIGHT_REQUESTS.clear();
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "GET_DEFAULT_SETTINGS") {
     sendResponse({ ok: true, defaults: DEFAULT_SETTINGS });
