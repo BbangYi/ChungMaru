@@ -119,6 +119,20 @@ SAFE_BROWSER_UI_LABELS = frozenset(
 
 UI_ASCII_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&/_\-]{1,63}$")
 ASCII_QUERY_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&/_:+\-]{1,95}$")
+SAFE_TECHNICAL_CONTEXT_TERMS = (
+    "abstract factory",
+    "factory method",
+    "factory pattern",
+    "strategy pattern",
+)
+SAFE_TECHNICAL_CONTEXT_MARKERS = (
+    "문제",
+    "정답",
+    "설명",
+    "패턴",
+    "디자인 패턴",
+    "정보처리기사",
+)
 ASCII_URL_OR_PATH_PATTERN = re.compile(
     r"(https?://|www\.|[A-Za-z0-9_-]+\.(com|dev|org|io|net|me|app|ai|wiki)\b| › |/|>)",
     re.IGNORECASE,
@@ -340,6 +354,14 @@ def _is_context_safe_usage(text: str, sensitivity: int) -> bool:
         return True
 
     if _is_browser_ui_safe_label(compact):
+        return True
+
+    if (
+        not _contains_ascii_profanity_marker(compact)
+        and any(term in lower for term in SAFE_TECHNICAL_CONTEXT_TERMS)
+        and any(marker in compact for marker in SAFE_TECHNICAL_CONTEXT_MARKERS)
+        and len(compact) <= 160
+    ):
         return True
 
     contains_safe_ambiguous_term = any(term in lower for term in SAFE_AMBIGUOUS_CONTEXT_TERMS)

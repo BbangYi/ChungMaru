@@ -295,6 +295,8 @@ class PipelineContextTests(unittest.TestCase):
             "abstract factory method",
             "Factory Method Pattern",
             "strategy pattern",
+            "abstract factory pattern 문제",
+            "Factory Method Pattern 정답",
         ]
 
         results = pipeline.analyze_batch(texts)
