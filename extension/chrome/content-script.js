@@ -3906,6 +3906,27 @@ function clearRenderedContent(state) {
   state.wrapper.removeAttribute("data-shieldtext-tooltip");
 }
 
+function unwrapInlineWrapperIfRestored(state) {
+  const wrapper = state?.wrapper;
+  const textNode = state?.textNode;
+  if (!(wrapper instanceof Element) || !(textNode instanceof Text)) {
+    return;
+  }
+  if (!wrapper.isConnected || textNode.parentNode !== wrapper || !wrapper.parentNode) {
+    return;
+  }
+
+  const remainingNodes = [...wrapper.childNodes].filter((node) => node !== textNode);
+  if (remainingNodes.length > 0) {
+    return;
+  }
+
+  suppressMutationFeedback(120);
+  wrapper.parentNode.insertBefore(textNode, wrapper);
+  wrapper.remove();
+  state.wrapper = null;
+}
+
 function restoreNodeState(state) {
   if (!state) return;
   suppressMutationFeedback(120);
@@ -3914,6 +3935,7 @@ function restoreNodeState(state) {
   if (state.textNode?.isConnected) {
     state.textNode.nodeValue = state.originalText;
   }
+  unwrapInlineWrapperIfRestored(state);
 
   state.isMasked = false;
   state.isPending = false;
