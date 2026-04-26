@@ -1825,7 +1825,13 @@ function collectCandidates() {
     candidates.push(candidate);
   }
 
+  const hints = buildRealtimeHints(cachedSettings);
   candidates.sort((left, right) => {
+    const urgencyGap = getCandidateUrgency(right, hints) - getCandidateUrgency(left, hints);
+    if (urgencyGap !== 0) {
+      return urgencyGap;
+    }
+
     if (left.distanceFromViewport !== right.distanceFromViewport) {
       return left.distanceFromViewport - right.distanceFromViewport;
     }
@@ -2061,6 +2067,14 @@ function shouldPreferStandaloneAnalysis(candidate) {
 function isForegroundMetadataCandidate(candidate) {
   const element = candidate?.element;
   if (!(element instanceof Element)) return false;
+  if (
+    isYouTubePage() &&
+    element.closest(
+      "#author-text, #published-time-text, #vote-count-middle, ytd-comment-engagement-bar, ytd-menu-renderer, ytd-menu-service-item-renderer"
+    )
+  ) {
+    return true;
+  }
   if (element.tagName === "CITE") return true;
   if (element.tagName === "A" && !HIGH_SIGNAL_PROFANITY_PATTERN.test(candidate.text || "")) {
     return true;
