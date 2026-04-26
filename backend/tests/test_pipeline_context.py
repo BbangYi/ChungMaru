@@ -126,6 +126,12 @@ class FakeClassifier:
                 "is_hate": False,
                 "scores": {"profanity": 0.95, "toxicity": 0.98, "hate": 0.01},
             },
+            "Kapil Sibal": {
+                "is_profane": True,
+                "is_toxic": True,
+                "is_hate": False,
+                "scores": {"profanity": 0.95, "toxicity": 0.94, "hate": 0.01},
+            },
             "시발 - 위키낱말사전": {
                 "is_profane": True,
                 "is_toxic": True,
@@ -216,6 +222,7 @@ class PipelineContextTests(unittest.TestCase):
     def test_proper_noun_and_brand_contexts_stay_safe(self):
         pipeline = self.make_pipeline()
         texts = [
+            "Kapil Sibal",
             "카필 시발(Kapil Sibal)은 인도의 변호사이자, 정치인이다.",
             "국제차량제작 시발",
         ]

@@ -84,6 +84,10 @@ SAFE_AMBIGUOUS_CONTEXT_TERMS = (
 
 SAFE_TRANSLITERATION_PATTERN = re.compile(r"\([A-Za-z][A-Za-z .'\-]{2,}\)")
 SAFE_KAPIL_SIBAL_PATTERN = re.compile(r"\(([A-Za-z .'\-]*sibal[A-Za-z .'\-]*)\)", re.IGNORECASE)
+SAFE_KAPIL_SIBAL_PROPER_NOUN_PATTERN = re.compile(
+    r"^kapil\s+sibal(?:\s*[-|]\s*(?:wikipedia|wiktionary|profile|official))?$",
+    re.IGNORECASE,
+)
 
 SAFE_BROWSER_UI_LABELS = frozenset(
     {
@@ -217,6 +221,13 @@ def _normalize_label(text: str) -> str:
     return _normalize_space(text).casefold()
 
 
+def _is_kapil_sibal_proper_noun_context(text: str) -> bool:
+    compact = _normalize_space(text)
+    if not compact or len(compact) > 80:
+        return False
+    return bool(SAFE_KAPIL_SIBAL_PROPER_NOUN_PATTERN.fullmatch(compact))
+
+
 def _normalize_sensitivity(value: int | float | None) -> int:
     try:
         number = int(round(float(value)))
@@ -330,6 +341,8 @@ def _should_force_safe_without_evidence(text: str, sensitivity: int) -> bool:
         return False
     if _is_safe_transliteration_usage(compact):
         return True
+    if _is_kapil_sibal_proper_noun_context(compact):
+        return True
     if _contains_ascii_profanity_marker(compact):
         return False
     if _is_context_safe_usage(compact, sensitivity):
@@ -354,6 +367,9 @@ def _is_context_safe_usage(text: str, sensitivity: int) -> bool:
         return True
 
     if _is_browser_ui_safe_label(compact):
+        return True
+
+    if _is_kapil_sibal_proper_noun_context(compact):
         return True
 
     if (
@@ -581,6 +597,11 @@ class ProfanityPipeline:
     def _should_reject_span(self, original_text: str, span_text: str) -> bool:
         compact_span = _normalize_space(span_text)
         if not compact_span:
+            return True
+        if (
+            compact_span.casefold() == "sibal"
+            and _is_kapil_sibal_proper_noun_context(original_text)
+        ):
             return True
         if _contains_ascii_profanity_marker(compact_span):
             compact_original = _normalize_space(original_text)
