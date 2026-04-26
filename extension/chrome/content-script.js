@@ -600,6 +600,33 @@ function isElementNearViewport(rect) {
   return rect.bottom >= -VIEWPORT_BUFFER_PX && rect.top <= window.innerHeight + VIEWPORT_BUFFER_PX;
 }
 
+function getElementAnalysisText(element) {
+  if (!(element instanceof Element)) return "";
+
+  const values = [];
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    values.push(element.value);
+  }
+  values.push(
+    element.innerText,
+    element.textContent,
+    element.getAttribute("aria-label"),
+    element.getAttribute("title"),
+    element.getAttribute("value")
+  );
+
+  const uniqueValues = [];
+  const seenValues = new Set();
+  for (const value of values) {
+    const normalized = normalizeText(value || "");
+    if (!normalized || seenValues.has(normalized)) continue;
+    seenValues.add(normalized);
+    uniqueValues.push(normalized);
+  }
+
+  return normalizeText(uniqueValues.join(" "));
+}
+
 function isEditableElement(element) {
   if (!(element instanceof Element)) return false;
   if (element.isContentEditable) return true;
@@ -635,7 +662,7 @@ function shouldAllowGoogleInteractiveElement(element) {
     return false;
   }
 
-  const text = normalizeText(interactiveRoot.innerText || interactiveRoot.textContent || "");
+  const text = getElementAnalysisText(interactiveRoot);
   if (!text || !isCandidateTextUseful(text, interactiveRoot)) {
     return false;
   }
@@ -929,6 +956,7 @@ function getGoogleHighSignalInteractiveContainers(limit = MAX_DOMAIN_PRIORITY_CA
   ];
   const containers = [];
   const seenContainers = new Set();
+  const collectionLimit = Math.max(limit, limit * 4);
 
   for (const selector of selectors) {
     for (const element of document.querySelectorAll(selector)) {
@@ -943,15 +971,26 @@ function getGoogleHighSignalInteractiveContainers(limit = MAX_DOMAIN_PRIORITY_CA
 
       seenContainers.add(interactiveRoot);
       containers.push(interactiveRoot);
-      if (containers.length >= limit) {
-        return containers;
+      if (containers.length >= collectionLimit) {
+        break;
       }
+    }
+
+    if (containers.length >= collectionLimit) {
+      break;
     }
   }
 
   containers.sort((left, right) => {
     const leftRect = left.getBoundingClientRect();
     const rightRect = right.getBoundingClientRect();
+    const leftText = getElementAnalysisText(left);
+    const rightText = getElementAnalysisText(right);
+    const leftHighSignal = HIGH_SIGNAL_PROFANITY_PATTERN.test(leftText) ? 1 : 0;
+    const rightHighSignal = HIGH_SIGNAL_PROFANITY_PATTERN.test(rightText) ? 1 : 0;
+    if (leftHighSignal !== rightHighSignal) {
+      return rightHighSignal - leftHighSignal;
+    }
     if (leftRect.top !== rightRect.top) {
       return leftRect.top - rightRect.top;
     }
@@ -1041,6 +1080,26 @@ function getYouTubeAnalysisContainer(element) {
       "ytd-watch-metadata, ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer, ytd-comment-thread-renderer, ytd-comment-view-model"
     ) ||
     null
+  );
+}
+
+function isYouTubeMaskTargetElement(element) {
+  if (!isYouTubePage() || !(element instanceof Element)) {
+    return false;
+  }
+
+  if (
+    element.closest(
+      "#author-text, #published-time-text, #vote-count-middle, ytd-comment-engagement-bar, ytd-menu-renderer"
+    )
+  ) {
+    return false;
+  }
+
+  return Boolean(
+    element.closest(
+      "#content-text, [id='content-text'], #video-title, #title, h1, h2, h3, yt-formatted-string#video-title"
+    )
   );
 }
 
@@ -1583,7 +1642,7 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
       if (!element.isConnected || !isElementVisible(element)) continue;
       if (!isElementNearViewport(element.getBoundingClientRect())) continue;
 
-      const text = normalizeText(element.innerText || element.textContent || "");
+      const text = getElementAnalysisText(element);
       if (!text || !HIGH_SIGNAL_PROFANITY_PATTERN.test(text)) continue;
       if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(text))) continue;
 
@@ -1598,6 +1657,15 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
       break;
     }
   }
+
+  elements.sort((left, right) => {
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    if (leftRect.top !== rightRect.top) {
+      return leftRect.top - rightRect.top;
+    }
+    return leftRect.left - rightRect.left;
+  });
 
   return collectTextCandidatesFromElements(elements, limit * 2, {
     perElementLimit: 3,
@@ -1703,7 +1771,9 @@ function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES
       perElementLimit: Math.min(6, MAX_GOOGLE_CANDIDATES_PER_CONTAINER),
       candidateFilter(candidate) {
         const text = normalizeText(candidate?.text || "");
-        return Boolean(text) && isCandidateTextUseful(text, candidate?.element);
+        return Boolean(text) &&
+          isCandidateTextUseful(text, candidate?.element) &&
+          isYouTubeMaskTargetElement(candidate?.element);
       }
     }
   ).slice(0, limit * 2);
