@@ -42,6 +42,7 @@ function restoreEditableValueState(state) {
   state.element.style.caretColor = state.originalCaretColor || "";
   state.element.style.textShadow = state.originalTextShadow || "";
   state.element.style.filter = state.originalFilter || "";
+  state.element.style.opacity = state.originalOpacity || "";
   state.element.style.webkitTextSecurity = state.originalWebkitTextSecurity || "";
   state.element.style.textSecurity = state.originalTextSecurity || "";
   state.element.classList.remove("shieldtext-editable-source-concealed");
@@ -107,9 +108,11 @@ function concealEditableSourceText(state) {
   state.element.style.setProperty("caret-color", caretColor, "important");
   state.element.style.setProperty("text-shadow", "none", "important");
   if (shouldUseHardEditableConcealment(state.element)) {
-    state.element.style.setProperty("filter", "opacity(0)", "important");
+    state.element.style.filter = state.originalFilter || "";
+    state.element.style.setProperty("opacity", "0", "important");
   } else {
     state.element.style.filter = state.originalFilter || "";
+    state.element.style.opacity = state.originalOpacity || "";
   }
   state.element.classList.add("shieldtext-editable-source-concealed");
   state.nativeMaskApplied = false;
@@ -141,6 +144,7 @@ function applyNativeFullEditableMask(state) {
   state.element.style.color = state.originalColor || "";
   state.element.style.webkitTextFillColor = state.originalWebkitTextFillColor || "";
   state.element.style.textShadow = state.originalTextShadow || "";
+  state.element.style.opacity = state.originalOpacity || "";
   state.element.classList.remove("shieldtext-editable-source-concealed");
   state.element.removeAttribute("title");
   state.nativeMaskApplied = true;

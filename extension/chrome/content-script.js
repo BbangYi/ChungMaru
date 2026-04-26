@@ -206,6 +206,7 @@ let reconcileOverwriteCount = 0;
 let reconcileUnmaskCount = 0;
 let inputMaskResetCount = 0;
 let skippedHighSignalRetryCount = 0;
+let managedMutationSkipCount = 0;
 let overlayLayoutReuseCount = 0;
 let overlayLayoutRebuildCount = 0;
 let backendWarmupStarted = false;
@@ -435,6 +436,38 @@ function isShieldTextManagedElement(element) {
       ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true']"
     )
   );
+}
+
+function isShieldTextManagedNode(node) {
+  if (node instanceof Text) {
+    return isShieldTextManagedElement(node.parentElement);
+  }
+
+  if (node instanceof Element) {
+    return isShieldTextManagedElement(node);
+  }
+
+  if (node instanceof DocumentFragment) {
+    const childNodes = [...node.childNodes];
+    return childNodes.length > 0 && childNodes.every((child) => isShieldTextManagedNode(child));
+  }
+
+  return false;
+}
+
+function isShieldTextManagedMutation(mutation) {
+  if (!mutation) return false;
+
+  if (isShieldTextManagedNode(mutation.target)) {
+    return true;
+  }
+
+  const changedNodes = [
+    ...Array.from(mutation.addedNodes || []),
+    ...Array.from(mutation.removedNodes || [])
+  ];
+
+  return changedNodes.length > 0 && changedNodes.every((node) => isShieldTextManagedNode(node));
 }
 
 // runtime-status helpers are loaded from content-runtime-status.js
@@ -750,6 +783,7 @@ function getEditableValueState(element) {
       originalCaretColor: element.style.caretColor || "",
       originalTextShadow: element.style.textShadow || "",
       originalFilter: element.style.filter || "",
+      originalOpacity: element.style.opacity || "",
       originalWebkitTextSecurity: element.style.webkitTextSecurity || "",
       originalTextSecurity: element.style.textSecurity || "",
       overlayRoot: null,
@@ -6083,6 +6117,10 @@ function initializeObserver() {
 
   observer = new MutationObserver((mutationList) => {
     if (!mutationList || mutationList.length === 0) return;
+    const pageMutations = mutationList.filter((mutation) => !isShieldTextManagedMutation(mutation));
+    managedMutationSkipCount += mutationList.length - pageMutations.length;
+    if (pageMutations.length === 0) return;
+
     if (Date.now() < ignoreMutationsUntil) {
       scheduleSuppressedMutationRefresh();
       return;
@@ -6090,7 +6128,7 @@ function initializeObserver() {
     let shouldSchedule = false;
     let sawAddedContent = false;
 
-    mutationList.forEach((mutation) => {
+    pageMutations.forEach((mutation) => {
       shouldSchedule = markDirtyFromTarget(mutation.target) || shouldSchedule;
       mutation.addedNodes.forEach((node) => {
         if (node instanceof Text || node instanceof Element || node instanceof DocumentFragment) {

@@ -76,6 +76,7 @@ function getRealtimeWorkerDiagnostics() {
     reconcileUnmaskCount,
     inputMaskResetCount,
     skippedHighSignalRetryCount,
+    managedMutationSkipCount,
     overlayLayoutReuseCount,
     overlayLayoutRebuildCount
   };
