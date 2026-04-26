@@ -70,6 +70,8 @@ function getLabCaseRenderState(element, sampleText) {
       editableConcealsText: false,
       suspiciousEditableBar: false,
       suspiciousNativeTextareaMask: false,
+      editableHardConcealed: false,
+      suspiciousHardConcealmentMissing: false,
       overlayDriftPx: 0,
       suspiciousOverlayDrift: false
     };
@@ -85,9 +87,15 @@ function getLabCaseRenderState(element, sampleText) {
       : String(state?.overlayMode || "");
     const inlineColor = String(element.style.getPropertyValue("color") || "").trim();
     const inlineFill = String(element.style.getPropertyValue("-webkit-text-fill-color") || "").trim();
+    const inlineFilter = String(element.style.getPropertyValue("filter") || "").trim();
+    const requiresHardConcealment =
+      typeof shouldUseHardEditableConcealment === "function" &&
+      shouldUseHardEditableConcealment(element);
+    const editableHardConcealed = /opacity\s*\(\s*0\s*\)/i.test(inlineFilter);
     const editableConcealsText =
       inlineColor === "transparent" ||
       inlineFill === "transparent" ||
+      editableHardConcealed ||
       Boolean(state?.nativeMaskApplied);
     const overlayRect = state?.overlayRoot?.isConnected
       ? state.overlayRoot.getBoundingClientRect()
@@ -116,6 +124,14 @@ function getLabCaseRenderState(element, sampleText) {
       suspiciousEditableBar: maskMode === "single-line-bars" && compactLength <= 8,
       suspiciousNativeTextareaMask:
         element instanceof HTMLTextAreaElement && maskMode === "native-mask",
+      editableHardConcealed,
+      requiresHardConcealment,
+      sourceFilter: inlineFilter,
+      suspiciousHardConcealmentMissing:
+        Boolean(state?.isMasked) &&
+        requiresHardConcealment &&
+        maskMode === "full-overlay" &&
+        !editableHardConcealed,
       overlayDriftPx: Math.round(overlayDriftPx),
       suspiciousOverlayDrift: Boolean(overlayRect && overlayDriftPx > 4)
     };
@@ -132,6 +148,10 @@ function getLabCaseRenderState(element, sampleText) {
     editableConcealsText: false,
     suspiciousEditableBar: false,
     suspiciousNativeTextareaMask: false,
+    editableHardConcealed: false,
+    requiresHardConcealment: false,
+    sourceFilter: "",
+    suspiciousHardConcealmentMissing: false,
     overlayDriftPx: 0,
     suspiciousOverlayDrift: false
   };
@@ -168,6 +188,7 @@ function isLabRenderStateHealthy(renderState, extensionMasked) {
       String(renderState.editableTitle || "") === "" &&
       !renderState.suspiciousEditableBar &&
       !renderState.suspiciousNativeTextareaMask &&
+      !renderState.suspiciousHardConcealmentMissing &&
       !renderState.suspiciousOverlayDrift &&
       (renderState.maskMode === "native-mask" || Number(renderState.maskElementCount || 0) > 0)
     );
