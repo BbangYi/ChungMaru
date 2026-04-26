@@ -39,15 +39,15 @@ const MEDIUM_ANALYZE_BATCH_CHUNK_SIZE = 4;
 const LARGE_ANALYZE_BATCH_CHUNK_SIZE = 6;
 const XL_ANALYZE_BATCH_CHUNK_SIZE = 12;
 const FOREGROUND_ANALYZE_MIN_TIMEOUT_MS = 900;
-const RECONCILE_ANALYZE_TIMEOUT_CAP_MS = 2200;
-const BACKGROUND_ANALYZE_TIMEOUT_CAP_MS = 1800;
+const RECONCILE_ANALYZE_TIMEOUT_CAP_MS = 1400;
+const BACKGROUND_ANALYZE_TIMEOUT_CAP_MS = 1000;
 const SELF_TEST_ANALYZE_TIMEOUT_CAP_MS = 5000;
 const FULL_ANALYSIS_RESPONSE_CACHE = new Map();
 const FULL_ANALYSIS_IN_FLIGHT_REQUESTS = new Map();
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([
   ["foreground", 8],
-  ["reconcile", 4],
-  ["background-validation", 2],
+  ["reconcile", 2],
+  ["background-validation", 1],
   ["self-test", 1]
 ]);
 const BACKEND_REQUEST_QUEUES = new Map([
@@ -200,7 +200,7 @@ function getAnalyzeBatchChunkSize(requestTimeoutMs, textCount, mode = "foregroun
   }
 
   if (normalizedMode === "reconcile") {
-    return Math.min(2, textCount);
+    return 1;
   }
 
   if (requestTimeoutMs <= 450) {
