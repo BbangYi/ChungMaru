@@ -63,6 +63,7 @@ const BACKEND_REQUEST_PRIORITY = [
   "self-test"
 ];
 let isBackendRequestRunning = false;
+let activeBackendRequest = null;
 
 function normalizeAnalyzeBatchMode(value) {
   const normalized = String(value || "").trim().toLowerCase();
@@ -101,17 +102,26 @@ function drainBackendRequestQueue() {
     return;
   }
 
+  const abortController = new AbortController();
   isBackendRequestRunning = true;
+  activeBackendRequest = {
+    mode: nextRequest.mode,
+    abortController
+  };
   Promise.resolve()
     .then(() => nextRequest.operation({
       mode: nextRequest.mode,
       queueWaitMs: Date.now() - nextRequest.queuedAt,
       queueDepthAtEnqueue: nextRequest.queueDepthAtEnqueue,
-      queueDepthAtStart: getBackendQueuedRequestCount() + 1
+      queueDepthAtStart: getBackendQueuedRequestCount() + 1,
+      abortSignal: abortController.signal
     }))
     .then(nextRequest.resolve, nextRequest.reject)
     .finally(() => {
       isBackendRequestRunning = false;
+      if (activeBackendRequest?.abortController === abortController) {
+        activeBackendRequest = null;
+      }
       drainBackendRequestQueue();
     });
 }
@@ -122,6 +132,16 @@ function enqueueBackendRequest(mode, operation) {
   const queuedAt = Date.now();
 
   return new Promise((resolve, reject) => {
+    if (
+      normalizedMode === "foreground" &&
+      isBackendRequestRunning &&
+      activeBackendRequest?.mode &&
+      activeBackendRequest.mode !== "foreground" &&
+      activeBackendRequest.abortController instanceof AbortController
+    ) {
+      activeBackendRequest.abortController.abort("PREEMPTED_BY_FOREGROUND");
+    }
+
     const queueLimit = Math.max(1, Number(BACKEND_QUEUE_LIMIT_BY_MODE.get(normalizedMode) || 1));
     while (queue.length >= queueLimit) {
       const dropped = queue.shift();
@@ -572,13 +592,30 @@ function summarizeAnalyzeBatchTimings(requestTimings) {
   );
 }
 
-async function fetchJsonWithTimeout(url, options = {}, timeoutMs = DEFAULT_SETTINGS.requestTimeoutMs) {
+async function fetchJsonWithTimeout(
+  url,
+  options = {},
+  timeoutMs = DEFAULT_SETTINGS.requestTimeoutMs,
+  externalAbortSignal = null
+) {
   const controller = new AbortController();
   let didTimeout = false;
+  let didExternalAbort = false;
   const timerId = setTimeout(() => {
     didTimeout = true;
     controller.abort();
   }, timeoutMs);
+  const abortFromExternalSignal = () => {
+    didExternalAbort = true;
+    controller.abort();
+  };
+
+  if (externalAbortSignal?.aborted) {
+    didExternalAbort = true;
+    controller.abort();
+  } else if (externalAbortSignal?.addEventListener) {
+    externalAbortSignal.addEventListener("abort", abortFromExternalSignal, { once: true });
+  }
 
   try {
     const response = await fetch(url, {
@@ -621,6 +658,14 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = DEFAULT_SETTI
       });
     }
 
+    if (error?.name === "AbortError" && didExternalAbort) {
+      throw new BackendRequestError(
+        "PREEMPTED_BY_FOREGROUND",
+        "foreground 분석을 위해 낮은 우선순위 요청을 중단했습니다.",
+        { retryable: true }
+      );
+    }
+
     if (error?.name === "AbortError") {
       throw new BackendRequestError("ABORTED", "요청이 취소되었습니다.", {
         retryable: true
@@ -645,6 +690,9 @@ async function fetchJsonWithTimeout(url, options = {}, timeoutMs = DEFAULT_SETTI
     });
   } finally {
     clearTimeout(timerId);
+    if (externalAbortSignal?.removeEventListener) {
+      externalAbortSignal.removeEventListener("abort", abortFromExternalSignal);
+    }
   }
 }
 
@@ -695,7 +743,8 @@ async function performAnalyzeBatchRequest(apiBaseUrl, texts, requestTimeoutMs, s
               sensitivity: normalizeSensitivity(sensitivity)
             })
           },
-          requestTimeoutMs
+          requestTimeoutMs,
+          diagnostics.abortSignal
         );
       }
     );
