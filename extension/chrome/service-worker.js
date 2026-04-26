@@ -33,7 +33,7 @@ const BACKEND_HEALTH_TIMEOUT_MS = 2500;
 const RESPONSE_CACHE_LIMIT = 2000;
 const SAFE_RESPONSE_CACHE_TTL_MS = 5000;
 const OFFENSIVE_RESPONSE_CACHE_TTL_MS = 90000;
-const RESPONSE_CACHE_SCHEMA_VERSION = "sw-v5";
+const RESPONSE_CACHE_SCHEMA_VERSION = "sw-v6";
 const SMALL_ANALYZE_BATCH_CHUNK_SIZE = 2;
 const MEDIUM_ANALYZE_BATCH_CHUNK_SIZE = 4;
 const LARGE_ANALYZE_BATCH_CHUNK_SIZE = 6;
@@ -392,9 +392,20 @@ function normalizeSensitivity(value) {
   return Math.max(0, Math.min(100, Math.round(numberValue)));
 }
 
-function normalizeCacheKey(value, sensitivity = DEFAULT_SETTINGS.sensitivity, apiBaseUrl = DEFAULT_SETTINGS.backendApiBaseUrl) {
+function normalizeCacheKey(
+  value,
+  sensitivity = DEFAULT_SETTINGS.sensitivity,
+  apiBaseUrl = DEFAULT_SETTINGS.backendApiBaseUrl,
+  mode = "foreground"
+) {
   const backendKey = sanitizeApiBaseUrl(apiBaseUrl || DEFAULT_SETTINGS.backendApiBaseUrl);
-  return `${RESPONSE_CACHE_SCHEMA_VERSION}::${backendKey}::${normalizeSensitivity(sensitivity)}::${String(value || "").replace(/\s+/g, " ").trim()}`;
+  return [
+    RESPONSE_CACHE_SCHEMA_VERSION,
+    backendKey,
+    normalizeAnalyzeBatchMode(mode),
+    normalizeSensitivity(sensitivity),
+    String(value || "").replace(/\s+/g, " ").trim()
+  ].join("::");
 }
 
 function normalizeInFlightCacheKey(
@@ -403,11 +414,11 @@ function normalizeInFlightCacheKey(
   apiBaseUrl = DEFAULT_SETTINGS.backendApiBaseUrl,
   mode = "foreground"
 ) {
-  return `${normalizeAnalyzeBatchMode(mode)}::${normalizeCacheKey(value, sensitivity, apiBaseUrl)}`;
+  return normalizeCacheKey(value, sensitivity, apiBaseUrl, mode);
 }
 
-function getCachedResponse(cache, text, sensitivity, apiBaseUrl) {
-  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
+function getCachedResponse(cache, text, sensitivity, apiBaseUrl, mode) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl, mode);
   if (!key || !cache.has(key)) return null;
 
   const cached = cache.get(key);
@@ -480,8 +491,8 @@ function shouldCacheAnalyzeBatchResult(value) {
   );
 }
 
-function setCachedResponse(cache, text, value, sensitivity, apiBaseUrl) {
-  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl);
+function setCachedResponse(cache, text, value, sensitivity, apiBaseUrl, mode) {
+  const key = normalizeCacheKey(text, sensitivity, apiBaseUrl, mode);
   if (!key) return;
 
   if (!shouldCacheAnalyzeBatchResult(value)) {
@@ -1032,7 +1043,13 @@ async function analyzeTextBatch(message) {
     let inFlightHitCount = 0;
 
     for (const text of texts) {
-      const cached = getCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, sensitivity, apiBaseUrl);
+      const cached = getCachedResponse(
+        FULL_ANALYSIS_RESPONSE_CACHE,
+        text,
+        sensitivity,
+        apiBaseUrl,
+        analysisMode
+      );
       if (cached) {
         resultsByText.set(text, cached);
         cacheHitCount += 1;
@@ -1078,7 +1095,14 @@ async function analyzeTextBatch(message) {
           const text = pendingTexts[index];
           const value = result || null;
           resultsByText.set(text, value);
-          setCachedResponse(FULL_ANALYSIS_RESPONSE_CACHE, text, value, sensitivity, apiBaseUrl);
+          setCachedResponse(
+            FULL_ANALYSIS_RESPONSE_CACHE,
+            text,
+            value,
+            sensitivity,
+            apiBaseUrl,
+            analysisMode
+          );
           inFlightEntries[index]?.entry?.resolve(value);
         });
       } catch (error) {
