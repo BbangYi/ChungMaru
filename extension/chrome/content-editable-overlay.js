@@ -436,9 +436,10 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
   }
 
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
-  const shouldUseNativeFullMask =
-    doSpansCoverFullText(spans, candidate.text) &&
-    applyNativeFullEditableMask(state);
+  // Keep editable masking on one rendering path. Native text-security is fast
+  // but page/browser dependent, and it can expose the original value during
+  // Google Search textarea/input transitions.
+  const shouldUseNativeFullMask = false;
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,
