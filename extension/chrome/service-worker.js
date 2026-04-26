@@ -277,6 +277,19 @@ function shouldTolerateAnalyzeBatchChunkFailure(error, mode) {
   );
 }
 
+function isBenignAnalyzeSkipCode(errorCode) {
+  const code = String(errorCode || "");
+  return code === "PREEMPTED_BY_FOREGROUND" || code === "QUEUE_DROPPED";
+}
+
+function getAnalyzeBatchBackendStatus(skippedChunkCount, errorCode) {
+  if (Number(skippedChunkCount || 0) <= 0) {
+    return "ready";
+  }
+
+  return isBenignAnalyzeSkipCode(errorCode) ? "ready" : "degraded";
+}
+
 function createSkippedAnalyzeBatchResults(texts) {
   return texts.map((text) => ({
     __shieldtextSkipped: true,
@@ -1086,13 +1099,14 @@ async function analyzeTextBatch(message) {
 
       const skippedChunkCount = Number(batchResponse.skippedChunkCount || 0);
       const failedTextCount = Number(batchResponse.failedTextCount || 0);
+      const lastBackendErrorCode = String(batchResponse.lastBackendErrorCode || "");
       const timingSummary = summarizeAnalyzeBatchTimings(batchResponse.requestTimings);
 
       return {
         ok: true,
         apiBaseUrl,
         durationMs: Date.now() - startedAt,
-        backendStatus: skippedChunkCount > 0 ? "degraded" : "ready",
+        backendStatus: getAnalyzeBatchBackendStatus(skippedChunkCount, lastBackendErrorCode),
         analysisMode,
         requestedCount: pendingTexts.length,
         cacheHitCount,
@@ -1102,7 +1116,7 @@ async function analyzeTextBatch(message) {
         chunkSize: Number(batchResponse.chunkSize || 0),
         skippedChunkCount,
         failedTextCount,
-        lastBackendErrorCode: String(batchResponse.lastBackendErrorCode || ""),
+        lastBackendErrorCode,
         requestTimeoutMs,
         requestTimings: Array.isArray(batchResponse.requestTimings)
           ? batchResponse.requestTimings
@@ -1153,11 +1167,14 @@ async function analyzeTextBatch(message) {
 
     if (canDegradeWithoutFailing) {
       const timingSummary = summarizeAnalyzeBatchTimings(analysisDiagnostics?.requestTimings);
+      const lastBackendErrorCode = String(
+        analysisDiagnostics?.lastBackendError?.errorCode || normalized.errorCode || ""
+      );
       return {
         ok: true,
         apiBaseUrl,
         durationMs: Date.now() - startedAt,
-        backendStatus: "degraded",
+        backendStatus: getAnalyzeBatchBackendStatus(1, lastBackendErrorCode),
         analysisMode,
         requestedCount: texts.length,
         cacheHitCount: 0,
@@ -1167,8 +1184,7 @@ async function analyzeTextBatch(message) {
         chunkSize: Number(analysisDiagnostics?.chunkSize || texts.length),
         skippedChunkCount: 1,
         failedTextCount: Number(analysisDiagnostics?.failedTextCount || texts.length),
-        lastBackendErrorCode:
-          String(analysisDiagnostics?.lastBackendError?.errorCode || normalized.errorCode || ""),
+        lastBackendErrorCode,
         requestTimeoutMs,
         requestTimings: Array.isArray(analysisDiagnostics?.requestTimings)
           ? analysisDiagnostics.requestTimings

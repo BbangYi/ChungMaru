@@ -3411,6 +3411,7 @@ function isRetryableBackendErrorCode(errorCode) {
     errorCode === "NETWORK_UNREACHABLE" ||
     errorCode === "ABORTED" ||
     errorCode === "QUEUE_DROPPED" ||
+    errorCode === "PREEMPTED_BY_FOREGROUND" ||
     errorCode === "HTTP_503" ||
     errorCode === "HTTP_504" ||
     errorCode === "ANALYZE_TEXT_BATCH_FAILED"
