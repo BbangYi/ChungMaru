@@ -3299,6 +3299,7 @@ function isRetryableBackendErrorCode(errorCode) {
     errorCode === "TIMEOUT" ||
     errorCode === "NETWORK_UNREACHABLE" ||
     errorCode === "ABORTED" ||
+    errorCode === "QUEUE_DROPPED" ||
     errorCode === "HTTP_503" ||
     errorCode === "HTTP_504" ||
     errorCode === "ANALYZE_TEXT_BATCH_FAILED"
