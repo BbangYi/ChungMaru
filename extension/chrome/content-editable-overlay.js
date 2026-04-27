@@ -451,6 +451,61 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
   scheduleEditableOverlaySync(2);
 }
 
+function mapEditableMaskSpansToCurrentText(state, currentText) {
+  const previousText = String(state?.maskedText || "");
+  const nextText = String(currentText || "");
+  if (!previousText || !nextText || previousText === nextText) {
+    return normalizeEvidenceSpans(state?.maskedSpans || [], nextText);
+  }
+
+  const previousSpans = normalizeEvidenceSpans(state?.maskedSpans || [], previousText);
+  const nextSpans = [];
+  let searchFrom = 0;
+
+  for (const span of previousSpans) {
+    const maskedSegment = previousText.slice(span.start, span.end);
+    if (!maskedSegment) {
+      continue;
+    }
+
+    const nextIndex = nextText.indexOf(maskedSegment, searchFrom);
+    if (nextIndex < 0) {
+      return [];
+    }
+
+    nextSpans.push({
+      start: nextIndex,
+      end: nextIndex + maskedSegment.length,
+      score: span.score,
+      text: maskedSegment
+    });
+    searchFrom = nextIndex + maskedSegment.length;
+  }
+
+  return normalizeEvidenceSpans(nextSpans, nextText);
+}
+
+function carryForwardEditableMask(state, currentText, settings) {
+  if (!state?.isMasked || !state.element?.isConnected) {
+    return false;
+  }
+
+  const nextText = String(currentText || "");
+  const mappedSpans = mapEditableMaskSpansToCurrentText(state, nextText);
+  if (mappedSpans.length === 0) {
+    return false;
+  }
+
+  renderEditableOverlay(
+    state,
+    nextText,
+    mappedSpans,
+    settings || (typeof cachedSettings === "object" ? cachedSettings : null) || DEFAULT_SETTINGS,
+    state.overlayTooltip || ""
+  );
+  return true;
+}
+
 function doSpansCoverFullText(spans, text) {
   if (!Array.isArray(spans) || spans.length === 0) {
     return false;

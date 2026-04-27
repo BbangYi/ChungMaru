@@ -210,6 +210,7 @@ let foregroundApplyCount = 0;
 let reconcileOverwriteCount = 0;
 let reconcileUnmaskCount = 0;
 let inputMaskResetCount = 0;
+let editableMaskCarryForwardCount = 0;
 let skippedHighSignalRetryCount = 0;
 let skippedHighSignalRetrySuppressedCount = 0;
 let managedMutationSkipCount = 0;
@@ -5168,9 +5169,18 @@ function clearStaleEditableMaskForElement(element) {
     return;
   }
 
-  const currentFingerprint = buildFingerprint(normalizeText(getEditableElementText(element)));
+  const currentText = getEditableElementText(element);
+  const currentFingerprint = buildFingerprint(normalizeText(currentText));
   const appliedFingerprint = String(state.lastAppliedFingerprint || "");
   if (!currentFingerprint || !appliedFingerprint || currentFingerprint === appliedFingerprint) {
+    return;
+  }
+
+  if (
+    typeof carryForwardEditableMask === "function" &&
+    carryForwardEditableMask(state, currentText, cachedSettings)
+  ) {
+    editableMaskCarryForwardCount += 1;
     return;
   }
 

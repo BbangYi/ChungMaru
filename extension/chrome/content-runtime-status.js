@@ -75,6 +75,7 @@ function getRealtimeWorkerDiagnostics() {
     reconcileOverwriteCount,
     reconcileUnmaskCount,
     inputMaskResetCount,
+    editableMaskCarryForwardCount,
     skippedHighSignalRetryCount,
     skippedHighSignalRetrySuppressedCount,
     managedMutationSkipCount,
