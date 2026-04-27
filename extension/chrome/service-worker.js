@@ -33,7 +33,7 @@ const BACKEND_HEALTH_TIMEOUT_MS = 2500;
 const RESPONSE_CACHE_LIMIT = 2000;
 const SAFE_RESPONSE_CACHE_TTL_MS = 5000;
 const OFFENSIVE_RESPONSE_CACHE_TTL_MS = 90000;
-const RESPONSE_CACHE_SCHEMA_VERSION = "sw-v7";
+const RESPONSE_CACHE_SCHEMA_VERSION = "sw-v8";
 const SMALL_ANALYZE_BATCH_CHUNK_SIZE = 2;
 const MEDIUM_ANALYZE_BATCH_CHUNK_SIZE = 4;
 const LARGE_ANALYZE_BATCH_CHUNK_SIZE = 6;
@@ -241,7 +241,7 @@ function getAnalyzeBatchChunkSize(requestTimeoutMs, textCount, mode = "foregroun
   }
 
   if (normalizedMode === "reconcile") {
-    return 1;
+    return Math.min(SMALL_ANALYZE_BATCH_CHUNK_SIZE, textCount);
   }
 
   if (requestTimeoutMs <= 450) {
