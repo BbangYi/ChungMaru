@@ -615,6 +615,20 @@ function isElementVisible(element) {
   return true;
 }
 
+function isEditableValueLayoutVisible(element) {
+  if (!(element instanceof HTMLInputElement) && !(element instanceof HTMLTextAreaElement)) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
 function isElementNearViewport(rect) {
   return rect.bottom >= -VIEWPORT_BUFFER_PX && rect.top <= window.innerHeight + VIEWPORT_BUFFER_PX;
 }
@@ -758,7 +772,7 @@ function isMaskableValueElement(element) {
     return false;
   }
 
-  if (!isElementVisible(element)) return false;
+  if (!isEditableValueLayoutVisible(element)) return false;
   if (!isElementNearViewport(element.getBoundingClientRect())) return false;
   if ("disabled" in element && element.disabled) return false;
 
