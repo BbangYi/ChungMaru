@@ -6412,25 +6412,31 @@ function scheduleSuppressedMutationRefresh() {
   }, delayMs);
 }
 
-function markTextNodeDirty(textNode) {
+function markTextNodeDirty(textNode, options = {}) {
   if (!(textNode instanceof Text)) return false;
   const state = registerTextNode(textNode);
   if (!state) return false;
+  const fingerprint = getCurrentStateFingerprint(state);
+  if (!options.force && isStateSettledForFingerprint(state, fingerprint)) {
+    return false;
+  }
   const wasDirty = DIRTY_NODE_IDS.has(state.nodeId);
   DIRTY_NODE_IDS.add(state.nodeId);
   return !wasDirty;
 }
 
-function markDirtyFromTarget(target) {
+function markDirtyFromTarget(target, options = {}) {
+  const forceDirty = options.force === true;
+
   if (target instanceof Text) {
     if (shouldSkipTextNodeParent(target.parentElement)) return false;
-    return markTextNodeDirty(target);
+    return markTextNodeDirty(target, { force: forceDirty });
   }
 
   if (!(target instanceof Element)) return false;
   if (shouldSkipTextNodeParent(target)) return false;
   const registeredCount = registerTextNodesInTree(target, {
-    markDirty: true,
+    markDirty: forceDirty,
     onlyVisible: true,
     limit: MAX_DIRTY_TEXT_NODES_PER_MUTATION
   });
@@ -6495,12 +6501,16 @@ function initializeObserver() {
     let sawAddedContent = false;
 
     pageMutations.forEach((mutation) => {
-      shouldSchedule = markDirtyFromTarget(mutation.target) || shouldSchedule;
+      if (mutation.type === "characterData") {
+        shouldSchedule = markDirtyFromTarget(mutation.target, { force: true }) || shouldSchedule;
+        return;
+      }
+
       mutation.addedNodes.forEach((node) => {
         if (node instanceof Text || node instanceof Element || node instanceof DocumentFragment) {
           sawAddedContent = true;
         }
-        shouldSchedule = markDirtyFromTarget(node) || shouldSchedule;
+        shouldSchedule = markDirtyFromTarget(node, { force: true }) || shouldSchedule;
       });
     });
 
