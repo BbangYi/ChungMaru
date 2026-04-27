@@ -108,8 +108,7 @@
   display: inline-flex;
   align-items: center;
   align-self: center;
-  height: 1.18em;
-  min-height: 1.18em;
+  min-height: 1.42em;
   border-radius: 0.18em;
   box-shadow: 0 0 0 0.08em rgb(18, 18, 18);
 }

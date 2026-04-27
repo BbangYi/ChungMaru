@@ -152,6 +152,29 @@ function getEditableFullSpanMaskWidthPx(element, text) {
   return Math.max(8, measuredWidth + guardPx);
 }
 
+function getEditableFullSpanMaskHeightPx(element) {
+  if (!(element instanceof Element)) return 0;
+
+  const computedStyle = window.getComputedStyle(element);
+  const rect = element.getBoundingClientRect();
+  const fontSize = parseFloat(computedStyle.fontSize || "16");
+  const parsedLineHeight = parseFloat(computedStyle.lineHeight || "");
+  const lineHeight = Number.isFinite(parsedLineHeight)
+    ? parsedLineHeight
+    : (Number.isFinite(fontSize) ? fontSize * 1.28 : 22);
+  const verticalPadding =
+    (parseFloat(computedStyle.paddingTop || "0") || 0) +
+    (parseFloat(computedStyle.paddingBottom || "0") || 0);
+  const availableHeight = Math.max(0, rect.height - Math.max(0, verticalPadding * 0.35));
+  const targetHeight = Math.max(lineHeight * 1.08, Number.isFinite(fontSize) ? fontSize * 1.42 : lineHeight);
+
+  if (availableHeight > 0) {
+    return Math.round(Math.min(availableHeight, targetHeight));
+  }
+
+  return Math.round(targetHeight);
+}
+
 function concealEditableSourceText(state) {
   if (!state?.element) return;
   if (typeof suppressMutationFeedback === "function") {
@@ -440,6 +463,9 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     interventionMode: settings?.interventionMode || "mask",
     fullSpanMaskWidthPx: doSpansCoverFullText(spans, text)
       ? getEditableFullSpanMaskWidthPx(state.element, text)
+      : 0,
+    fullSpanMaskHeightPx: doSpansCoverFullText(spans, text)
+      ? getEditableFullSpanMaskHeightPx(state.element)
       : 0
   });
   if (state.overlayRenderKey === renderKey) {
@@ -467,13 +493,16 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       : "shieldtext-editable-mask";
     if (doSpansCoverFullText(spans, text)) {
       const fullSpanWidthPx = getEditableFullSpanMaskWidthPx(state.element, text);
+      const fullSpanHeightPx = getEditableFullSpanMaskHeightPx(state.element);
       mask.style.display = "inline-flex";
       mask.style.alignItems = "center";
       mask.style.alignSelf = "center";
       mask.style.width = `${fullSpanWidthPx}px`;
       mask.style.minWidth = `${fullSpanWidthPx}px`;
-      mask.style.height = "1.18em";
-      mask.style.minHeight = "1.18em";
+      if (fullSpanHeightPx > 0) {
+        mask.style.height = `${fullSpanHeightPx}px`;
+        mask.style.minHeight = `${fullSpanHeightPx}px`;
+      }
     }
     mask.style.setProperty("color", "transparent", "important");
     mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
