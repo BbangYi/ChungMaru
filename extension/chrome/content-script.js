@@ -4628,7 +4628,14 @@ function shouldScheduleBackgroundValidation(runReason) {
     return false;
   }
 
-  if (runReason === "mutation" && isRapidlyChangingRealtimeHost()) {
+  if (
+    isRapidlyChangingRealtimeHost() &&
+    (
+      runReason === "mutation" ||
+      runReason === "visibility" ||
+      runReason === "route-change"
+    )
+  ) {
     return false;
   }
 
