@@ -1709,9 +1709,14 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
   }
 
   const selectors = [
+    "main button",
+    "main [role='button']",
+    "main a[href]",
+    "main [data-ved]",
     "#search button",
     "#search [role='button']",
     "#search a[href]",
+    "#search [data-ved]",
     "#bres button",
     "#bres [role='button']",
     "#bres a[href]",
@@ -6259,7 +6264,11 @@ function refreshCurrentRouteCandidates(options = {}) {
 
   cleanupDisconnectedStates();
   const markDirty = options.markDirty === true;
-  const registeredCount = refreshVisibleCandidateRegistrations({ markDirty });
+  const registeredCount = refreshVisibleCandidateRegistrations({
+    markDirty,
+    markHighSignalDirty: options.markHighSignalDirty === true,
+    highSignalDirtyLimit: options.highSignalDirtyLimit
+  });
   scheduleInitialEditablePass();
   if (options.scheduleStartupFollowups !== false) {
     scheduleStartupFollowupPipelines();
@@ -6274,7 +6283,9 @@ function runRouteRefreshWave(sequence, options = {}) {
 
   const registeredCount = refreshCurrentRouteCandidates({
     scheduleStartupFollowups: false,
-    markDirty: options.markDirty === true
+    markDirty: options.markDirty === true,
+    markHighSignalDirty: true,
+    highSignalDirtyLimit: 18
   });
   if (registeredCount > 0) {
     schedulePipeline("route-change");

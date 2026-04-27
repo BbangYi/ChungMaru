@@ -114,6 +114,44 @@ function rememberEditableOverlayTextColor(state, computedStyle) {
   }
 }
 
+function measureEditableTextWidthPx(text, computedStyle) {
+  const sourceText = String(text || "");
+  if (!sourceText) return 0;
+
+  const canvas =
+    measureEditableTextWidthPx.canvas ||
+    (measureEditableTextWidthPx.canvas = document.createElement("canvas"));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return sourceText.length * 12;
+  }
+
+  context.font = computedStyle?.font || [
+    computedStyle?.fontStyle,
+    computedStyle?.fontVariant,
+    computedStyle?.fontWeight,
+    computedStyle?.fontSize,
+    computedStyle?.fontFamily
+  ].filter(Boolean).join(" ");
+
+  let width = context.measureText(sourceText).width;
+  const letterSpacing = parseFloat(computedStyle?.letterSpacing || "0");
+  if (Number.isFinite(letterSpacing) && letterSpacing > 0 && sourceText.length > 1) {
+    width += letterSpacing * (sourceText.length - 1);
+  }
+
+  return Math.ceil(width);
+}
+
+function getEditableFullSpanMaskWidthPx(element, text) {
+  if (!(element instanceof Element)) return 0;
+  const computedStyle = window.getComputedStyle(element);
+  const measuredWidth = measureEditableTextWidthPx(text, computedStyle);
+  const fontSize = parseFloat(computedStyle.fontSize || "16");
+  const guardPx = Number.isFinite(fontSize) ? Math.max(3, Math.round(fontSize * 0.18)) : 4;
+  return Math.max(8, measuredWidth + guardPx);
+}
+
 function concealEditableSourceText(state) {
   if (!state?.element) return;
   if (typeof suppressMutationFeedback === "function") {
@@ -387,7 +425,10 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
   const renderKey = JSON.stringify({
     text,
     spans,
-    interventionMode: settings?.interventionMode || "mask"
+    interventionMode: settings?.interventionMode || "mask",
+    fullSpanMaskWidthPx: doSpansCoverFullText(spans, text)
+      ? getEditableFullSpanMaskWidthPx(state.element, text)
+      : 0
   });
   if (state.overlayRenderKey === renderKey) {
     state.overlayRoot.removeAttribute("title");
@@ -413,24 +454,29 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       ? "shieldtext-editable-hide"
       : "shieldtext-editable-mask";
     if (doSpansCoverFullText(spans, text)) {
+      const fullSpanWidthPx = getEditableFullSpanMaskWidthPx(state.element, text);
       mask.style.display = "inline-flex";
       mask.style.alignItems = "center";
-      mask.style.alignSelf = "stretch";
-      mask.style.height = "100%";
-      mask.style.minHeight = "100%";
+      mask.style.alignSelf = "center";
+      mask.style.width = `${fullSpanWidthPx}px`;
+      mask.style.minWidth = `${fullSpanWidthPx}px`;
+      mask.style.height = "1.18em";
+      mask.style.minHeight = "1.18em";
     }
     mask.style.setProperty("color", "transparent", "important");
     mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
     mask.style.setProperty("text-shadow", "none", "important");
-    const hiddenText = document.createElement("span");
-    hiddenText.className = "shieldtext-hidden-mask-text";
-    hiddenText.textContent = text.slice(span.start, span.end);
-    hiddenText.style.setProperty("visibility", "hidden", "important");
-    hiddenText.style.setProperty("opacity", "0", "important");
-    hiddenText.style.setProperty("color", "transparent", "important");
-    hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    hiddenText.style.setProperty("text-shadow", "none", "important");
-    mask.appendChild(hiddenText);
+    if (!doSpansCoverFullText(spans, text)) {
+      const hiddenText = document.createElement("span");
+      hiddenText.className = "shieldtext-hidden-mask-text";
+      hiddenText.textContent = text.slice(span.start, span.end);
+      hiddenText.style.setProperty("visibility", "hidden", "important");
+      hiddenText.style.setProperty("opacity", "0", "important");
+      hiddenText.style.setProperty("color", "transparent", "important");
+      hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      hiddenText.style.setProperty("text-shadow", "none", "important");
+      mask.appendChild(hiddenText);
+    }
     fragment.appendChild(mask);
 
     cursor = span.end;

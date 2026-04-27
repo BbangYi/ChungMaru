@@ -130,11 +130,16 @@ function getLabCaseRenderState(element, sampleText) {
       overlayRect && fullSpanMaskRect && overlayRect.width > 0
         ? Math.min(1, Math.max(0, fullSpanMaskRect.width / overlayRect.width))
         : 0;
-    const fullSpanMaskOffsetPx =
+    const computedLineHeight = window.getComputedStyle(element).lineHeight;
+    const fontSize = parseFloat(window.getComputedStyle(element).fontSize || "16");
+    const lineHeightPx = Number.isFinite(parseFloat(computedLineHeight))
+      ? parseFloat(computedLineHeight)
+      : (Number.isFinite(fontSize) ? fontSize * 1.2 : 19);
+    const fullSpanMaskVerticalCenterOffsetPx =
       overlayRect && fullSpanMaskRect
-        ? Math.max(
-            Math.abs(fullSpanMaskRect.top - overlayRect.top),
-            Math.abs(fullSpanMaskRect.bottom - overlayRect.bottom)
+        ? Math.abs(
+            (fullSpanMaskRect.top + fullSpanMaskRect.bottom) / 2 -
+              (overlayRect.top + overlayRect.bottom) / 2
           )
         : 0;
     const suspiciousMaskTextVisible = hasVisibleMaskText(state?.overlayRoot);
@@ -166,13 +171,13 @@ function getLabCaseRenderState(element, sampleText) {
       suspiciousOverlayDrift: Boolean(overlayRect && overlayDriftPx > 4),
       fullSpanMaskCoverageRatio: Math.round(fullSpanMaskCoverageRatio * 100) / 100,
       fullSpanMaskWidthCoverageRatio: Math.round(fullSpanMaskWidthCoverageRatio * 100) / 100,
-      fullSpanMaskOffsetPx: Math.round(fullSpanMaskOffsetPx),
+      fullSpanMaskOffsetPx: Math.round(fullSpanMaskVerticalCenterOffsetPx),
       suspiciousFullSpanMaskCoverage: Boolean(
         state?.overlayRoot?.dataset?.shieldtextFullSpan === "true" &&
           (!fullSpanMaskRect ||
-            fullSpanMaskCoverageRatio < 0.75 ||
-            fullSpanMaskWidthCoverageRatio < 0.45 ||
-            fullSpanMaskOffsetPx > 8)
+            fullSpanMaskRect.width < Math.max(8, compactLength * 4) ||
+            fullSpanMaskRect.height < Math.max(8, lineHeightPx * 0.55) ||
+            fullSpanMaskVerticalCenterOffsetPx > Math.max(8, lineHeightPx * 0.6))
       ),
       suspiciousMaskTextVisible
     };
