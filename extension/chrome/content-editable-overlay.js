@@ -284,13 +284,25 @@ function ensureEditableOverlay(state) {
   return overlayRoot;
 }
 
+function isEditableOverlayLayoutVisible(element) {
+  if (!(element instanceof Element)) return false;
+
+  const style = window.getComputedStyle(element);
+  if (style.display === "none" || style.visibility === "hidden") {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
 function syncEditableOverlayLayout(state) {
   if (!state?.overlayRoot || !state.overlayContent || !state.element?.isConnected) return;
 
   const element = state.element;
   const overlayHost = ensureEditableOverlayHost(state);
   const rect = element.getBoundingClientRect();
-  if (!isElementVisible(element) || !isElementNearViewport(rect)) {
+  if (!isEditableOverlayLayoutVisible(element) || !isElementNearViewport(rect)) {
     state.overlayRoot.style.display = "none";
     return;
   }
