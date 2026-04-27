@@ -72,6 +72,10 @@
   text-shadow: none !important;
 }
 
+.shieldtext-editable-hard-concealed {
+  opacity: 0 !important;
+}
+
 .shieldtext-editable-source-concealed::selection {
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
