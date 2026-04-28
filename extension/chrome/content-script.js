@@ -79,13 +79,15 @@ const MAX_BACKGROUND_CANDIDATES = 16;
 const MAX_HOT_PATH_CONTAINERS = 6;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
 const STARTUP_FOLLOWUP_DELAYS_MS = [48, 180, 420, 900];
-const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [80, 220, 520, 1100, 1800];
+const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [24, 80, 220, 520, 1100, 1800];
 const NAVIGATION_POLL_INTERVAL_MS = 80;
 const SAME_ROUTE_DIRTY_REFRESH_REASONS = new Set([
   "load",
   "pageshow",
   "readystatechange",
   "turbo-load",
+  "navigation-api",
+  "yt-navigate-start",
   "yt-navigate-finish",
   "yt-page-data-updated"
 ]);
@@ -2110,6 +2112,13 @@ function isGoogleHighSignalSurfaceCandidate(candidate) {
   }
 
   if (shouldAllowGoogleInteractiveElement(element)) {
+    return true;
+  }
+
+  if (
+    element.closest("#search, main, [role='main']") &&
+    isGoogleMaskTargetElement(element)
+  ) {
     return true;
   }
 

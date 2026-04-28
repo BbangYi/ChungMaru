@@ -147,11 +147,20 @@ function getEditableFullSpanMaskWidthPx(element, text) {
   if (!(element instanceof Element)) return 0;
   const computedStyle = window.getComputedStyle(element);
   const measuredWidth = measureEditableTextWidthPx(text, computedStyle);
+  const rect = element.getBoundingClientRect();
+  const horizontalPadding =
+    (parseFloat(computedStyle.paddingLeft || "0") || 0) +
+    (parseFloat(computedStyle.paddingRight || "0") || 0);
+  const visibleInnerWidth = Math.max(0, Math.floor(rect.width - horizontalPadding));
   const fontSize = parseFloat(computedStyle.fontSize || "16");
   const guardPx = Number.isFinite(fontSize)
     ? Math.max(6, Math.round(fontSize * (shouldUseHardEditableConcealment(element) ? 0.72 : 0.36)))
     : 8;
-  return Math.max(8, measuredWidth + guardPx);
+  const measuredTargetWidth = Math.max(8, measuredWidth + guardPx);
+  if (shouldUseHardEditableConcealment(element) && visibleInnerWidth > 0) {
+    return Math.max(measuredTargetWidth, visibleInnerWidth);
+  }
+  return measuredTargetWidth;
 }
 
 function getEditableFullSpanMaskHeightPx(element) {

@@ -1243,13 +1243,15 @@ async function analyzeTextBatch(message) {
 
     const timingSummary = summarizeAnalyzeBatchTimings(analysisDiagnostics?.requestTimings);
 
-    if (analysisMode === "foreground") {
+    if (analysisMode === "foreground" && !normalized.retryable) {
       console.error("[청마루] analyzeTextBatch failed", error);
     } else {
       console.warn("[청마루] analyzeTextBatch degraded", {
         analysisMode,
         errorCode: normalized.errorCode,
-        reason: normalized.reason
+        reason: normalized.reason,
+        requestedCount: texts.length,
+        durationMs: Date.now() - startedAt
       });
     }
     return {
