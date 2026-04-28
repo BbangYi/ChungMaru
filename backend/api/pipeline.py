@@ -12,187 +12,202 @@
 """
 import os
 import re
+import time
 from difflib import SequenceMatcher
 
-from classifier import TextClassifier
-from input_filter import filter_android_json
 from normalizer import normalize
-from profanity_dict import COMPILED_PATTERNS, WHITELIST
+from classifier import TextClassifier
 from span_detector import SpanDetector
+from input_filter import filter_android_json
+from profanity_dict import COMPILED_PATTERNS, WHITELIST
 
 
-DEFAULT_EXTENSION_SENSITIVITY = 60
-RELAXED_DICTIONARY_SAFE_SENSITIVITY = 35
-STRICT_DICTIONARY_BLOCK_SENSITIVITY = 55
-SENSITIVITY_THRESHOLD_STEP = 0.003
-MIN_SENSITIVITY_ADJUSTED_THRESHOLD = 0.58
-MAX_SENSITIVITY_ADJUSTED_THRESHOLD = 0.9
+ZERO_SCORES = {"profanity": 0.0, "toxicity": 0.0, "hate": 0.0}
 
-SAFE_CONTEXT_EXACT = frozenset(
-    {
-        "국제차량제작 시발",
-    }
-)
-
-SAFE_SOURCE_MARKERS = (
-    "위키낱말사전",
-    "위키백과",
-    "나무위키",
-    "wikipedia",
-    "wiktionary",
-)
-
-SAFE_DEFINITION_MARKERS = (
-    "일컫는말",
-    "일컫는 말",
-    "뜻은",
-    "뜻으로",
-    "의미는",
-    "의미를",
-    "의역하면",
-    "직역하면",
-    "표제어",
-    "낱말",
-    "사전",
-)
-
-EXPLICIT_SEXUAL_DEFINITION_MARKERS = (
-    "성기",
-    "생식기",
-    "음경",
-    "음부",
-    "자지",
-    "보지",
-    "질",
-)
-
-SAFE_ENTITY_MARKERS = (
-    "정치인",
-    "변호사",
-    "자동차",
-    "주식회사",
-    "회사",
-    "기업",
-    "브랜드",
-    "인물",
-    "배우",
-    "가수",
-)
-
-SAFE_AMBIGUOUS_CONTEXT_TERMS = (
-    "시발",
-    "kapil sibal",
-    "국제차량제작 시발",
-)
-
-SAFE_TRANSLITERATION_PATTERN = re.compile(r"\([A-Za-z][A-Za-z .'\-]{2,}\)")
-SAFE_KAPIL_SIBAL_PATTERN = re.compile(r"\(([A-Za-z .'\-]*sibal[A-Za-z .'\-]*)\)", re.IGNORECASE)
-SAFE_KAPIL_SIBAL_PROPER_NOUN_PATTERN = re.compile(
-    r"^kapil\s+sibal(?:\s*[-|]\s*(?:wikipedia|wiktionary|profile|official))?$",
+LATIN_PROFANITY_PATTERN = re.compile(
+    r"\b(?:fuck|fucking|shit|bitch|asshole|bastard|cunt|ssibal|sibal|tlqkf|qudtls|qudtkf)\b",
     re.IGNORECASE,
 )
 
-SAFE_BROWSER_UI_LABELS = frozenset(
-    {
-        ".github",
-        ".gitignore",
-        "actions",
-        "activity",
-        "agents",
-        "android",
-        "backend",
-        "code",
-        "contributors",
-        "docs",
-        "fork",
-        "insights",
-        "issues",
-        "packages",
-        "projects",
-        "public",
-        "pull requests",
-        "readme",
-        "readme.md",
-        "scripts",
-        "security & quality",
-        "security and quality",
-        "settings",
-        "shared",
-        "star",
-        "watch",
-        "wiki",
-    }
-)
-
-UI_ASCII_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&/_\-]{1,63}$")
-ASCII_QUERY_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&/_:+\-]{1,95}$")
-SAFE_TECHNICAL_CONTEXT_TERMS = (
+LATIN_SAFE_EXACT = {
     "abstract factory",
-    "factory method",
-    "factory pattern",
-    "strategy pattern",
-)
-SAFE_TECHNICAL_CONTEXT_MARKERS = (
-    "문제",
-    "정답",
-    "설명",
-    "패턴",
-    "디자인 패턴",
-    "정보처리기사",
-)
-ASCII_URL_OR_PATH_PATTERN = re.compile(
-    r"(https?://|www\.|[A-Za-z0-9_-]+\.(com|dev|org|io|net|me|app|ai|wiki)\b| › |/|>)",
-    re.IGNORECASE,
-)
-ASCII_PROFANITY_MARKERS = (
-    "ssibal",
-    "sibal",
-    "tlqkf",
-    "qudtls",
-    "byungsin",
-    "gaesaekki",
-    "gaesaek",
-    "jiral",
-    "jonna",
-    "nigaumma",
-    "negeumma",
-    "fuck",
-    "fucking",
-    "shit",
-    "bitch",
-    "asshole",
-    "bastard",
-    "motherfucker",
-    "dick",
-    "pussy",
-    "slut",
-    "whore",
-    "nigger",
-)
-
-ASCII_DICTIONARY_PATTERN = re.compile(
-    r"(?<![A-Za-z])("
-    r"mother[\W_]*fucker|"
-    r"fuck(?:ing|er|ed)?|"
-    r"ass[\W_]*hole|"
-    r"bastard(?:s)?|"
-    r"bitch(?:es)?|"
-    r"shit(?:ty|head|s)?|"
-    r"ssibal|sibal|tlqkf|qudtls|"
-    r"byungsin|gaesaekki|gaesaek|jiral|jonna|nigaumma|negeumma"
-    r")(?![A-Za-z])",
-    re.IGNORECASE,
-)
-
-CALIBRATED_SCORE_THRESHOLDS = {
-    "profanity": 0.72,
-    "toxicity": 0.72,
-    "hate": 0.68,
+    "abstract factory pattern",
+    "android",
+    "api",
+    "backend",
+    "branch",
+    "chungmaru",
+    "code",
+    "commit",
+    "docs",
+    "github",
+    "insights",
+    "issues",
+    "linear",
+    "main",
+    "pull requests",
+    "readme",
+    "repository",
+    "scripts",
+    "security",
+    "settings",
+    "shared",
+    "warp",
+    "warp theme",
+    "warp themes",
 }
+
+SAFE_CONTEXT_PATTERNS = [
+    re.compile(r"카필\s+시발|\bkapil\s+sibal\b", re.IGNORECASE),
+    re.compile(r"국제차량제작\s+시발|시발자동차|시발\s*자동차"),
+    re.compile(r"시발점|시발역|시발택시"),
+]
+
+DICTIONARY_SAFE_PATTERN = re.compile(
+    r"(시발\s*[-–]\s*(?:위키낱말사전|나무위키|위키백과)|"
+    r"위키(?:낱말사전|백과).*?\b시발\b|"
+    r"나무위키.*?\b시발\b.*?(?:kapil|카필|자동차|국제차량제작|r\d+\s*판))",
+    re.IGNORECASE,
+)
+
+EXTRA_SPAN_PATTERNS = [
+    re.compile(r"\bssibal\b|\bsibal\b|\btlqkf\b|\bqudtls\b|\bqudtkf\b", re.IGNORECASE),
+    re.compile(r"\bfuck(?:ing)?\b|\bshit\b|\bbitch\b|\basshole\b|\bbastard\b|\bcunt\b", re.IGNORECASE),
+]
+
+
+def _threshold_from_sensitivity(sensitivity: int | None, default: float) -> float:
+    """UI 민감도(높을수록 더 많이 차단)를 모델 threshold로 변환."""
+    if sensitivity is None:
+        return default
+    try:
+        value = max(0, min(100, int(sensitivity)))
+    except (TypeError, ValueError):
+        return default
+    if value <= 0:
+        return 1.01
+    # 0은 사실상 강한 확신만, 100은 더 공격적으로 판정한다.
+    return max(0.35, min(0.99, 0.95 - (value / 100) * 0.55))
+
+
+def _empty_result(text: str, scores: dict[str, float] | None = None) -> dict:
+    return {
+        "text": text,
+        "is_offensive": False,
+        "is_profane": False,
+        "is_toxic": False,
+        "is_hate": False,
+        "scores": scores or ZERO_SCORES.copy(),
+        "evidence_spans": [],
+        "_timing": {
+            "normalize_ms": 0.0,
+            "classifier_ms": 0.0,
+            "span_ms": 0.0,
+            "model_ms": 0.0,
+            "pipeline_ms": 0.0,
+        },
+    }
+
+
+def _is_latin_safe_text(text: str) -> bool:
+    value = re.sub(r"\s+", " ", text or "").strip().lower()
+    if not value or LATIN_PROFANITY_PATTERN.search(value):
+        return False
+    if re.search(r"[가-힣ㄱ-ㅎㅏ-ㅣ]", value):
+        return False
+    if value in LATIN_SAFE_EXACT:
+        return True
+    # 브라우저 UI, GitHub 네비게이션, 개발 용어는 모델이 자주 오탐한다.
+    return len(value) <= 80 and bool(re.fullmatch(r"[a-z0-9_./:#()&+\-\s]+", value))
+
+
+def _is_safe_context(text: str, normalized: str) -> bool:
+    combined = f"{text}\n{normalized}"
+    if any(pattern.search(combined) for pattern in SAFE_CONTEXT_PATTERNS):
+        return True
+    return bool(DICTIONARY_SAFE_PATTERN.search(combined))
+
+
+def _is_whitelisted_span_text(value: str) -> bool:
+    token = re.sub(r"\s+", "", value or "").strip()
+    return bool(token) and token in WHITELIST
+
+
+def _is_valid_span_text(value: str) -> bool:
+    span_text = (value or "").strip()
+    if not span_text or _is_whitelisted_span_text(span_text):
+        return False
+    if LATIN_PROFANITY_PATTERN.search(span_text):
+        return True
+    return any(pattern.search(span_text) for pattern, _canonical, _category in COMPILED_PATTERNS)
+
+
+def _merge_spans(spans: list[dict], text: str) -> list[dict]:
+    valid = [
+        {
+            "text": text[max(0, int(s["start"])):min(len(text), int(s["end"]))],
+            "start": max(0, int(s["start"])),
+            "end": min(len(text), int(s["end"])),
+            "score": float(s.get("score", 0.0)),
+        }
+        for s in spans
+        if int(s.get("end", 0)) > int(s.get("start", 0))
+    ]
+    valid = [s for s in valid if _is_valid_span_text(s["text"])]
+    valid.sort(key=lambda item: (item["start"], item["end"]))
+
+    merged: list[dict] = []
+    for span in valid:
+        previous = merged[-1] if merged else None
+        if previous and span["start"] <= previous["end"]:
+            previous["end"] = max(previous["end"], span["end"])
+            previous["text"] = text[previous["start"]:previous["end"]]
+            previous["score"] = max(previous["score"], span["score"])
+        else:
+            merged.append(span)
+    return merged
+
+
+def _extract_dictionary_spans(original: str, normalized: str, n2o: list[int]) -> list[dict]:
+    spans: list[dict] = []
+    patterns = [pattern for pattern, _canonical, _category in COMPILED_PATTERNS] + EXTRA_SPAN_PATTERNS
+    for pattern in patterns:
+        for match in pattern.finditer(normalized):
+            if not match.group(0).strip():
+                continue
+            start, end = match.span()
+            if 0 <= start < len(n2o) and 0 < end <= len(n2o):
+                orig_start = n2o[start]
+                orig_end = n2o[end - 1] + 1
+                spans.append({
+                    "text": original[orig_start:orig_end],
+                    "start": orig_start,
+                    "end": orig_end,
+                    "score": 0.99,
+                })
+    return _merge_spans(spans, original)
+
+
+def _extract_original_direct_spans(original: str) -> list[dict]:
+    spans: list[dict] = []
+    for pattern in EXTRA_SPAN_PATTERNS:
+        for match in pattern.finditer(original):
+            start, end = match.span()
+            spans.append({
+                "text": original[start:end],
+                "start": start,
+                "end": end,
+                "score": 0.99,
+            })
+    return _merge_spans(spans, original)
 
 
 def _build_norm_to_orig_map(original: str, normalized: str) -> list[int]:
-    """정규화 텍스트의 각 문자 인덱스 → 원문 인덱스 매핑 배열 생성."""
+    """정규화 텍스트의 각 문자 인덱스 → 원문 인덱스 매핑 배열 생성.
+
+    difflib.SequenceMatcher로 두 문자열을 정렬하여
+    normalized[i]가 original의 어느 위치에서 왔는지 추적한다.
+    """
     sm = SequenceMatcher(None, original, normalized, autojunk=False)
     n2o = [-1] * len(normalized)
 
@@ -201,338 +216,37 @@ def _build_norm_to_orig_map(original: str, normalized: str) -> list[int]:
             for k in range(j2 - j1):
                 n2o[j1 + k] = i1 + k
         elif tag == "replace":
+            # 길이가 다를 수 있으므로 비례 배분
             orig_len = i2 - i1
             norm_len = j2 - j1
             for k in range(norm_len):
                 n2o[j1 + k] = i1 + min(k * orig_len // norm_len, orig_len - 1)
 
+    # -1 갭을 직전 유효 인덱스로 채움
     last = 0
-    for index, value in enumerate(n2o):
-        if value >= 0:
-            last = value
+    for i in range(len(n2o)):
+        if n2o[i] >= 0:
+            last = n2o[i]
         else:
-            n2o[index] = last
+            n2o[i] = last
 
     return n2o
-
-
-def _normalize_space(text: str) -> str:
-    return " ".join(str(text or "").split()).strip()
-
-
-def _normalize_label(text: str) -> str:
-    return _normalize_space(text).casefold()
-
-
-def _is_kapil_sibal_proper_noun_context(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact or len(compact) > 80:
-        return False
-    return bool(SAFE_KAPIL_SIBAL_PROPER_NOUN_PATTERN.fullmatch(compact))
-
-
-def _normalize_sensitivity(value: int | float | None) -> int:
-    try:
-        number = int(round(float(value)))
-    except (TypeError, ValueError):
-        return DEFAULT_EXTENSION_SENSITIVITY
-    return max(0, min(100, number))
-
-
-def _is_browser_ui_safe_label(text: str) -> bool:
-    return _normalize_label(text) in SAFE_BROWSER_UI_LABELS
-
-
-def _looks_like_ascii_ui_text(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact or len(compact) > 64:
-        return False
-    if re.search(r"[가-힣ㄱ-ㅎㅏ-ㅣ]", compact):
-        return False
-    if any(char in compact for char in ("!", "?", ":", ";", ",")):
-        return False
-    if not UI_ASCII_TEXT_PATTERN.fullmatch(compact):
-        return False
-
-    words = [token for token in re.split(r"[\s/_.-]+", compact) if token]
-    return 0 < len(words) <= 5
-
-
-def _contains_korean_text(text: str) -> bool:
-    return bool(re.search(r"[가-힣ㄱ-ㅎㅏ-ㅣ]", str(text or "")))
-
-
-def _contains_ascii_profanity_marker(text: str) -> bool:
-    lower = _normalize_space(text).casefold()
-    return any(marker in lower for marker in ASCII_PROFANITY_MARKERS)
-
-
-def _looks_like_ascii_query_text(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact or len(compact) > 96:
-        return False
-    if _contains_korean_text(compact):
-        return False
-    if _contains_ascii_profanity_marker(compact):
-        return False
-    if any(char in compact for char in ("!", "?")):
-        return False
-    if not ASCII_QUERY_TEXT_PATTERN.fullmatch(compact):
-        return False
-
-    words = [token for token in re.split(r"\s+", compact) if token]
-    return 0 < len(words) <= 4
-
-
-def _looks_like_ascii_browser_result_text(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact or len(compact) > 240:
-        return False
-    if _contains_korean_text(compact):
-        return False
-    if _contains_ascii_profanity_marker(compact):
-        return False
-    return bool(ASCII_URL_OR_PATH_PATTERN.search(compact))
-
-
-def _has_dictionary_signal(text: str) -> bool:
-    normalized = normalize(text)
-    if not normalized:
-        return False
-
-    for pattern, canonical, _category in COMPILED_PATTERNS:
-        if pattern.search(normalized):
-            if canonical in WHITELIST or normalized in WHITELIST:
-                continue
-            return True
-
-    return False
-
-
-def _count_safe_ambiguous_term_occurrences(text: str) -> int:
-    compact = _normalize_space(text)
-    return len(re.findall(r"시발", compact))
-
-
-def _contains_explicit_sexual_definition(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact:
-        return False
-    if not any(marker in compact for marker in EXPLICIT_SEXUAL_DEFINITION_MARKERS):
-        return False
-    return any(marker in compact for marker in SAFE_DEFINITION_MARKERS)
-
-
-def _is_safe_transliteration_usage(text: str) -> bool:
-    compact = _normalize_space(text)
-    if not compact:
-        return False
-    if len(compact) > 120:
-        return False
-    if _count_safe_ambiguous_term_occurrences(compact) != 1:
-        return False
-    if not SAFE_TRANSLITERATION_PATTERN.search(compact):
-        return False
-    if not any(marker in compact for marker in SAFE_ENTITY_MARKERS):
-        return False
-    return True
-
-
-def _should_force_safe_without_evidence(text: str, sensitivity: int) -> bool:
-    compact = _normalize_space(text)
-    if not compact:
-        return False
-    if _is_safe_transliteration_usage(compact):
-        return True
-    if _is_kapil_sibal_proper_noun_context(compact):
-        return True
-    if _contains_ascii_profanity_marker(compact):
-        return False
-    if _is_context_safe_usage(compact, sensitivity):
-        return True
-    if _looks_like_ascii_ui_text(compact):
-        return True
-    if _looks_like_ascii_query_text(compact):
-        return True
-    if _looks_like_ascii_browser_result_text(compact):
-        return True
-    return False
-
-
-def _is_context_safe_usage(text: str, sensitivity: int) -> bool:
-    compact = _normalize_space(text)
-    if not compact:
-        return False
-
-    lower = compact.casefold()
-    normalized_sensitivity = _normalize_sensitivity(sensitivity)
-    if compact in SAFE_CONTEXT_EXACT:
-        return True
-
-    if _is_browser_ui_safe_label(compact):
-        return True
-
-    if _is_kapil_sibal_proper_noun_context(compact):
-        return True
-
-    if (
-        not _contains_ascii_profanity_marker(compact)
-        and any(term in lower for term in SAFE_TECHNICAL_CONTEXT_TERMS)
-        and any(marker in compact for marker in SAFE_TECHNICAL_CONTEXT_MARKERS)
-        and len(compact) <= 160
-    ):
-        return True
-
-    contains_safe_ambiguous_term = any(term in lower for term in SAFE_AMBIGUOUS_CONTEXT_TERMS)
-
-    if (
-        contains_safe_ambiguous_term
-        and any(marker in lower for marker in SAFE_SOURCE_MARKERS)
-        and " - " in compact
-        and normalized_sensitivity < RELAXED_DICTIONARY_SAFE_SENSITIVITY
-    ):
-        return True
-
-    if (
-        contains_safe_ambiguous_term
-        and any(marker in compact for marker in SAFE_DEFINITION_MARKERS)
-        and normalized_sensitivity < RELAXED_DICTIONARY_SAFE_SENSITIVITY
-        and not _contains_explicit_sexual_definition(compact)
-    ):
-        if len(compact) <= 160 and "?" not in compact and "!" not in compact:
-            return True
-
-    return False
-
-
-def _detect_explicit_definition_spans(original_text: str) -> list[dict]:
-    compact = _normalize_space(original_text)
-    if not compact or not _contains_explicit_sexual_definition(compact):
-        return []
-
-    lowered_text = str(original_text or "")
-    spans: list[dict] = []
-    for marker in EXPLICIT_SEXUAL_DEFINITION_MARKERS:
-        start = lowered_text.find(marker)
-        if start < 0:
-            continue
-        spans.append(
-            {
-                "text": lowered_text[start : start + len(marker)],
-                "start": start,
-                "end": start + len(marker),
-                "score": 0.96,
-            }
-        )
-
-    return _merge_raw_spans(spans)
-
-
-def _detect_dictionary_spans(normalized_text: str) -> list[dict]:
-    if not normalized_text:
-        return []
-
-    matches: list[dict] = []
-    for pattern, canonical, category in COMPILED_PATTERNS:
-        for match in pattern.finditer(normalized_text):
-            matched_text = match.group(0).strip()
-            if not matched_text:
-                continue
-            if matched_text in WHITELIST or canonical in WHITELIST:
-                continue
-
-            matches.append(
-                {
-                    "text": matched_text,
-                    "canonical": canonical,
-                    "category": category,
-                    "start": match.start(),
-                    "end": match.end(),
-                    "score": 0.99,
-                }
-            )
-
-    matches.sort(key=lambda item: (item["start"], item["end"]))
-
-    merged: list[dict] = []
-    for match in matches:
-        previous = merged[-1] if merged else None
-        if previous and match["start"] < previous["end"]:
-            if (match["end"] - match["start"]) > (previous["end"] - previous["start"]):
-                merged[-1] = match
-            continue
-        merged.append(match)
-
-    return merged
-
-
-def _detect_ascii_dictionary_spans(original_text: str) -> list[dict]:
-    if not original_text:
-        return []
-
-    matches: list[dict] = []
-    for match in ASCII_DICTIONARY_PATTERN.finditer(str(original_text)):
-        matched_text = match.group(0).strip()
-        if not matched_text:
-            continue
-
-        matches.append(
-            {
-                "text": matched_text,
-                "start": match.start(),
-                "end": match.end(),
-                "score": 0.99,
-            }
-        )
-
-    return _merge_raw_spans(matches)
-
-
-def _merge_raw_spans(raw_spans: list[dict]) -> list[dict]:
-    ordered_spans = sorted(
-        raw_spans,
-        key=lambda span: (
-            int(span.get("start", -1)),
-            int(span.get("end", -1)),
-            -len(str(span.get("text", ""))),
-        ),
-    )
-
-    merged: list[dict] = []
-    for span in ordered_spans:
-        start = int(span.get("start", -1))
-        end = int(span.get("end", -1))
-        if start < 0 or end <= start:
-            continue
-
-        previous = merged[-1] if merged else None
-        if previous and start < int(previous.get("end", -1)):
-            previous_length = int(previous.get("end", -1)) - int(previous.get("start", -1))
-            current_length = end - start
-            if current_length > previous_length:
-                merged[-1] = span
-            continue
-
-        merged.append(span)
-
-    return merged
-
-
-def _empty_scores() -> dict[str, float]:
-    return {"profanity": 0.0, "toxicity": 0.0, "hate": 0.0}
-
 
 # 모델 경로: 환경변수 > 기본값(backend/ 기준)
 BASE = os.environ.get("MODEL_BASE", os.path.join(os.path.dirname(__file__), ".."))
 
 
 class ProfanityPipeline:
-    def __init__(
-        self,
-        classifier_path: str = None,
-        span_model_path: str = None,
-        threshold: float = 0.5,
-    ):
+    def __init__(self,
+                 classifier_path: str = None,
+                 span_model_path: str = None,
+                 threshold: float = 0.5):
+        """
+        Args:
+            classifier_path: 분류 모델 경로
+            span_model_path: Span CRF 모델 경로
+            threshold: 분류 임계값 (is_profane 등 판정 기준)
+        """
         if classifier_path is None:
             classifier_path = os.environ.get(
                 "MODEL_CLASSIFIER_PATH",
@@ -548,340 +262,183 @@ class ProfanityPipeline:
         self.span_detector = SpanDetector(model_dir=span_model_path)
         self.threshold = threshold
 
-    def _effective_thresholds(self, sensitivity: int | None = None) -> dict[str, float]:
-        base_threshold = float(self.threshold)
-        normalized_sensitivity = _normalize_sensitivity(sensitivity)
-        sensitivity_delta = DEFAULT_EXTENSION_SENSITIVITY - normalized_sensitivity
-        return {
-            category: min(
-                MAX_SENSITIVITY_ADJUSTED_THRESHOLD,
-                max(
-                    MIN_SENSITIVITY_ADJUSTED_THRESHOLD,
-                    max(base_threshold, calibrated)
-                    + (sensitivity_delta * SENSITIVITY_THRESHOLD_STEP),
-                ),
-            )
-            for category, calibrated in CALIBRATED_SCORE_THRESHOLDS.items()
-        }
-
-    def _build_classifier_flags(self, cls_result: dict, sensitivity: int | None = None) -> dict[str, bool]:
-        scores = cls_result.get("scores") or {}
-        thresholds = self._effective_thresholds(sensitivity)
-        return {
-            "is_profane": float(scores.get("profanity", 0.0)) >= thresholds["profanity"],
-            "is_toxic": float(scores.get("toxicity", 0.0)) >= thresholds["toxicity"],
-            "is_hate": float(scores.get("hate", 0.0)) >= thresholds["hate"],
-        }
-
-    @staticmethod
-    def _has_any_flag(flags: dict) -> bool:
-        return bool(flags["is_profane"] or flags["is_toxic"] or flags["is_hate"])
-
-    def _is_safe_ambiguous_entity_span(
-        self,
-        original_text: str,
-        span_start: int,
-        span_end: int,
-        span_text: str,
-    ) -> bool:
-        compact_span = _normalize_space(span_text)
-        if compact_span != "시발":
-            return False
-
-        before = _normalize_space(original_text[max(0, span_start - 24) : span_start])
-        after = _normalize_space(original_text[span_end : min(len(original_text), span_end + 40)])
-        lower_original = _normalize_space(original_text).casefold()
-
-        if "국제차량제작" in before and any(
-            marker in original_text for marker in ("자동차", "주식회사", "회사")
-        ):
-            return True
-
-        if (
-            "카필" in before
-            and SAFE_KAPIL_SIBAL_PATTERN.search(after)
-            and any(marker in lower_original for marker in SAFE_ENTITY_MARKERS)
-        ):
-            return True
-
-        return False
-
-    def _should_reject_span(self, original_text: str, span_text: str) -> bool:
-        compact_span = _normalize_space(span_text)
-        if not compact_span:
-            return True
-        if (
-            compact_span.casefold() == "sibal"
-            and _is_kapil_sibal_proper_noun_context(original_text)
-        ):
-            return True
-        if _contains_ascii_profanity_marker(compact_span):
-            compact_original = _normalize_space(original_text)
-            if (
-                _is_safe_transliteration_usage(original_text)
-                or (
-                    SAFE_TRANSLITERATION_PATTERN.search(compact_original)
-                    and any(marker in compact_original for marker in SAFE_ENTITY_MARKERS)
-                )
-            ):
-                return True
-            return False
-        if re.search(r"\s", compact_span) and not _has_dictionary_signal(compact_span):
-            return True
-        if _is_browser_ui_safe_label(compact_span):
-            return True
-        if _looks_like_ascii_ui_text(original_text) and _looks_like_ascii_ui_text(compact_span):
-            return True
-        if not _contains_korean_text(compact_span):
-            return not _contains_ascii_profanity_marker(compact_span)
-        if _looks_like_ascii_browser_result_text(original_text) and not _has_dictionary_signal(compact_span):
-            return True
-        return False
-
-    def _map_spans_to_original(
-        self,
-        original_text: str,
-        normalized_text: str,
-        raw_spans: list[dict],
-    ) -> list[dict]:
-        if not raw_spans:
-            return []
-
-        n2o = _build_norm_to_orig_map(original_text, normalized_text)
-        evidence_spans = []
-
-        for span in raw_spans:
-            mapped = {
-                "text": span.get("text", ""),
-                "start": int(span.get("start", -1)),
-                "end": int(span.get("end", -1)),
-                "score": float(span.get("score", 0.0)),
-            }
-
-            norm_start = mapped["start"]
-            norm_end = mapped["end"]
-            if not (0 <= norm_start < len(n2o) and 0 < norm_end <= len(n2o)):
-                continue
-
-            mapped["start"] = n2o[norm_start]
-            mapped["end"] = n2o[norm_end - 1] + 1
-            mapped["text"] = original_text[mapped["start"] : mapped["end"]]
-
-            if mapped["end"] <= mapped["start"]:
-                continue
-            if self._is_safe_ambiguous_entity_span(
-                original_text,
-                mapped["start"],
-                mapped["end"],
-                mapped["text"],
-            ):
-                continue
-            if self._should_reject_span(original_text, mapped["text"]):
-                continue
-
-            evidence_spans.append(mapped)
-
-        return evidence_spans
-
-    def _filter_direct_spans(self, original_text: str, raw_spans: list[dict]) -> list[dict]:
-        filtered_spans: list[dict] = []
-
-        for span in raw_spans:
-            mapped = {
-                "text": str(span.get("text", "")),
-                "start": int(span.get("start", -1)),
-                "end": int(span.get("end", -1)),
-                "score": float(span.get("score", 0.0)),
-            }
-
-            if mapped["start"] < 0 or mapped["end"] <= mapped["start"]:
-                continue
-            if mapped["end"] > len(original_text):
-                continue
-            if self._should_reject_span(original_text, mapped["text"]):
-                continue
-
-            filtered_spans.append(mapped)
-
-        return filtered_spans
-
-    def _build_result(
-        self,
-        original_text: str,
-        cls_result: dict,
-        evidence_spans: list[dict] | None = None,
-        *,
-        force_safe: bool = False,
-        override_flags: dict[str, bool] | None = None,
-        sensitivity: int | None = None,
-    ) -> dict:
-        scores = cls_result.get("scores") or _empty_scores()
-        if force_safe:
-            return {
-                "text": original_text,
-                "is_offensive": False,
-                "is_profane": False,
-                "is_toxic": False,
-                "is_hate": False,
-                "scores": scores,
-                "evidence_spans": [],
-            }
-
-        effective_flags = override_flags or self._build_classifier_flags(cls_result, sensitivity)
-        return {
-            "text": original_text,
-            "is_offensive": self._has_any_flag(effective_flags),
-            "is_profane": effective_flags["is_profane"],
-            "is_toxic": effective_flags["is_toxic"],
-            "is_hate": effective_flags["is_hate"],
-            "scores": scores,
-            "evidence_spans": evidence_spans or [],
-        }
-
-    def _build_analysis_result(
-        self,
-        original_text: str,
-        normalized_text: str,
-        cls_result: dict,
-        sensitivity: int,
-        span_cache: dict[str, list[dict]] | None = None,
-    ) -> dict:
-        if _is_context_safe_usage(original_text, sensitivity):
-            return self._build_result(original_text, cls_result, force_safe=True)
-
-        normalized_dictionary_spans = _merge_raw_spans(_detect_dictionary_spans(normalized_text))
-        mapped_dictionary_spans: list[dict] = []
-        if normalized_dictionary_spans:
-            mapped_dictionary_spans = self._map_spans_to_original(
-                original_text,
-                normalized_text,
-                normalized_dictionary_spans,
-            )
-        mapped_dictionary_spans = _merge_raw_spans(
-            [
-                *mapped_dictionary_spans,
-                *self._filter_direct_spans(
-                    original_text,
-                    _detect_ascii_dictionary_spans(original_text),
-                ),
-            ]
-        )
-
-        explicit_definition_spans = _detect_explicit_definition_spans(original_text)
-        if (
-            _normalize_sensitivity(sensitivity) >= STRICT_DICTIONARY_BLOCK_SENSITIVITY
-            and (mapped_dictionary_spans or explicit_definition_spans)
-        ):
-            evidence_spans = _merge_raw_spans(
-                [*mapped_dictionary_spans, *explicit_definition_spans]
-            )
-            effective_flags = self._build_classifier_flags(cls_result, sensitivity)
-            if not self._has_any_flag(effective_flags):
-                effective_flags = {
-                    **effective_flags,
-                    "is_profane": True,
-                }
-            return self._build_result(
-                original_text,
-                cls_result,
-                evidence_spans=evidence_spans,
-                override_flags=effective_flags,
-            )
-
-        if mapped_dictionary_spans:
-            effective_flags = self._build_classifier_flags(cls_result, sensitivity)
-            if self._has_any_flag(effective_flags):
-                return self._build_result(
-                    original_text,
-                    cls_result,
-                    evidence_spans=mapped_dictionary_spans,
-                    override_flags=effective_flags,
-                )
-
-        effective_flags = self._build_classifier_flags(cls_result, sensitivity)
-        if _should_force_safe_without_evidence(original_text, sensitivity):
-            return self._build_result(original_text, cls_result, force_safe=True)
-
-        if not self._has_any_flag(effective_flags):
-            return self._build_result(
-                original_text,
-                cls_result,
-                evidence_spans=[],
-                sensitivity=sensitivity,
-            )
-
-        if span_cache is None:
-            model_spans = self.span_detector.detect(normalized_text)
-        else:
-            model_spans = span_cache.get(normalized_text)
-            if model_spans is None:
-                model_spans = self.span_detector.detect(normalized_text)
-                span_cache[normalized_text] = model_spans
-
-        raw_spans = _merge_raw_spans(model_spans)
-        evidence_spans = self._map_spans_to_original(
-            original_text,
-            normalized_text,
-            raw_spans,
-        )
-
-        return self._build_result(
-            original_text,
-            cls_result,
-            evidence_spans=evidence_spans,
-            sensitivity=sensitivity,
-        )
-
     def analyze(self, text: str, sensitivity: int | None = None) -> dict:
+        """단일 텍스트 분석.
+
+        분류기가 주 판정자, span은 근거 제공자.
+        분류기 판정(is_offensive)을 span이 뒤집지 않는다.
+        """
+        total_started = time.perf_counter()
+
+        # [1단계] 정규화
+        normalize_started = time.perf_counter()
         normalized = normalize(text)
-        cls_result = self.classifier.predict(normalized, threshold=self.threshold)
-        return self._build_analysis_result(
+        normalize_ms = (time.perf_counter() - normalize_started) * 1000
+        threshold = _threshold_from_sensitivity(sensitivity, self.threshold)
+
+        if _is_latin_safe_text(text) or _is_latin_safe_text(normalized) or _is_safe_context(text, normalized):
+            result = _empty_result(text)
+            result["_timing"]["normalize_ms"] = round(normalize_ms, 3)
+            result["_timing"]["pipeline_ms"] = round((time.perf_counter() - total_started) * 1000, 3)
+            return result
+
+        n2o = _build_norm_to_orig_map(text, normalized)
+        direct_spans = _merge_spans(
+            _extract_original_direct_spans(text) + _extract_dictionary_spans(text, normalized, n2o),
             text,
-            normalized,
-            cls_result,
-            _normalize_sensitivity(sensitivity),
         )
+
+        # [2단계] 문장 분류
+        classifier_started = time.perf_counter()
+        cls_result = self.classifier.predict(normalized, threshold=threshold)
+        classifier_ms = (time.perf_counter() - classifier_started) * 1000
+
+        direct_is_offensive = any(span["score"] >= threshold for span in direct_spans)
+        is_offensive = (
+            cls_result["is_profane"]
+            or cls_result["is_toxic"]
+            or cls_result["is_hate"]
+            or direct_is_offensive
+        )
+
+        # [3단계] Span 추출 — 분류기가 유해 판정한 경우에만 실행
+        evidence_spans = list(direct_spans) if direct_is_offensive else []
+        span_ms = 0.0
+        if is_offensive and not evidence_spans:
+            span_started = time.perf_counter()
+            raw_spans = self.span_detector.detect(normalized)
+            span_ms = (time.perf_counter() - span_started) * 1000
+
+            for s in raw_spans:
+                ns, ne = s["start"], s["end"]
+                if 0 <= ns < len(n2o) and 0 < ne <= len(n2o):
+                    s["start"] = n2o[ns]
+                    s["end"] = n2o[ne - 1] + 1
+                    s["text"] = text[s["start"]:s["end"]]
+                else:
+                    s["start"] = -1
+                    s["end"] = -1
+                evidence_spans.append(s)
+
+            evidence_spans = _merge_spans(evidence_spans, text)
+
+        total_pipeline_ms = (time.perf_counter() - total_started) * 1000
+        model_ms = classifier_ms + span_ms
+
+        return {
+            "text": text,
+            "is_offensive": is_offensive,
+            "is_profane": cls_result["is_profane"],
+            "is_toxic": cls_result["is_toxic"],
+            "is_hate": cls_result["is_hate"],
+            "scores": cls_result["scores"],
+            "evidence_spans": evidence_spans,
+            "_timing": {
+                "normalize_ms": round(normalize_ms, 3),
+                "classifier_ms": round(classifier_ms, 3),
+                "span_ms": round(span_ms, 3),
+                "model_ms": round(model_ms, 3),
+                "pipeline_ms": round(total_pipeline_ms, 3),
+            },
+        }
 
     def analyze_batch(self, texts: list[str], sensitivity: int | None = None) -> list[dict]:
-        if not texts:
-            return []
+        """배치 텍스트 분석."""
+        total_started = time.perf_counter()
+        threshold = _threshold_from_sensitivity(sensitivity, self.threshold)
 
-        normalized_sensitivity = _normalize_sensitivity(sensitivity)
-        normalized_texts = [normalize(text) for text in texts]
+        normalized_items: list[str] = []
+        normalize_times: list[float] = []
+        results: list[dict | None] = [None] * len(texts)
+        classifier_indexes: list[int] = []
+        classifier_texts: list[str] = []
 
-        unique_normalized = []
-        seen_normalized = set()
-        for normalized_text in normalized_texts:
-            if normalized_text in seen_normalized:
+        for index, text in enumerate(texts):
+            normalize_started = time.perf_counter()
+            normalized = normalize(text)
+            normalize_ms = (time.perf_counter() - normalize_started) * 1000
+            normalized_items.append(normalized)
+            normalize_times.append(normalize_ms)
+
+            if _is_latin_safe_text(text) or _is_latin_safe_text(normalized) or _is_safe_context(text, normalized):
+                result = _empty_result(text)
+                result["_timing"]["normalize_ms"] = round(normalize_ms, 3)
+                result["_timing"]["pipeline_ms"] = round((time.perf_counter() - total_started) * 1000, 3)
+                results[index] = result
                 continue
-            seen_normalized.add(normalized_text)
-            unique_normalized.append(normalized_text)
 
-        classified_batch = self.classifier.predict_batch(
-            unique_normalized,
-            threshold=self.threshold,
-        )
-        classified_by_normalized = {
-            normalized_text: result
-            for normalized_text, result in zip(unique_normalized, classified_batch)
-        }
+            classifier_indexes.append(index)
+            classifier_texts.append(normalized)
 
-        span_cache: dict[str, list[dict]] = {}
-        results = []
-        for original_text, normalized_text in zip(texts, normalized_texts):
-            results.append(
-                self._build_analysis_result(
-                    original_text,
-                    normalized_text,
-                    classified_by_normalized[normalized_text],
-                    normalized_sensitivity,
-                    span_cache=span_cache,
+        if classifier_texts:
+            classifier_started = time.perf_counter()
+            cls_results = self.classifier.predict_batch(classifier_texts, threshold=threshold)
+            total_classifier_ms = (time.perf_counter() - classifier_started) * 1000
+            per_item_classifier_ms = total_classifier_ms / max(1, len(classifier_texts))
+
+            for batch_pos, index in enumerate(classifier_indexes):
+                text = texts[index]
+                normalized = normalized_items[index]
+                cls_result = cls_results[batch_pos]
+                n2o = _build_norm_to_orig_map(text, normalized)
+                direct_spans = _merge_spans(
+                    _extract_original_direct_spans(text) + _extract_dictionary_spans(text, normalized, n2o),
+                    text,
                 )
-            )
 
-        return results
+                direct_is_offensive = any(span["score"] >= threshold for span in direct_spans)
+                is_offensive = (
+                    cls_result["is_profane"]
+                    or cls_result["is_toxic"]
+                    or cls_result["is_hate"]
+                    or direct_is_offensive
+                )
+
+                evidence_spans = list(direct_spans) if direct_is_offensive else []
+                span_ms = 0.0
+                if is_offensive and not evidence_spans:
+                    span_started = time.perf_counter()
+                    raw_spans = self.span_detector.detect(normalized)
+                    span_ms = (time.perf_counter() - span_started) * 1000
+
+                    for s in raw_spans:
+                        ns, ne = s["start"], s["end"]
+                        if 0 <= ns < len(n2o) and 0 < ne <= len(n2o):
+                            s["start"] = n2o[ns]
+                            s["end"] = n2o[ne - 1] + 1
+                            s["text"] = text[s["start"]:s["end"]]
+                        else:
+                            s["start"] = -1
+                            s["end"] = -1
+                        evidence_spans.append(s)
+
+                    evidence_spans = _merge_spans(evidence_spans, text)
+
+                model_ms = per_item_classifier_ms + span_ms
+                results[index] = {
+                    "text": text,
+                    "is_offensive": is_offensive,
+                    "is_profane": cls_result["is_profane"],
+                    "is_toxic": cls_result["is_toxic"],
+                    "is_hate": cls_result["is_hate"],
+                    "scores": cls_result["scores"],
+                    "evidence_spans": evidence_spans,
+                    "_timing": {
+                        "normalize_ms": round(normalize_times[index], 3),
+                        "classifier_ms": round(per_item_classifier_ms, 3),
+                        "span_ms": round(span_ms, 3),
+                        "model_ms": round(model_ms, 3),
+                        "pipeline_ms": round((time.perf_counter() - total_started) * 1000, 3),
+                    },
+                }
+
+        return [result if result is not None else _empty_result(texts[index]) for index, result in enumerate(results)]
 
     def analyze_android_batch(self, raw: dict) -> dict:
+        """Android 앱 수집 JSON 전체 처리.
+
+        0단계 필터 → 분석 → boundsInScreen 보존하여 반환.
+        """
         total = len(raw.get("comments", []))
         valid_comments = filter_android_json(raw)
 
@@ -889,20 +446,19 @@ class ProfanityPipeline:
         for item in valid_comments:
             text = item["commentText"]
             bounds = item["boundsInScreen"]
-            analysis = self.analyze(text, sensitivity=DEFAULT_EXTENSION_SENSITIVITY)
 
-            results.append(
-                {
-                    "original": text,
-                    "boundsInScreen": bounds,
-                    "is_offensive": analysis["is_offensive"],
-                    "is_profane": analysis["is_profane"],
-                    "is_toxic": analysis["is_toxic"],
-                    "is_hate": analysis["is_hate"],
-                    "scores": analysis["scores"],
-                    "evidence_spans": analysis["evidence_spans"],
-                }
-            )
+            analysis = self.analyze(text)
+
+            results.append({
+                "original": text,
+                "boundsInScreen": bounds,
+                "is_offensive": analysis["is_offensive"],
+                "is_profane": analysis["is_profane"],
+                "is_toxic": analysis["is_toxic"],
+                "is_hate": analysis["is_hate"],
+                "scores": analysis["scores"],
+                "evidence_spans": analysis["evidence_spans"],
+            })
 
         return {
             "timestamp": raw.get("timestamp"),
