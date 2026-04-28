@@ -6855,6 +6855,11 @@ async function bootstrap() {
     onlyVisible: true,
     limit: MAX_INITIAL_TEXT_NODES
   });
+  refreshVisibleCandidateRegistrations({
+    markDirty: true,
+    markHighSignalDirty: true,
+    highSignalDirtyLimit: 16
+  });
   scheduleInitialEditablePass();
   scheduleStartupFollowupPipelines();
   scheduleBackendWarmup();
