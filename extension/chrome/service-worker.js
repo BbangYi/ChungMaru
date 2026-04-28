@@ -237,7 +237,7 @@ function getAnalyzeBatchChunkSize(requestTimeoutMs, textCount, mode = "foregroun
 
   const normalizedMode = normalizeAnalyzeBatchMode(mode);
   if (normalizedMode === "background-validation") {
-    return 1;
+    return Math.min(SMALL_ANALYZE_BATCH_CHUNK_SIZE, textCount);
   }
 
   if (normalizedMode === "reconcile") {
