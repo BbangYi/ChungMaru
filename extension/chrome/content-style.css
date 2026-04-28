@@ -73,7 +73,7 @@
 }
 
 .shieldtext-editable-hard-concealed {
-  opacity: 0 !important;
+  opacity: 1;
 }
 
 .shieldtext-editable-source-concealed::selection {

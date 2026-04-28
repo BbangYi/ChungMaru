@@ -231,6 +231,10 @@ function normalizeSensitivity(value) {
   return Math.max(0, Math.min(100, Math.round(numberValue)));
 }
 
+function isFilteringSuppressedBySensitivity(settings) {
+  return normalizeSensitivity(settings?.sensitivity) <= 0;
+}
+
 function sanitizeApiBaseUrl(value) {
   const normalized = String(value || DEFAULT_SETTINGS.backendApiBaseUrl).trim();
   if (!normalized) return DEFAULT_SETTINGS.backendApiBaseUrl;
@@ -578,6 +582,21 @@ function invalidateAnalysisForSettingsChange() {
     reconcileFlushTimerId = null;
   }
   scheduledReconcileDelayMs = 0;
+}
+
+function restoreAllRenderedContent() {
+  suppressMutationFeedback(240);
+
+  for (const state of NODE_STATE_BY_ID.values()) {
+    restoreNodeState(state);
+  }
+
+  for (const state of EDITABLE_VALUE_STATE_BY_ID.values()) {
+    restoreEditableValueState(state);
+  }
+
+  RECONCILE_QUEUE.clear();
+  SKIPPED_RETRY_NODE_IDS.clear();
 }
 
 function includeEditableCandidatesForSettingsRefresh(candidates) {
@@ -5810,13 +5829,7 @@ async function executePipeline(runReason) {
     const hostname = location.hostname || "unknown";
 
     if (!settings.enabled) {
-      suppressMutationFeedback(220);
-      for (const state of NODE_STATE_BY_ID.values()) {
-        restoreNodeState(state);
-      }
-      for (const state of EDITABLE_VALUE_STATE_BY_ID.values()) {
-        restoreEditableValueState(state);
-      }
+      restoreAllRenderedContent();
 
       const payload = buildPayload([], 0, 0);
       const decision = {
@@ -5850,6 +5863,58 @@ async function executePipeline(runReason) {
         totalCandidateCount: 0,
         requestedAnalysisCount: 0,
         cacheHitCount: 0
+      };
+
+      await persistDebug(payload, decision, stats);
+      return { ok: true, stats };
+    }
+
+    if (isFilteringSuppressedBySensitivity(settings)) {
+      restoreAllRenderedContent();
+
+      const payload = buildPayload([], 0, 0);
+      const decision = {
+        blockedNodeIds: [],
+        matchedKeywords: [],
+        categoryHits: emptyCategoryHits(),
+        nodeCategoryMap: {},
+        nodeReasonMap: {},
+        nodeScoreMap: {},
+        nodeEvidenceMap: {},
+        nodePendingMap: {},
+        nodeOutcomeMap: {},
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendDurationMs: 0,
+        backendStatus: "ready",
+        apiMode: "sensitivity-disabled"
+      };
+
+      const stats = {
+        hostname,
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        matchedKeywordCount: 0,
+        durationMs: Math.round(performance.now() - startedAt),
+        runReason,
+        enabled: true,
+        sensitivityDisabled: true,
+        sensitivity: normalizeSensitivity(settings.sensitivity),
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendStatus: "ready",
+        totalCandidateCount: 0,
+        requestedAnalysisCount: 0,
+        cacheHitCount: 0,
+        lastDecisionSource: "sensitivity-disabled",
+        lastForegroundDiagnostics: {
+          decisionSource: "sensitivity-disabled",
+          apiBaseUrl: settings.backendApiBaseUrl,
+          backendStatus: "ready",
+          foregroundBackendSource: "disabled",
+          batchSize: 0,
+          items: []
+        }
       };
 
       await persistDebug(payload, decision, stats);
@@ -7024,8 +7089,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "sync") return;
   if (!changes?.settings) return;
-  updateCachedSettings(changes.settings.newValue || {});
+  const nextSettings = updateCachedSettings(changes.settings.newValue || {});
   invalidateAnalysisForSettingsChange();
+  if (isFilteringSuppressedBySensitivity(nextSettings)) {
+    restoreAllRenderedContent();
+  }
   scheduleInitialEditablePass();
   schedulePipeline("settings-updated");
 });
