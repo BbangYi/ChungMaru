@@ -205,7 +205,7 @@ function concealEditableSourceText(state) {
   state.element.removeAttribute("title");
   if (shouldUseHardEditableConcealment(state.element)) {
     state.element.style.filter = state.originalFilter || "";
-    state.element.style.setProperty("opacity", "0", "important");
+    state.element.style.opacity = state.originalOpacity || "";
     state.element.classList.add("shieldtext-editable-hard-concealed");
     state.element.dataset.shieldtextHardConceal = "true";
   } else {
