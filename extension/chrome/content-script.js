@@ -78,7 +78,7 @@ const MAX_FOREGROUND_WAVE_CONTAINERS = 4;
 const MAX_BACKGROUND_CANDIDATES = 24;
 const MAX_HOT_PATH_CONTAINERS = 8;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
-const STARTUP_FOLLOWUP_DELAYS_MS = [48, 180, 420, 900];
+const STARTUP_FOLLOWUP_DELAYS_MS = [16, 48, 180, 420, 900];
 const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [24, 80, 220, 520, 1100, 1800];
 const NAVIGATION_POLL_INTERVAL_MS = 80;
 const SAME_ROUTE_DIRTY_REFRESH_REASONS = new Set([
@@ -2021,9 +2021,15 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
     perElementLimit: 3,
     candidateFilter(candidate) {
       const text = normalizeText(candidate?.text || "");
-      return Boolean(text) &&
+      const isHighSignalCandidate = Boolean(text) &&
         HIGH_SIGNAL_PROFANITY_PATTERN.test(text) &&
         isGoogleVisibleHighSignalCandidate(candidate);
+
+      if (isHighSignalCandidate && candidate?.nodeId) {
+        DIRTY_NODE_IDS.add(candidate.nodeId);
+      }
+
+      return isHighSignalCandidate;
     }
   });
 }
@@ -7571,12 +7577,14 @@ async function bootstrap() {
   scheduleBackendWarmup();
   initializeObserver();
 
+  executePipeline("initial-load").catch((error) => {
+    if (!handleExtensionContextError(error)) {
+      console.error("[청마루] initial-load pipeline error", error);
+    }
+  });
+
   window.requestAnimationFrame(() => {
-    executePipeline("initial-load").catch((error) => {
-      if (!handleExtensionContextError(error)) {
-        console.error("[청마루] initial-load pipeline error", error);
-      }
-    });
+    schedulePipeline("visibility");
   });
 }
 
