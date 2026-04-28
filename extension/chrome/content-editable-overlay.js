@@ -410,6 +410,13 @@ function syncEditableOverlayLayout(state) {
   const isSingleLineEditable = isSingleLineEditableElement(element);
   const isFixedTokenOverlay = state.overlayRoot.dataset.shieldtextFixedEditable === "true";
   const computedLineHeight = style.lineHeight || "normal";
+  const fixedTokenLeftInset = isFixedTokenOverlay
+    ? Math.max(
+        0,
+        (parseFloat(style.paddingLeft || "0") || 0) +
+          (parseFloat(style.borderLeftWidth || "0") || 0)
+      )
+    : 0;
   const overlayWidth = Math.max(rect.width, isSingleLineEditable ? rect.width : element.scrollWidth || 0);
   const overlayHeight = Math.max(rect.height, isSingleLineEditable ? rect.height : element.scrollHeight || 0);
   const overlayLeft = Math.round(rect.left - hostRect.left + hostScrollLeft);
@@ -422,6 +429,7 @@ function syncEditableOverlayLayout(state) {
     height: Math.round(rect.height),
     overlayWidth: isFixedTokenOverlay ? Math.round(rect.width) : Math.round(overlayWidth),
     overlayHeight: isFixedTokenOverlay ? Math.round(rect.height) : Math.round(overlayHeight),
+    fixedTokenLeftInset: Math.round(fixedTokenLeftInset),
     scrollLeft: isFixedTokenOverlay ? 0 : Math.round(Number(element.scrollLeft || 0)),
     scrollTop: isFixedTokenOverlay ? 0 : Math.round(Number(element.scrollTop || 0)),
     hostScrollLeft,
@@ -453,12 +461,12 @@ function syncEditableOverlayLayout(state) {
   overlayRoot.style.borderRadius = style.borderRadius;
   overlayRoot.style.overflow = "hidden";
 
-  overlayContent.style.display = isSingleLineEditable || isFixedTokenOverlay ? "flex" : "block";
+  overlayContent.style.display = isFixedTokenOverlay ? "block" : isSingleLineEditable ? "flex" : "block";
   overlayContent.style.position = "absolute";
   overlayContent.style.left = "0";
   overlayContent.style.top = "0";
-  overlayContent.style.padding = style.padding;
-  overlayContent.style.border = style.border;
+  overlayContent.style.padding = isFixedTokenOverlay ? "0" : style.padding;
+  overlayContent.style.border = isFixedTokenOverlay ? "0" : style.border;
   overlayContent.style.borderRadius = style.borderRadius;
   overlayContent.style.boxSizing = style.boxSizing;
   overlayContent.style.font = style.font;
@@ -482,7 +490,7 @@ function syncEditableOverlayLayout(state) {
   overlayContent.style.writingMode = style.writingMode;
   overlayContent.style.color = overlayTextColor || style.color;
   overlayContent.style.webkitTextFillColor = overlayTextFillColor || overlayTextColor || style.color;
-  overlayContent.style.alignItems = isSingleLineEditable || isFixedTokenOverlay ? "center" : "";
+  overlayContent.style.alignItems = isFixedTokenOverlay ? "" : isSingleLineEditable ? "center" : "";
   overlayContent.style.flexWrap = "nowrap";
   overlayContent.style.whiteSpace = isSingleLineEditable || isFixedTokenOverlay
     ? "pre"
@@ -503,6 +511,7 @@ function syncEditableOverlayLayout(state) {
   overlayContent.style.transform = isFixedTokenOverlay
     ? "translate3d(0, 0, 0)"
     : `translate3d(${-Math.round(Number(element.scrollLeft || 0))}px, ${-Math.round(Number(element.scrollTop || 0))}px, 0)`;
+  overlayContent.style.setProperty("--shieldtext-fixed-token-left", `${Math.round(fixedTokenLeftInset)}px`);
 }
 
 function renderEditableOverlay(state, text, spans, settings, tooltip) {

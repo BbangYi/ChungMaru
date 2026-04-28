@@ -162,6 +162,10 @@
 
 .shieldtext-editable-fixed-token {
   flex: 0 0 auto;
+  position: absolute !important;
+  left: var(--shieldtext-fixed-token-left, 0) !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
   margin: 0 !important;
   padding: 0 !important;
   border-radius: 0 !important;
@@ -169,7 +173,7 @@
   box-shadow: none !important;
   letter-spacing: inherit !important;
   white-space: pre !important;
-  line-height: inherit !important;
+  line-height: 1 !important;
 }
 
 .shieldtext-site-policy-overlay {
