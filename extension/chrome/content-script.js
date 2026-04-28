@@ -72,10 +72,10 @@ const VISIBILITY_PIPELINE_DEBOUNCE_MS = 8;
 const RECONCILE_FLUSH_DELAY_MS = 20;
 const RECONCILE_FAST_FLUSH_DELAY_MS = 0;
 const RECONCILE_CHUNK_SIZE = 2;
-const MAX_FOREGROUND_CANDIDATES = 12;
-const MAX_FOREGROUND_WAVE_CANDIDATES = 8;
+const MAX_FOREGROUND_CANDIDATES = 16;
+const MAX_FOREGROUND_WAVE_CANDIDATES = 12;
 const MAX_FOREGROUND_WAVE_CONTAINERS = 4;
-const MAX_BACKGROUND_CANDIDATES = 16;
+const MAX_BACKGROUND_CANDIDATES = 24;
 const MAX_HOT_PATH_CONTAINERS = 8;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
 const STARTUP_FOLLOWUP_DELAYS_MS = [48, 180, 420, 900];
@@ -2683,7 +2683,7 @@ function selectForegroundWaveCandidates(candidates, settings, runReason) {
     );
 
     for (const candidate of directHighSignalCandidates) {
-      if (selected.length >= Math.min(MAX_FOREGROUND_WAVE_CANDIDATES, 4)) {
+      if (selected.length >= Math.min(MAX_FOREGROUND_WAVE_CANDIDATES, 10)) {
         break;
       }
       if (selectedNodeIds.has(candidate.nodeId)) {
