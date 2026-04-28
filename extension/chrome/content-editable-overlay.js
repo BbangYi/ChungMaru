@@ -519,10 +519,10 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     text,
     spans,
     interventionMode: settings?.interventionMode || "mask",
-    fullSpanMaskWidthPx: doSpansCoverFullText(spans, text)
+    fullSpanMaskWidthPx: doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element)
       ? getEditableFullSpanMaskWidthPx(state.element, text)
       : 0,
-    fullSpanMaskHeightPx: doSpansCoverFullText(spans, text)
+    fullSpanMaskHeightPx: doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element)
       ? getEditableFullSpanMaskHeightPx(state.element)
       : 0
   });
@@ -549,7 +549,9 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     mask.className = settings?.interventionMode === "hide"
       ? "shieldtext-editable-hide"
       : "shieldtext-editable-mask";
-    if (doSpansCoverFullText(spans, text)) {
+    const shouldUseMeasuredFullSpanBox =
+      doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element);
+    if (shouldUseMeasuredFullSpanBox) {
       const fullSpanWidthPx = getEditableFullSpanMaskWidthPx(state.element, text);
       const fullSpanHeightPx = getEditableFullSpanMaskHeightPx(state.element);
       mask.style.display = "inline-flex";
@@ -565,7 +567,7 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     mask.style.setProperty("color", "transparent", "important");
     mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
     mask.style.setProperty("text-shadow", "none", "important");
-    if (!doSpansCoverFullText(spans, text)) {
+    if (!shouldUseMeasuredFullSpanBox) {
       const hiddenText = document.createElement("span");
       hiddenText.className = "shieldtext-hidden-mask-text";
       hiddenText.textContent = text.slice(span.start, span.end);
