@@ -268,7 +268,36 @@ function applyNativeFullEditableMask(state) {
   return true;
 }
 
+function getGoogleEditableOverlayHost(element) {
+  if (!shouldUseHardEditableConcealment(element)) {
+    return null;
+  }
+
+  const hostSelectors = [
+    "form[role='search']",
+    "form",
+    "[role='search']",
+    ".A8SBwf",
+    ".RNNXgb",
+    ".SDkEP"
+  ];
+
+  for (const selector of hostSelectors) {
+    const host = element.closest(selector);
+    if (host instanceof HTMLElement && host !== document.body && host !== document.documentElement) {
+      return host;
+    }
+  }
+
+  return element.parentElement instanceof HTMLElement ? element.parentElement : null;
+}
+
 function getEditableOverlayHost(element) {
+  const googleHost = getGoogleEditableOverlayHost(element);
+  if (googleHost) {
+    return googleHost;
+  }
+
   return document.body || document.documentElement;
 }
 
