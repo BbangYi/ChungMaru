@@ -1,79 +1,139 @@
-.shieldtext-hidden-element {
-  position: relative !important;
+.shieldtext-inline-wrapper {
+  display: contents !important;
+}
+
+.shieldtext-render-box {
+  white-space: inherit;
+  color: inherit;
+  font: inherit;
+}
+
+.shieldtext-inline-mask,
+.shieldtext-inline-hide {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.12em;
+  vertical-align: baseline;
+  font: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   text-shadow: none !important;
 }
 
-.shieldtext-masked-element {
-  position: relative !important;
+.shieldtext-inline-mask {
+  background: rgba(18, 18, 18, 0.72);
+}
+
+.shieldtext-inline-hide {
+  background: rgba(24, 24, 24, 0.88);
+}
+
+.shieldtext-hidden-mask-text {
+  visibility: hidden !important;
+  opacity: 0 !important;
   color: transparent !important;
   -webkit-text-fill-color: transparent !important;
   text-shadow: none !important;
 }
 
-.shieldtext-hidden-element * {
-  visibility: hidden !important;
-}
-
-.shieldtext-masked-element * {
-  visibility: hidden !important;
-}
-
-.shieldtext-hidden-element::before {
-  content: attr(data-shieldtext-placeholder);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0.1em 0.35em;
-  border-radius: 0.35em;
-  background: rgba(15, 15, 15, 0.9);
-  color: #f4f4f4;
-  font-size: 0.9em;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.shieldtext-editable-overlay {
+  position: fixed;
+  z-index: 2147483645;
   pointer-events: none;
-  visibility: visible !important;
-}
-
-.shieldtext-masked-element::before {
-  content: attr(data-shieldtext-placeholder);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0.1em 0.35em;
-  border-radius: 0.35em;
-  background: rgba(20, 20, 20, 0.56);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #f5f5f5;
-  font-size: 0.82em;
-  font-weight: 600;
-  line-height: 1.3;
-  white-space: nowrap;
+  display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-  visibility: visible !important;
+  box-sizing: border-box;
+  background: transparent;
+  color: transparent;
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
-.shieldtext-hidden-element[data-shieldtext-block-size="block"]::before {
-  justify-content: center;
-  white-space: normal;
-  text-align: center;
+.shieldtext-editable-overlay-content {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  color: transparent;
+  background: transparent;
 }
 
-.shieldtext-masked-element[data-shieldtext-block-size="block"]::before {
-  justify-content: center;
-  white-space: normal;
-  text-align: center;
+.shieldtext-editable-source-concealed {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+}
+
+.shieldtext-editable-hard-concealed {
+  opacity: 0 !important;
+}
+
+.shieldtext-editable-source-concealed::selection {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  background: transparent !important;
+}
+
+.shieldtext-editable-visible {
+  color: inherit;
+  background: transparent;
+}
+
+.shieldtext-editable-mask,
+.shieldtext-editable-hide {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
+  border: 0;
+  border-radius: 0.12em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  min-width: 0.55em;
+}
+
+.shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-mask,
+.shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-hide {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  min-height: 1.42em;
+  border-radius: 0.18em;
+  box-shadow: 0 0 0 0.08em rgb(18, 18, 18);
+}
+
+.shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-overlay-content {
+  display: flex !important;
+  align-items: center;
+}
+
+.shieldtext-editable-full-mask {
+  flex: 1 1 auto;
+  align-self: stretch;
+  height: 100%;
+  min-height: 100%;
+  min-width: 2em;
+}
+
+.shieldtext-editable-mask {
+  background: rgb(18, 18, 18);
+  box-shadow: 0 0 0 0.06em rgb(18, 18, 18);
+}
+
+.shieldtext-editable-hide {
+  background: rgb(24, 24, 24);
+  box-shadow: 0 0 0 0.06em rgb(24, 24, 24);
 }
 
 .shieldtext-site-policy-overlay {
