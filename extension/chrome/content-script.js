@@ -191,23 +191,44 @@ const GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR = [
   "[role='heading'][data-attrid='title']",
   "[data-attrid='title'] [role='heading']",
   "[data-attrid='title']",
+  "[data-attrid='description']",
+  "[data-attrid='kc:/common/topic/description']",
   "main [role='heading']",
   "main [aria-level]",
   "main .PZPZlf",
   "main .B5dxMb",
+  "main .VwiC3b",
+  "main .MUxGbd",
+  "main [data-sncf]",
+  "main [data-snf]",
+  "main [data-content-feature='1']",
   "#rhs [role='heading']",
   "#rhs [aria-level]",
   "#rhs [data-attrid='title']",
+  "#rhs [data-attrid='description']",
+  "#rhs [data-attrid='kc:/common/topic/description']",
   "#rhs .PZPZlf",
   "#rhs .B5dxMb",
+  "#rhs .kno-rdesc",
+  "#rhs .IZ6rdc",
+  "#rhs .wDYxhc",
   "#kp-wp-tab-overview [role='heading']",
   "#kp-wp-tab-overview [data-attrid='title']",
+  "#kp-wp-tab-overview [data-attrid='description']",
   "[data-container-id='main-col'] [role='heading']",
   "[data-container-id='main-col'] [aria-level]",
+  "[data-container-id='main-col'] [data-subtree]",
+  "[data-container-id='main-col'] [data-attrid]",
   "[data-container-id='main-col'] .PZPZlf",
+  "[data-container-id='main-col'] .VwiC3b",
+  "[data-container-id='main-col'] .MUxGbd",
   "[data-sfc-root='c'] [role='heading']",
   "[data-sfc-root='c'] [aria-level]",
+  "[data-sfc-root='c'] [data-subtree]",
+  "[data-sfc-root='c'] [data-attrid]",
   "[data-sfc-root='c'] .PZPZlf",
+  "[data-sfc-root='c'] .VwiC3b",
+  "[data-sfc-root='c'] .MUxGbd",
   ".PZPZlf.ssJ7i",
   ".PZPZlf.B5dxMb"
 ].join(", ");
@@ -1979,6 +2000,8 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
 
   const elements = [];
   const seenElements = new Set();
+  let inspectedElementCount = 0;
+  const maxInspectedElements = Math.max(120, limit * 12);
 
   for (const selector of [
     GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR,
@@ -1987,6 +2010,10 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
     "#bres [role='heading'], #botstuff [role='heading']"
   ]) {
     for (const element of document.querySelectorAll(selector)) {
+      inspectedElementCount += 1;
+      if (inspectedElementCount > maxInspectedElements) {
+        break;
+      }
       if (!(element instanceof Element)) continue;
       if (seenElements.has(element)) continue;
       if (!element.isConnected || !isElementVisible(element)) continue;
@@ -2003,7 +2030,7 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
       }
     }
 
-    if (elements.length >= limit * 2) {
+    if (elements.length >= limit * 2 || inspectedElementCount > maxInspectedElements) {
       break;
     }
   }
