@@ -185,6 +185,11 @@ function getEditableFullSpanMaskHeightPx(element) {
   return Math.round(targetHeight);
 }
 
+function buildEditableVisibleMaskReplacement(text) {
+  const graphemeCount = Array.from(String(text || "")).length;
+  return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
+}
+
 function concealEditableSourceText(state) {
   if (!state?.element) return;
   if (typeof suppressMutationFeedback === "function") {
@@ -470,7 +475,11 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
   } else {
     delete state.overlayRoot.dataset.shieldtextGoogleEditable;
   }
-  if (doSpansCoverFullText(spans, text) && !usesHardEditableConcealment) {
+  const shouldUseFullSpanLayout =
+    settings?.interventionMode === "hide" &&
+    doSpansCoverFullText(spans, text) &&
+    !usesHardEditableConcealment;
+  if (shouldUseFullSpanLayout) {
     state.overlayRoot.dataset.shieldtextFullSpan = "true";
   } else {
     delete state.overlayRoot.dataset.shieldtextFullSpan;
@@ -484,10 +493,10 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     text,
     spans,
     interventionMode: settings?.interventionMode || "mask",
-    fullSpanMaskWidthPx: doSpansCoverFullText(spans, text) && !usesHardEditableConcealment
+    fullSpanMaskWidthPx: shouldUseFullSpanLayout
       ? getEditableFullSpanMaskWidthPx(state.element, text)
       : 0,
-    fullSpanMaskHeightPx: doSpansCoverFullText(spans, text) && !usesHardEditableConcealment
+    fullSpanMaskHeightPx: shouldUseFullSpanLayout
       ? getEditableFullSpanMaskHeightPx(state.element)
       : 0
   });
@@ -511,11 +520,10 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     }
 
     const mask = document.createElement("span");
-    mask.className = settings?.interventionMode === "hide"
-      ? "shieldtext-editable-hide"
-      : "shieldtext-editable-mask";
+    const shouldHide = settings?.interventionMode === "hide";
+    mask.className = shouldHide ? "shieldtext-editable-hide" : "shieldtext-editable-mask";
     const shouldUseMeasuredFullSpanBox =
-      doSpansCoverFullText(spans, text) && !usesHardEditableConcealment;
+      shouldHide && doSpansCoverFullText(spans, text) && !usesHardEditableConcealment;
     if (shouldUseMeasuredFullSpanBox) {
       const fullSpanWidthPx = getEditableFullSpanMaskWidthPx(state.element, text);
       const fullSpanHeightPx = getEditableFullSpanMaskHeightPx(state.element);
@@ -529,10 +537,12 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
         mask.style.minHeight = `${fullSpanHeightPx}px`;
       }
     }
-    mask.style.setProperty("color", "transparent", "important");
-    mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    mask.style.setProperty("text-shadow", "none", "important");
-    if (!shouldUseMeasuredFullSpanBox) {
+    if (shouldHide) {
+      mask.style.setProperty("color", "transparent", "important");
+      mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      mask.style.setProperty("text-shadow", "none", "important");
+    }
+    if (shouldHide && !shouldUseMeasuredFullSpanBox) {
       const hiddenText = document.createElement("span");
       hiddenText.className = "shieldtext-hidden-mask-text";
       hiddenText.textContent = text.slice(span.start, span.end);
@@ -542,6 +552,13 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
       hiddenText.style.setProperty("text-shadow", "none", "important");
       mask.appendChild(hiddenText);
+    } else if (!shouldHide) {
+      mask.textContent = buildEditableVisibleMaskReplacement(text.slice(span.start, span.end));
+      mask.setAttribute("aria-label", "마스킹됨");
+      const visibleColor = state.overlayTextColor || state.overlayTextFillColor || "currentColor";
+      mask.style.setProperty("color", visibleColor, "important");
+      mask.style.setProperty("-webkit-text-fill-color", visibleColor, "important");
+      mask.style.setProperty("text-shadow", "none", "important");
     }
     fragment.appendChild(mask);
 
@@ -648,10 +665,7 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
   }
 
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
-  const shouldUseNativeFullMask =
-    settings?.interventionMode !== "hide" &&
-    doSpansCoverFullText(spans, candidate.text) &&
-    applyNativeFullEditableMask(state);
+  const shouldUseNativeFullMask = false;
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,

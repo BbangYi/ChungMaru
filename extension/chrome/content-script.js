@@ -4600,6 +4600,11 @@ function buildMaskTooltip(categories, reasons, settings) {
   return `${label} 콘텐츠`;
 }
 
+function buildVisibleMaskReplacement(text) {
+  const graphemeCount = Array.from(String(text || "")).length;
+  return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
+}
+
 function ensureWrapper(state) {
   if (state.wrapper?.isConnected && state.textNode?.parentNode === state.wrapper) {
     return state.wrapper;
@@ -4723,21 +4728,25 @@ function renderOutcome(state, outcome, settings) {
     }
 
     const mask = document.createElement("span");
-    mask.className = settings?.interventionMode === "hide"
-      ? "shieldtext-inline-hide"
-      : "shieldtext-inline-mask";
-    mask.style.setProperty("color", "transparent", "important");
-    mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    mask.style.setProperty("text-shadow", "none", "important");
-    const hiddenText = document.createElement("span");
-    hiddenText.className = "shieldtext-hidden-mask-text";
-    hiddenText.textContent = span.text;
-    hiddenText.style.setProperty("visibility", "hidden", "important");
-    hiddenText.style.setProperty("opacity", "0", "important");
-    hiddenText.style.setProperty("color", "transparent", "important");
-    hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    hiddenText.style.setProperty("text-shadow", "none", "important");
-    mask.appendChild(hiddenText);
+    const shouldHide = settings?.interventionMode === "hide";
+    mask.className = shouldHide ? "shieldtext-inline-hide" : "shieldtext-inline-mask";
+    if (shouldHide) {
+      mask.style.setProperty("color", "transparent", "important");
+      mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      mask.style.setProperty("text-shadow", "none", "important");
+      const hiddenText = document.createElement("span");
+      hiddenText.className = "shieldtext-hidden-mask-text";
+      hiddenText.textContent = span.text;
+      hiddenText.style.setProperty("visibility", "hidden", "important");
+      hiddenText.style.setProperty("opacity", "0", "important");
+      hiddenText.style.setProperty("color", "transparent", "important");
+      hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      hiddenText.style.setProperty("text-shadow", "none", "important");
+      mask.appendChild(hiddenText);
+    } else {
+      mask.textContent = buildVisibleMaskReplacement(span.text);
+      mask.setAttribute("aria-label", "마스킹됨");
+    }
     renderBox.appendChild(mask);
 
     cursor = span.end;

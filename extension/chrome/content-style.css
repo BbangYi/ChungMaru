@@ -12,7 +12,7 @@
 .shieldtext-inline-hide {
   display: inline;
   margin: 0;
-  padding: 0;
+  padding: 0 0.03em;
   border: 0;
   border-radius: 0.12em;
   vertical-align: baseline;
@@ -22,16 +22,21 @@
   white-space: inherit;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: none !important;
 }
 
 .shieldtext-inline-mask {
-  background: rgba(18, 18, 18, 0.72);
+  background: rgba(74, 112, 183, 0.18);
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+  text-shadow: none !important;
+  font-weight: inherit;
+  letter-spacing: 0.01em;
 }
 
 .shieldtext-inline-hide {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
   background: rgba(24, 24, 24, 0.88);
 }
 
@@ -93,14 +98,12 @@
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  color: transparent !important;
-  -webkit-text-fill-color: transparent !important;
-  text-shadow: none !important;
   border: 0;
   border-radius: 0.12em;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
   min-width: 0.55em;
+  text-shadow: none !important;
 }
 
 .shieldtext-editable-overlay[data-shieldtext-full-span="true"] .shieldtext-editable-mask,
@@ -127,13 +130,18 @@
 }
 
 .shieldtext-editable-mask {
-  background: rgb(18, 18, 18);
-  box-shadow: 0 0 0 0.06em rgb(18, 18, 18);
+  background: rgba(74, 112, 183, 0.18);
+  box-shadow: none;
+  font-weight: inherit;
+  letter-spacing: 0.01em;
 }
 
 .shieldtext-editable-hide {
   background: rgb(24, 24, 24);
   box-shadow: 0 0 0 0.06em rgb(24, 24, 24);
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  text-shadow: none !important;
 }
 
 .shieldtext-editable-overlay[data-shieldtext-google-editable="true"] .shieldtext-editable-mask,
