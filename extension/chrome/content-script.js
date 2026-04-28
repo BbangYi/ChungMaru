@@ -1812,6 +1812,89 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
   });
 }
 
+function collectGoogleVisibleHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES * 3) {
+  if (!isGoogleSearchPage()) {
+    return [];
+  }
+
+  const roots = [];
+  const seenRoots = new Set();
+  for (const selector of ["#rso", "#search", "main", "[role='main']", "#bres", "#botstuff", "#rhs"]) {
+    for (const root of document.querySelectorAll(selector)) {
+      if (!(root instanceof Element)) continue;
+      if (seenRoots.has(root)) continue;
+      if (!root.isConnected || !isElementVisible(root)) continue;
+      if (!isElementNearViewport(root.getBoundingClientRect())) continue;
+      seenRoots.add(root);
+      roots.push(root);
+    }
+  }
+
+  const candidates = [];
+  const seenNodeIds = new Set();
+  let visitedCount = 0;
+  const maxVisitedCount = Math.max(320, limit * 80);
+
+  for (const root of roots) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        visitedCount += 1;
+        if (visitedCount > maxVisitedCount) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
+        const parent = node.parentElement;
+        if (!parent || shouldSkipTextNodeParent(parent)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        const text = normalizeText(node.nodeValue || "");
+        if (!text || !HIGH_SIGNAL_PROFANITY_PATTERN.test(text)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        if (!isElementVisible(parent) || !isElementNearViewport(parent.getBoundingClientRect())) {
+          return NodeFilter.FILTER_REJECT;
+        }
+
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    while (walker.nextNode()) {
+      if (candidates.length >= limit || visitedCount > maxVisitedCount) {
+        break;
+      }
+
+      const candidate = buildForcedVisibleCandidateFromTextNode(walker.currentNode);
+      if (!candidate || seenNodeIds.has(candidate.nodeId)) {
+        continue;
+      }
+
+      seenNodeIds.add(candidate.nodeId);
+      DIRTY_NODE_IDS.add(candidate.nodeId);
+      candidates.push(candidate);
+    }
+
+    if (candidates.length >= limit || visitedCount > maxVisitedCount) {
+      break;
+    }
+  }
+
+  candidates.sort((left, right) => {
+    if (left.distanceFromViewport !== right.distanceFromViewport) {
+      return left.distanceFromViewport - right.distanceFromViewport;
+    }
+    if (left.top !== right.top) {
+      return left.top - right.top;
+    }
+    return left.left - right.left;
+  });
+
+  return candidates.slice(0, limit);
+}
+
 function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
   if (!isGoogleSearchPage()) {
     return [];
@@ -1884,6 +1967,15 @@ function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDI
     seenNodeIds.add(candidate.nodeId);
     candidates.push(candidate);
     if (candidates.length >= limit * 2) {
+      return candidates;
+    }
+  }
+
+  for (const candidate of collectGoogleVisibleHighSignalTextCandidates(limit * 2)) {
+    if (seenNodeIds.has(candidate.nodeId)) continue;
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+    if (candidates.length >= limit * 3) {
       return candidates;
     }
   }
@@ -2160,6 +2252,35 @@ function isGoogleHighSignalSurfaceCandidate(candidate) {
   }
 
   return Boolean(element.closest("#bres, #botstuff, #rhs"));
+}
+
+function isGoogleVisibleHighSignalCandidate(candidate) {
+  if (!isGoogleSearchPage()) {
+    return false;
+  }
+
+  const text = normalizeText(candidate?.text || "");
+  if (!text || !HIGH_SIGNAL_PROFANITY_PATTERN.test(text)) {
+    return false;
+  }
+
+  const element = candidate?.element;
+  if (!(element instanceof Element)) {
+    return false;
+  }
+
+  if (shouldAllowGoogleInteractiveElement(element)) {
+    return true;
+  }
+
+  if (
+    element.closest("#search, #rso, main, [role='main'], #bres, #botstuff, #rhs") &&
+    isGoogleMaskTargetElement(element)
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function shouldPreferStandaloneAnalysis(candidate) {
@@ -2541,6 +2662,7 @@ function selectForegroundWaveCandidates(candidates, settings, runReason) {
   }
 
   if (isGoogleSearchPage()) {
+    const hints = buildRealtimeHints(settings);
     const editableCandidates = collectEditableValueCandidates(1).filter((candidate) =>
       nextCandidates.some((item) => item.nodeId === candidate.nodeId)
     );
@@ -2551,6 +2673,26 @@ function selectForegroundWaveCandidates(candidates, settings, runReason) {
     const selectedNodeIds = new Set(selected.map((candidate) => candidate.nodeId));
     const visibleContainers = getGoogleVisibleAnalysisContainers(MAX_FOREGROUND_WAVE_CONTAINERS);
     const candidatesByContainer = new Map();
+    const directHighSignalCandidates = sortCandidatesByUrgency(
+      nextCandidates.filter(
+        (candidate) =>
+          candidate?.candidateKind !== "editable-value" &&
+          isGoogleVisibleHighSignalCandidate(candidate)
+      ),
+      hints
+    );
+
+    for (const candidate of directHighSignalCandidates) {
+      if (selected.length >= Math.min(MAX_FOREGROUND_WAVE_CANDIDATES, 4)) {
+        break;
+      }
+      if (selectedNodeIds.has(candidate.nodeId)) {
+        continue;
+      }
+
+      selected.push(candidate);
+      selectedNodeIds.add(candidate.nodeId);
+    }
 
     for (const candidate of textCandidates) {
       if (selected.length >= MAX_FOREGROUND_WAVE_CANDIDATES) {
