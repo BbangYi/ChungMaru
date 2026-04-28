@@ -204,17 +204,25 @@ const GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR = [
   "main [data-content-feature='1']",
   "#rhs [role='heading']",
   "#rhs [aria-level]",
+  "#rhs [data-attrid]",
+  "#rhs [data-subtree]",
   "#rhs [data-attrid='title']",
   "#rhs [data-attrid='description']",
   "#rhs [data-attrid='kc:/common/topic/description']",
+  "#rhs mark.HxTRcb",
+  "#rhs .HxTRcb",
   "#rhs .PZPZlf",
   "#rhs .B5dxMb",
   "#rhs .kno-rdesc",
   "#rhs .IZ6rdc",
   "#rhs .wDYxhc",
   "#kp-wp-tab-overview [role='heading']",
+  "#kp-wp-tab-overview [data-subtree]",
+  "#kp-wp-tab-overview [data-attrid]",
   "#kp-wp-tab-overview [data-attrid='title']",
   "#kp-wp-tab-overview [data-attrid='description']",
+  "#kp-wp-tab-overview mark.HxTRcb",
+  "#kp-wp-tab-overview .HxTRcb",
   "[data-container-id='main-col'] [role='heading']",
   "[data-container-id='main-col'] [aria-level]",
   "[data-container-id='main-col'] [data-subtree]",
@@ -231,6 +239,23 @@ const GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR = [
   "[data-sfc-root='c'] .MUxGbd",
   ".PZPZlf.ssJ7i",
   ".PZPZlf.B5dxMb"
+].join(", ");
+const YOUTUBE_HIGH_SIGNAL_TEXT_SELECTOR = [
+  "#content-text",
+  "[id='content-text']",
+  "ytd-comment-thread-renderer #content-text",
+  "ytd-comment-thread-renderer [id='content-text']",
+  "ytd-comment-view-model #content-text",
+  "ytd-comment-view-model [id='content-text']",
+  "ytd-watch-metadata h1",
+  "ytd-watch-metadata #title",
+  "ytd-watch-metadata [id='title']",
+  "yt-formatted-string#video-title",
+  "#video-title",
+  "[id='video-title']",
+  "ytd-video-renderer #video-title",
+  "ytd-rich-item-renderer #video-title",
+  "ytd-compact-video-renderer #video-title"
 ].join(", ");
 
 let nextTextNodeId = 1;
@@ -688,6 +713,8 @@ function restoreAllRenderedContent() {
     restoreEditableValueState(state);
   }
 
+  restoreOrphanRenderedContent();
+
   RECONCILE_QUEUE.clear();
   SKIPPED_RETRY_NODE_IDS.clear();
   queuedReason = null;
@@ -696,6 +723,65 @@ function restoreAllRenderedContent() {
     reconcileFlushTimerId = null;
   }
   scheduledReconcileDelayMs = 0;
+}
+
+function restoreOrphanRenderedContent() {
+  suppressMutationFeedback(240);
+
+  for (const overlay of document.querySelectorAll(".shieldtext-editable-overlay")) {
+    overlay.remove();
+  }
+
+  for (const element of document.querySelectorAll(
+    ".shieldtext-editable-source-concealed, .shieldtext-editable-hard-concealed, [data-shieldtext-hard-conceal='true']"
+  )) {
+    if (!(element instanceof HTMLElement)) continue;
+    element.classList.remove("shieldtext-editable-source-concealed");
+    element.classList.remove("shieldtext-editable-hard-concealed");
+    delete element.dataset.shieldtextHardConceal;
+    element.style.removeProperty("color");
+    element.style.removeProperty("-webkit-text-fill-color");
+    element.style.removeProperty("caret-color");
+    element.style.removeProperty("text-shadow");
+    element.style.removeProperty("filter");
+    element.style.removeProperty("opacity");
+    element.style.removeProperty("-webkit-text-security");
+    element.style.removeProperty("text-security");
+  }
+
+  for (const wrapper of document.querySelectorAll("[data-shieldtext-wrapper='true']")) {
+    if (!(wrapper instanceof Element) || !wrapper.parentNode) continue;
+    wrapper.removeAttribute("data-shieldtext-state");
+    wrapper.removeAttribute("data-shieldtext-tooltip");
+
+    const renderedChildren = [...wrapper.children].filter(
+      (child) => child.dataset?.shieldtextRendered === "true"
+    );
+    const originalText = renderedChildren
+      .map((child) => child.dataset?.shieldtextOriginalText || "")
+      .find((value) => value);
+
+    if (originalText) {
+      wrapper.replaceChildren(document.createTextNode(originalText));
+    } else {
+      for (const rendered of renderedChildren) {
+        rendered.remove();
+      }
+    }
+
+    const childNodes = [...wrapper.childNodes];
+    const canUnwrap =
+      childNodes.length === 1 &&
+      childNodes[0] instanceof Text &&
+      String(childNodes[0].nodeValue || "").length > 0;
+
+    if (!canUnwrap) {
+      continue;
+    }
+
+    wrapper.parentNode.insertBefore(childNodes[0], wrapper);
+    wrapper.remove();
+  }
 }
 
 function includeEditableCandidatesForSettingsRefresh(candidates) {
@@ -2280,6 +2366,64 @@ function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDI
   return candidates;
 }
 
+function collectYouTubeDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES * 2) {
+  if (!isYouTubePage()) {
+    return [];
+  }
+
+  const elements = [];
+  const seenElements = new Set();
+  let inspectedElementCount = 0;
+  const maxInspectedElements = Math.max(80, limit * 10);
+
+  for (const element of document.querySelectorAll(YOUTUBE_HIGH_SIGNAL_TEXT_SELECTOR)) {
+    inspectedElementCount += 1;
+    if (inspectedElementCount > maxInspectedElements) {
+      break;
+    }
+    if (!(element instanceof Element)) continue;
+    if (seenElements.has(element)) continue;
+    if (!element.isConnected || !isElementVisible(element)) continue;
+    if (!isElementNearViewport(element.getBoundingClientRect())) continue;
+    if (!isYouTubeMaskTargetElement(element)) continue;
+
+    const text = getElementAnalysisText(element);
+    if (!text || !HIGH_SIGNAL_PROFANITY_PATTERN.test(text)) continue;
+    if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(text))) continue;
+
+    seenElements.add(element);
+    elements.push(element);
+    if (elements.length >= limit) {
+      break;
+    }
+  }
+
+  elements.sort((left, right) => {
+    const leftRect = left.getBoundingClientRect();
+    const rightRect = right.getBoundingClientRect();
+    if (leftRect.top !== rightRect.top) {
+      return leftRect.top - rightRect.top;
+    }
+    return leftRect.left - rightRect.left;
+  });
+
+  return collectTextCandidatesFromElements(elements, limit, {
+    perElementLimit: 3,
+    candidateFilter(candidate) {
+      const text = normalizeText(candidate?.text || "");
+      const isHighSignalCandidate = Boolean(text) &&
+        HIGH_SIGNAL_PROFANITY_PATTERN.test(text) &&
+        isYouTubeMaskTargetElement(candidate?.element);
+
+      if (isHighSignalCandidate && candidate?.nodeId) {
+        DIRTY_NODE_IDS.add(candidate.nodeId);
+      }
+
+      return isHighSignalCandidate;
+    }
+  });
+}
+
 function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
   if (!isYouTubePage()) {
     return [];
@@ -2289,7 +2433,19 @@ function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES
     Math.max(MAX_HOT_PATH_CONTAINERS, Number(limit || 0))
   );
 
-  return collectTextCandidatesFromElements(
+  const candidates = [];
+  const seenNodeIds = new Set();
+
+  for (const candidate of collectYouTubeDirectHighSignalTextCandidates(limit * 2)) {
+    if (!candidate?.nodeId || seenNodeIds.has(candidate.nodeId)) continue;
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+    if (candidates.length >= limit * 2) {
+      return candidates;
+    }
+  }
+
+  for (const candidate of collectTextCandidatesFromElements(
     containers,
     Math.max(1, containers.length) * MAX_GOOGLE_CANDIDATES_PER_CONTAINER,
     {
@@ -2301,7 +2457,16 @@ function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES
           isYouTubeMaskTargetElement(candidate?.element);
       }
     }
-  ).slice(0, limit * 2);
+  )) {
+    if (!candidate?.nodeId || seenNodeIds.has(candidate.nodeId)) continue;
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+    if (candidates.length >= limit * 2) {
+      break;
+    }
+  }
+
+  return candidates;
 }
 
 function collectCandidates() {
@@ -4874,6 +5039,7 @@ function renderOutcome(state, outcome, settings) {
 
   const renderBox = document.createElement("span");
   renderBox.dataset.shieldtextRendered = "true";
+  renderBox.dataset.shieldtextOriginalText = sourceText;
   renderBox.className = "shieldtext-render-box";
 
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
