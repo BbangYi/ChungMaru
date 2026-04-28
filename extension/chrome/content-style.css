@@ -160,6 +160,11 @@
   overflow: hidden !important;
 }
 
+/*
+ * Locked Google search input UX.
+ * Keep this as plain centered text: no background, padding, badge shape, or
+ * baseline-following layout. General editable/body masks use other classes.
+ */
 .shieldtext-editable-fixed-token {
   flex: 0 0 auto;
   position: absolute !important;

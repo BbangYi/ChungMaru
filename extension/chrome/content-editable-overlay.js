@@ -80,6 +80,19 @@ function isSingleLineEditableElement(element) {
   return false;
 }
 
+/*
+ * Locked UX contract: Google search input masking.
+ *
+ * The Google search box is intentionally separated from general editable
+ * masking. Keep this path stable unless fixing a Google-search-input-only
+ * regression:
+ * - render one fixed "**" token instead of mirroring exact text positions
+ * - anchor the overlay to Google's nearest search container, not document.body
+ * - vertically center the token without copying textarea padding/baseline
+ *
+ * Do not reuse this path for normal inputs or result-card text. Those surfaces
+ * should keep using backend exact spans and the general overlay renderer.
+ */
 function shouldUseHardEditableConcealment(element) {
   if (!(element instanceof HTMLTextAreaElement)) {
     return false;
@@ -190,6 +203,7 @@ function buildEditableVisibleMaskReplacement(text) {
   return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
 }
 
+// Locked Google search input path. See the contract above before changing this.
 function shouldUseFixedEditableTokenOverlay(element, settings) {
   return settings?.interventionMode !== "hide" && shouldUseHardEditableConcealment(element);
 }
