@@ -23,10 +23,12 @@ from pipeline import ProfanityPipeline
 
 class AnalyzeRequest(BaseModel):
     text: str
+    sensitivity: int | None = None
 
 
 class AnalyzeBatchRequest(BaseModel):
     texts: list[str]
+    sensitivity: int | None = None
 
 
 class BoundsInScreen(BaseModel):
@@ -437,7 +439,7 @@ async def health():
 async def analyze(req: AnalyzeRequest):
     """Chrome Extension — 단일 텍스트 분석."""
     started = time.perf_counter()
-    result = pipeline.analyze(req.text)
+    result = pipeline.analyze(req.text, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze total={elapsed_ms:.1f}ms text={req.text[:40]!r}")
     return _format_result(
@@ -452,7 +454,7 @@ async def analyze(req: AnalyzeRequest):
 async def analyze_batch(req: AnalyzeBatchRequest):
     """Chrome Extension — 배치 텍스트 분석."""
     started = time.perf_counter()
-    results = pipeline.analyze_batch(req.texts)
+    results = pipeline.analyze_batch(req.texts, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze_batch total={elapsed_ms:.1f}ms count={len(req.texts)}")
     return {"results": [_format_result(r) for r in results]}

@@ -59,6 +59,17 @@ function getLabCaseMaskedState(element) {
   );
 }
 
+function isSelfTestTransparentColor(value) {
+  const text = String(value || "").replace(/\s+/g, "").toLowerCase();
+  return (
+    !text ||
+    text === "transparent" ||
+    text === "rgba(0,0,0,0)" ||
+    /^rgba\([^)]*,0(?:\.0+)?\)$/.test(text) ||
+    /^rgb\([^)]*\/0(?:\.0+)?\)$/.test(text)
+  );
+}
+
 function getLabCaseRenderState(element, sampleText) {
   if (!(element instanceof Element)) {
     return {
@@ -77,6 +88,10 @@ function getLabCaseRenderState(element, sampleText) {
       fullSpanMaskCoverageRatio: 0,
       fullSpanMaskWidthCoverageRatio: 0,
       suspiciousFullSpanMaskCoverage: false,
+      fixedTokenOverlay: false,
+      fixedTokenCount: 0,
+      fixedTokenVerticalOffsetPx: 0,
+      suspiciousFixedTokenContract: false,
       suspiciousMaskTextVisible: false
     };
   }
@@ -116,6 +131,27 @@ function getLabCaseRenderState(element, sampleText) {
           Math.abs(overlayRect.height - elementRect.height)
         )
       : 0;
+    const fixedTokenOverlay = state?.overlayRoot?.dataset?.shieldtextFixedEditable === "true";
+    const fixedTokenElements = state?.overlayRoot?.isConnected
+      ? [...state.overlayRoot.querySelectorAll(".shieldtext-editable-fixed-token")]
+      : [];
+    const fixedToken = fixedTokenElements[0] instanceof Element ? fixedTokenElements[0] : null;
+    const fixedTokenRect = fixedToken ? fixedToken.getBoundingClientRect() : null;
+    const fixedTokenStyle = fixedToken ? window.getComputedStyle(fixedToken) : null;
+    const fixedTokenVerticalOffsetPx =
+      overlayRect && fixedTokenRect
+        ? Math.abs(
+            (fixedTokenRect.top + fixedTokenRect.bottom) / 2 -
+              (overlayRect.top + overlayRect.bottom) / 2
+          )
+        : 0;
+    const fixedTokenHasBadgeStyling = Boolean(
+      fixedTokenStyle &&
+        (!isSelfTestTransparentColor(fixedTokenStyle.backgroundColor) ||
+          (parseFloat(fixedTokenStyle.paddingLeft || "0") || 0) > 0.5 ||
+          (parseFloat(fixedTokenStyle.paddingRight || "0") || 0) > 0.5 ||
+          (parseFloat(fixedTokenStyle.borderRadius || "0") || 0) > 0.5)
+    );
     const fullSpanMask = state?.overlayRoot?.dataset?.shieldtextFullSpan === "true"
       ? state.overlayRoot.querySelector(".shieldtext-editable-mask, .shieldtext-editable-hide")
       : null;
@@ -143,6 +179,13 @@ function getLabCaseRenderState(element, sampleText) {
           )
         : 0;
     const suspiciousMaskTextVisible = hasVisibleMaskText(state?.overlayRoot);
+    const suspiciousFixedTokenContract = Boolean(
+      fixedTokenOverlay &&
+        (fixedTokenElements.length !== 1 ||
+          fixedTokenHasBadgeStyling ||
+          fixedTokenVerticalOffsetPx > Math.max(3, lineHeightPx * 0.2) ||
+          Number(overlayDriftPx || 0) > 4)
+    );
 
     return {
       editable: true,
@@ -166,6 +209,7 @@ function getLabCaseRenderState(element, sampleText) {
         Boolean(state?.isMasked) &&
         requiresHardConcealment &&
         maskMode === "full-overlay" &&
+        !fixedTokenOverlay &&
         !editableHardConcealed,
       overlayDriftPx: Math.round(overlayDriftPx),
       suspiciousOverlayDrift: Boolean(overlayRect && overlayDriftPx > 4),
@@ -180,6 +224,10 @@ function getLabCaseRenderState(element, sampleText) {
             fullSpanMaskRect.height < Math.max(8, lineHeightPx * 0.85) ||
             fullSpanMaskVerticalCenterOffsetPx > Math.max(8, lineHeightPx * 0.6))
       ),
+      fixedTokenOverlay,
+      fixedTokenCount: fixedTokenElements.length,
+      fixedTokenVerticalOffsetPx: Math.round(fixedTokenVerticalOffsetPx),
+      suspiciousFixedTokenContract,
       suspiciousMaskTextVisible
     };
   }
@@ -204,6 +252,10 @@ function getLabCaseRenderState(element, sampleText) {
     fullSpanMaskCoverageRatio: 0,
     fullSpanMaskWidthCoverageRatio: 0,
     suspiciousFullSpanMaskCoverage: false,
+    fixedTokenOverlay: false,
+    fixedTokenCount: 0,
+    fixedTokenVerticalOffsetPx: 0,
+    suspiciousFixedTokenContract: false,
     suspiciousMaskTextVisible: hasVisibleMaskText(element)
   };
 }
@@ -251,6 +303,7 @@ function isLabRenderStateHealthy(renderState, extensionMasked) {
       !renderState.suspiciousEditableBar &&
       !renderState.suspiciousNativeTextareaMask &&
       !renderState.suspiciousOverlayDrift &&
+      !renderState.suspiciousFixedTokenContract &&
       !renderState.suspiciousMaskTextVisible
     );
   }
@@ -263,6 +316,7 @@ function isLabRenderStateHealthy(renderState, extensionMasked) {
       !renderState.suspiciousHardConcealmentMissing &&
       !renderState.suspiciousOverlayDrift &&
       !renderState.suspiciousFullSpanMaskCoverage &&
+      !renderState.suspiciousFixedTokenContract &&
       !renderState.suspiciousMaskTextVisible &&
       (renderState.maskMode === "native-mask" || Number(renderState.maskElementCount || 0) > 0)
     );

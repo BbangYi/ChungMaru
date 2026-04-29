@@ -80,6 +80,19 @@ function isSingleLineEditableElement(element) {
   return false;
 }
 
+/*
+ * Locked UX contract: Google search input masking.
+ *
+ * The Google search box is intentionally separated from general editable
+ * masking. Keep this path stable unless fixing a Google-search-input-only
+ * regression:
+ * - render one fixed "**" token instead of mirroring exact text positions
+ * - anchor the overlay to Google's nearest search container, not document.body
+ * - vertically center the token without copying textarea padding/baseline
+ *
+ * Do not reuse this path for normal inputs or result-card text. Those surfaces
+ * should keep using backend exact spans and the general overlay renderer.
+ */
 function shouldUseHardEditableConcealment(element) {
   if (!(element instanceof HTMLTextAreaElement)) {
     return false;
@@ -185,6 +198,24 @@ function getEditableFullSpanMaskHeightPx(element) {
   return Math.round(targetHeight);
 }
 
+function buildEditableVisibleMaskReplacement(text) {
+  const graphemeCount = Array.from(String(text || "")).length;
+  return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
+}
+
+// Locked Google search input path. See the contract above before changing this.
+function shouldUseFixedEditableTokenOverlay(element, settings) {
+  return settings?.interventionMode !== "hide" && shouldUseHardEditableConcealment(element);
+}
+
+function buildEditableFixedTokenReplacement(text, spans) {
+  const firstSpan = Array.isArray(spans) && spans.length > 0 ? spans[0] : null;
+  const sourceText = firstSpan
+    ? String(text || "").slice(firstSpan.start, firstSpan.end)
+    : String(text || "");
+  return buildEditableVisibleMaskReplacement(sourceText);
+}
+
 function concealEditableSourceText(state) {
   if (!state?.element) return;
   if (typeof suppressMutationFeedback === "function") {
@@ -251,49 +282,37 @@ function applyNativeFullEditableMask(state) {
   return true;
 }
 
-function getEditableOverlayHost(element) {
+function getGoogleEditableOverlayHost(element) {
   if (!shouldUseHardEditableConcealment(element)) {
-    return document.body || document.documentElement;
+    return null;
   }
 
-  if (!(element instanceof Element)) {
-    return document.body || document.documentElement;
+  const hostSelectors = [
+    "form[role='search']",
+    "form",
+    "[role='search']",
+    ".A8SBwf",
+    ".RNNXgb",
+    ".SDkEP"
+  ];
+
+  for (const selector of hostSelectors) {
+    const host = element.closest(selector);
+    if (host instanceof HTMLElement && host !== document.body && host !== document.documentElement) {
+      return host;
+    }
   }
 
-  const elementRect = element.getBoundingClientRect();
-  let current = element.parentElement;
+  return element.parentElement instanceof HTMLElement ? element.parentElement : null;
+}
 
-  for (let depth = 0; depth < 8 && current && current !== document.body && current !== document.documentElement; depth += 1) {
-    if (!(current instanceof HTMLElement)) {
-      current = current.parentElement;
-      continue;
-    }
-
-    const style = window.getComputedStyle(current);
-    if (style.display === "contents") {
-      current = current.parentElement;
-      continue;
-    }
-
-    const rect = current.getBoundingClientRect();
-    const containsElement =
-      rect.width >= elementRect.width * 0.9 &&
-      rect.height >= Math.min(elementRect.height, 1) &&
-      rect.left <= elementRect.left + 2 &&
-      rect.top <= elementRect.top + 2 &&
-      rect.right >= elementRect.right - 2 &&
-      rect.bottom >= elementRect.bottom - 2;
-
-    if (containsElement) {
-      return current;
-    }
-
-    current = current.parentElement;
+function getEditableOverlayHost(element) {
+  const googleHost = getGoogleEditableOverlayHost(element);
+  if (googleHost) {
+    return googleHost;
   }
 
-  return element.parentElement instanceof HTMLElement
-    ? element.parentElement
-    : document.body || document.documentElement;
+  return document.body || document.documentElement;
 }
 
 function ensureEditableOverlayHost(state) {
@@ -403,7 +422,15 @@ function syncEditableOverlayLayout(state) {
       ? 0
       : Math.round(Number(overlayHost?.scrollTop || 0));
   const isSingleLineEditable = isSingleLineEditableElement(element);
+  const isFixedTokenOverlay = state.overlayRoot.dataset.shieldtextFixedEditable === "true";
   const computedLineHeight = style.lineHeight || "normal";
+  const fixedTokenLeftInset = isFixedTokenOverlay
+    ? Math.max(
+        0,
+        (parseFloat(style.paddingLeft || "0") || 0) +
+          (parseFloat(style.borderLeftWidth || "0") || 0)
+      )
+    : 0;
   const overlayWidth = Math.max(rect.width, isSingleLineEditable ? rect.width : element.scrollWidth || 0);
   const overlayHeight = Math.max(rect.height, isSingleLineEditable ? rect.height : element.scrollHeight || 0);
   const overlayLeft = Math.round(rect.left - hostRect.left + hostScrollLeft);
@@ -414,10 +441,11 @@ function syncEditableOverlayLayout(state) {
     top: overlayTop,
     width: Math.round(rect.width),
     height: Math.round(rect.height),
-    overlayWidth: Math.round(overlayWidth),
-    overlayHeight: Math.round(overlayHeight),
-    scrollLeft: Math.round(Number(element.scrollLeft || 0)),
-    scrollTop: Math.round(Number(element.scrollTop || 0)),
+    overlayWidth: isFixedTokenOverlay ? Math.round(rect.width) : Math.round(overlayWidth),
+    overlayHeight: isFixedTokenOverlay ? Math.round(rect.height) : Math.round(overlayHeight),
+    fixedTokenLeftInset: Math.round(fixedTokenLeftInset),
+    scrollLeft: isFixedTokenOverlay ? 0 : Math.round(Number(element.scrollLeft || 0)),
+    scrollTop: isFixedTokenOverlay ? 0 : Math.round(Number(element.scrollTop || 0)),
     hostScrollLeft,
     hostScrollTop
   });
@@ -447,12 +475,12 @@ function syncEditableOverlayLayout(state) {
   overlayRoot.style.borderRadius = style.borderRadius;
   overlayRoot.style.overflow = "hidden";
 
-  overlayContent.style.display = isSingleLineEditable ? "flex" : "block";
+  overlayContent.style.display = isFixedTokenOverlay ? "block" : isSingleLineEditable ? "flex" : "block";
   overlayContent.style.position = "absolute";
   overlayContent.style.left = "0";
   overlayContent.style.top = "0";
-  overlayContent.style.padding = style.padding;
-  overlayContent.style.border = style.border;
+  overlayContent.style.padding = isFixedTokenOverlay ? "0" : style.padding;
+  overlayContent.style.border = isFixedTokenOverlay ? "0" : style.border;
   overlayContent.style.borderRadius = style.borderRadius;
   overlayContent.style.boxSizing = style.boxSizing;
   overlayContent.style.font = style.font;
@@ -476,23 +504,28 @@ function syncEditableOverlayLayout(state) {
   overlayContent.style.writingMode = style.writingMode;
   overlayContent.style.color = overlayTextColor || style.color;
   overlayContent.style.webkitTextFillColor = overlayTextFillColor || overlayTextColor || style.color;
-  overlayContent.style.alignItems = isSingleLineEditable ? "center" : "";
+  overlayContent.style.alignItems = isFixedTokenOverlay ? "" : isSingleLineEditable ? "center" : "";
   overlayContent.style.flexWrap = "nowrap";
-  overlayContent.style.whiteSpace = isSingleLineEditable
+  overlayContent.style.whiteSpace = isSingleLineEditable || isFixedTokenOverlay
     ? "pre"
     : element instanceof HTMLTextAreaElement
       ? "pre-wrap"
       : "pre";
 
-  if (isSingleLineEditable) {
+  if (isSingleLineEditable || isFixedTokenOverlay) {
     overlayContent.style.height = `${Math.round(rect.height)}px`;
     overlayContent.style.minHeight = `${Math.round(rect.height)}px`;
   }
 
-  overlayContent.style.width = `${Math.round(overlayWidth)}px`;
-  overlayContent.style.minWidth = `${Math.round(overlayWidth)}px`;
-  overlayContent.style.minHeight = `${Math.round(overlayHeight)}px`;
-  overlayContent.style.transform = `translate3d(${-Math.round(Number(element.scrollLeft || 0))}px, ${-Math.round(Number(element.scrollTop || 0))}px, 0)`;
+  const contentWidth = isFixedTokenOverlay ? rect.width : overlayWidth;
+  const contentHeight = isFixedTokenOverlay ? rect.height : overlayHeight;
+  overlayContent.style.width = `${Math.round(contentWidth)}px`;
+  overlayContent.style.minWidth = `${Math.round(contentWidth)}px`;
+  overlayContent.style.minHeight = `${Math.round(contentHeight)}px`;
+  overlayContent.style.transform = isFixedTokenOverlay
+    ? "translate3d(0, 0, 0)"
+    : `translate3d(${-Math.round(Number(element.scrollLeft || 0))}px, ${-Math.round(Number(element.scrollTop || 0))}px, 0)`;
+  overlayContent.style.setProperty("--shieldtext-fixed-token-left", `${Math.round(fixedTokenLeftInset)}px`);
 }
 
 function renderEditableOverlay(state, text, spans, settings, tooltip) {
@@ -505,7 +538,23 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
   state.maskedText = text;
   state.maskedSpans = spans;
   state.overlayTooltip = tooltip;
-  if (doSpansCoverFullText(spans, text)) {
+  const usesHardEditableConcealment = shouldUseHardEditableConcealment(state.element);
+  if (usesHardEditableConcealment) {
+    state.overlayRoot.dataset.shieldtextGoogleEditable = "true";
+  } else {
+    delete state.overlayRoot.dataset.shieldtextGoogleEditable;
+  }
+  const shouldUseFixedTokenOverlay = shouldUseFixedEditableTokenOverlay(state.element, settings);
+  if (shouldUseFixedTokenOverlay) {
+    state.overlayRoot.dataset.shieldtextFixedEditable = "true";
+  } else {
+    delete state.overlayRoot.dataset.shieldtextFixedEditable;
+  }
+  const shouldUseFullSpanLayout =
+    settings?.interventionMode === "hide" &&
+    doSpansCoverFullText(spans, text) &&
+    !usesHardEditableConcealment;
+  if (shouldUseFullSpanLayout) {
     state.overlayRoot.dataset.shieldtextFullSpan = "true";
   } else {
     delete state.overlayRoot.dataset.shieldtextFullSpan;
@@ -519,10 +568,11 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     text,
     spans,
     interventionMode: settings?.interventionMode || "mask",
-    fullSpanMaskWidthPx: doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element)
+    fixedToken: shouldUseFixedTokenOverlay,
+    fullSpanMaskWidthPx: shouldUseFullSpanLayout
       ? getEditableFullSpanMaskWidthPx(state.element, text)
       : 0,
-    fullSpanMaskHeightPx: doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element)
+    fullSpanMaskHeightPx: shouldUseFullSpanLayout
       ? getEditableFullSpanMaskHeightPx(state.element)
       : 0
   });
@@ -534,6 +584,25 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
   }
 
   state.overlayContent.textContent = "";
+
+  if (shouldUseFixedTokenOverlay) {
+    const mask = document.createElement("span");
+    mask.className = "shieldtext-editable-mask shieldtext-editable-fixed-token";
+    mask.textContent = buildEditableFixedTokenReplacement(text, spans);
+    mask.setAttribute("aria-label", "마스킹됨");
+    const visibleColor = state.overlayTextColor || state.overlayTextFillColor || "currentColor";
+    mask.style.setProperty("color", visibleColor, "important");
+    mask.style.setProperty("-webkit-text-fill-color", visibleColor, "important");
+    mask.style.setProperty("text-shadow", "none", "important");
+    state.overlayContent.appendChild(mask);
+    state.overlayRenderKey = renderKey;
+    state.overlayRoot.removeAttribute("title");
+    state.element.removeAttribute("title");
+    MASKED_EDITABLE_STATE_IDS.add(state.nodeId);
+    scheduleEditableOverlaySync(1);
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
   let cursor = 0;
 
@@ -546,11 +615,10 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     }
 
     const mask = document.createElement("span");
-    mask.className = settings?.interventionMode === "hide"
-      ? "shieldtext-editable-hide"
-      : "shieldtext-editable-mask";
+    const shouldHide = settings?.interventionMode === "hide";
+    mask.className = shouldHide ? "shieldtext-editable-hide" : "shieldtext-editable-mask";
     const shouldUseMeasuredFullSpanBox =
-      doSpansCoverFullText(spans, text) && !shouldUseHardEditableConcealment(state.element);
+      shouldHide && doSpansCoverFullText(spans, text) && !usesHardEditableConcealment;
     if (shouldUseMeasuredFullSpanBox) {
       const fullSpanWidthPx = getEditableFullSpanMaskWidthPx(state.element, text);
       const fullSpanHeightPx = getEditableFullSpanMaskHeightPx(state.element);
@@ -564,10 +632,12 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
         mask.style.minHeight = `${fullSpanHeightPx}px`;
       }
     }
-    mask.style.setProperty("color", "transparent", "important");
-    mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    mask.style.setProperty("text-shadow", "none", "important");
-    if (!shouldUseMeasuredFullSpanBox) {
+    if (shouldHide) {
+      mask.style.setProperty("color", "transparent", "important");
+      mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
+      mask.style.setProperty("text-shadow", "none", "important");
+    }
+    if (shouldHide && !shouldUseMeasuredFullSpanBox) {
       const hiddenText = document.createElement("span");
       hiddenText.className = "shieldtext-hidden-mask-text";
       hiddenText.textContent = text.slice(span.start, span.end);
@@ -577,6 +647,13 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
       hiddenText.style.setProperty("text-shadow", "none", "important");
       mask.appendChild(hiddenText);
+    } else if (!shouldHide) {
+      mask.textContent = buildEditableVisibleMaskReplacement(text.slice(span.start, span.end));
+      mask.setAttribute("aria-label", "마스킹됨");
+      const visibleColor = state.overlayTextColor || state.overlayTextFillColor || "currentColor";
+      mask.style.setProperty("color", visibleColor, "important");
+      mask.style.setProperty("-webkit-text-fill-color", visibleColor, "important");
+      mask.style.setProperty("text-shadow", "none", "important");
     }
     fragment.appendChild(mask);
 
@@ -683,10 +760,7 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
   }
 
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
-  const shouldUseNativeFullMask =
-    settings?.interventionMode !== "hide" &&
-    doSpansCoverFullText(spans, candidate.text) &&
-    applyNativeFullEditableMask(state);
+  const shouldUseNativeFullMask = false;
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,
