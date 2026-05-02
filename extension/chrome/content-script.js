@@ -157,8 +157,44 @@ const SAFE_BROWSER_UI_LABELS = new Set([
   "wiki"
 ]);
 
-const HIGH_SIGNAL_PROFANITY_PATTERN =
-  /(씨[이\s]*발|시[이\s]*발|씨[이\s]*팔|시[이\s]*팔|ㅅㅂ|ㅆㅂ|병[.\s]*신|ㅂㅅ|지[이\s]*랄|ㅈㄹ|존\s*나|ㅈㄴ|좆|좇|씹|개[새세][끼키]|꺼[져저]|닥[쳐치]|죽어|뒤져|느[금끔]마|니[금끔]마|미친[놈년새]?|(?<![A-Za-z])(?:ssibal|(?<!kapil\s)sibal|tlqkf|qudtls|byungsin|gaesaekki|gaesaek|jiral|jonna|nigaumma|negeumma|fuck(?:ing|er|ed)?|shit(?:ty|head|s)?|bitch(?:es)?|ass[\s_-]*hole|bastard(?:s)?|mother[\s_-]*fucker|dick|pussy|slut|whore)(?![A-Za-z]))/i;
+// Backend remains the authority; this mirror only prioritizes obvious candidates
+// and prevents trusted backend spans from being discarded by frontend sanity checks.
+const HIGH_SIGNAL_PROFANITY_PATTERN = new RegExp(
+  [
+    "씨[이\\s]*발",
+    "시[이\\s]*발",
+    "씨[이\\s]*팔",
+    "시[이\\s]*팔",
+    "ㅅㅂ",
+    "ㅆㅂ",
+    "병[.\\s]*신",
+    "ㅂㅅ",
+    "지[이\\s]*랄",
+    "ㅈㄹ",
+    "존\\s*나",
+    "ㅈㄴ",
+    "좆",
+    "좇",
+    "씹",
+    "개[새세][끼키]",
+    "꺼[져저]",
+    "닥[쳐치]",
+    "죽어",
+    "뒤져",
+    "느[금끔]마",
+    "니[금끔]마",
+    "미친[놈년새]?",
+    "блядь",
+    "сука",
+    "くそ",
+    "死ね",
+    "操你妈",
+    "傻逼",
+    "كسمك",
+    "(?<![A-Za-z])(?:ssibal|shi[\\s_-]*bal|(?<!kapil\\s)sibal|tlqkf|qudtls|byungsin|byeongsin|gae[\\s_-]*sae?k(?:ki)?|rotoRI|whssk|michin|kkeo[\\s_-]*jo|jiral|jonna|nigaumma|negeumma|fuck(?:ing|er|ed)?|shit(?:ty|head|s)?|bitch(?:es)?|ass[\\s_-]*hole|bastard(?:s)?|mother[\\s_-]*fucker|dick|pussy|slut|whore|puta|mierda|putain|ta\\s+gueule|schei(?:ss|ß)e|arschloch|porra|caralho|orospu|nigga|faggot|retard)(?![A-Za-z])"
+  ].join("|"),
+  "i"
+);
 const HIGH_SIGNAL_PROFANITY_SPAN_PATTERN = new RegExp(HIGH_SIGNAL_PROFANITY_PATTERN.source, "gi");
 const GOOGLE_SFC_CONTAINER_SELECTOR = [
   "[data-container-id='main-col']",
