@@ -167,6 +167,27 @@ class MaskOverlayPlannerTest {
         assertTrue(specs.single().height <= 48)
     }
 
+    @Test
+    fun buildSpecs_placesLateSpansOnEstimatedLaterLines() {
+        val original = "초반에는 안전한 설명이 길게 이어지고 뒤쪽 줄에서 시발 같은 표현이 등장하는 긴 제목"
+        val spanStart = original.indexOf("시발")
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 100, 520, 236),
+                spans = listOf(EvidenceSpan("시발", spanStart, spanStart + 2, 0.98)),
+                original = original
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().top > 150)
+        assertTrue(specs.single().height <= 48)
+        assertTrue(specs.single().width < 480)
+    }
+
     private fun responseOf(vararg results: AndroidAnalysisResultItem): AndroidAnalysisResponse {
         return AndroidAnalysisResponse(
             timestamp = 1710000000000,

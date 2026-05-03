@@ -29,6 +29,7 @@ object AndroidMaskOverlayPlanner {
     private const val MIN_SPAN_MASK_WIDTH_PX = 30
     private const val SPAN_HORIZONTAL_PADDING_PX = 8
     private const val MAX_SPAN_MASK_HEIGHT_PX = 48
+    private const val ESTIMATED_LINE_HEIGHT_PX = 34
     private const val MAX_MASK_COUNT = 24
     private const val MAX_SCREEN_WIDTH_RATIO = 0.88f
     private const val MAX_SCREEN_HEIGHT_RATIO = 0.22f
@@ -112,8 +113,17 @@ object AndroidMaskOverlayPlanner {
         val end = span.end.coerceIn(start, originalLength)
         if (end <= start) return null
 
-        val startRatio = start.toFloat() / originalLength.toFloat()
-        val endRatio = end.toFloat() / originalLength.toFloat()
+        val lineCount = estimateLineCount(fullSpec.height, originalLength)
+        val charsPerLine = ((originalLength + lineCount - 1) / lineCount).coerceAtLeast(1)
+        val lineIndex = (start / charsPerLine).coerceIn(0, lineCount - 1)
+        val lineStart = lineIndex * charsPerLine
+        val lineEnd = min(originalLength, lineStart + charsPerLine).coerceAtLeast(lineStart + 1)
+        val lineLength = (lineEnd - lineStart).coerceAtLeast(1)
+        val localStart = (start - lineStart).coerceIn(0, lineLength)
+        val localEnd = (end - lineStart).coerceIn(localStart + 1, lineLength)
+
+        val startRatio = localStart.toFloat() / lineLength.toFloat()
+        val endRatio = localEnd.toFloat() / lineLength.toFloat()
         val rawLeft = fullSpec.left + (fullSpec.width * startRatio).roundToInt()
         val rawRight = fullSpec.left + (fullSpec.width * endRatio).roundToInt()
 
@@ -147,8 +157,9 @@ object AndroidMaskOverlayPlanner {
         val width = right - left
         if (width < MIN_WIDTH_PX) return null
 
-        val height = minOf(fullSpec.height, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
-        val top = fullSpec.top + ((fullSpec.height - height) / 2).coerceAtLeast(0)
+        val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
+        val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val top = fullSpec.top + (lineIndex * lineHeight) + ((lineHeight - height) / 2).coerceAtLeast(0)
 
         return MaskOverlaySpec(
             left = left,
@@ -157,6 +168,16 @@ object AndroidMaskOverlayPlanner {
             height = height,
             label = MASK_LABEL
         )
+    }
+
+    private fun estimateLineCount(height: Int, originalLength: Int): Int {
+        if (height <= MAX_SPAN_MASK_HEIGHT_PX || originalLength <= 20) {
+            return 1
+        }
+
+        return (height / ESTIMATED_LINE_HEIGHT_PX)
+            .coerceAtLeast(1)
+            .coerceAtMost(4)
     }
 
     private fun suppressOverlappingSpecs(specs: List<MaskOverlaySpec>): List<MaskOverlaySpec> {
