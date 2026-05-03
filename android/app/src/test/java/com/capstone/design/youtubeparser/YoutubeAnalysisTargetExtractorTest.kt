@@ -73,6 +73,24 @@ class YoutubeAnalysisTargetExtractorTest {
     }
 
     @Test
+    fun extractTargets_extractsKoreanMobileTitleFromContentDescriptionMetadata() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                contentDescriptionNode(
+                    "개새끼 - 나무위키:대문, 나무위키, 조회수 12만회, 6일 전 - 동영상 재생",
+                    0,
+                    400,
+                    1080,
+                    720
+                )
+            )
+        )
+
+        assertEquals(listOf("개새끼 - 나무위키:대문"), targets.map { it.commentText })
+        assertEquals(BoundsRect(160, 400, 975, 496), targets.single().boundsInScreen)
+    }
+
+    @Test
     fun extractTargets_extractsShortsGridTitleWithoutMaskingWholeCard() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(

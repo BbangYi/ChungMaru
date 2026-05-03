@@ -128,10 +128,15 @@ object YoutubeAnalysisTargetExtractor {
             pattern = """,\s*[\d,.]+\s*(?:thousand|million|billion|[kmb])?\s+views,\s*""",
             option = RegexOption.IGNORE_CASE
         ).find(normalized)?.range?.first
+        val koreanMetadataStart = Regex(
+            pattern = """(?:,\s*|\s+-\s+|\s+·\s+)조회수\s*[\d,.]+[천만억]?\s*회?(?:,\s*|\s+-\s+|\s+·\s+)\d+\s*(?:초|분|시간|일|주|개월|년)\s*전""",
+            option = RegexOption.IGNORE_CASE
+        ).find(normalized)?.range?.first
 
         val rawTitle = when {
             metadataStart != null -> normalized.substring(0, metadataStart)
             shortsMetadataStart != null -> normalized.substring(0, shortsMetadataStart)
+            koreanMetadataStart != null -> normalized.substring(0, koreanMetadataStart)
             normalized.lowercase().contains(" - go to channel ") ->
                 normalized.substringBefore(" - Go to channel ").substringBefore(" - go to channel ")
             normalized.lowercase().endsWith(" - play video") -> normalized.substringBeforeLast(" - ")
@@ -139,15 +144,38 @@ object YoutubeAnalysisTargetExtractor {
             else -> return null
         }.trim()
 
-        val titleWithoutChannelSuffix = rawTitle.indexOf('_')
+        val titleWithoutChannelSuffix = stripLikelyChannelSuffix(rawTitle)
+        val titleWithoutInternalSuffix = titleWithoutChannelSuffix.indexOf('_')
             .takeIf { it > 0 }
-            ?.let { rawTitle.substring(0, it).trim() }
-            ?: rawTitle
+            ?.let { titleWithoutChannelSuffix.substring(0, it).trim() }
+            ?: titleWithoutChannelSuffix
 
-        return titleWithoutChannelSuffix
+        return titleWithoutInternalSuffix
             .removeSuffix("-")
             .trim()
             .ifBlank { null }
+    }
+
+    private fun stripLikelyChannelSuffix(rawTitle: String): String {
+        val normalized = rawTitle.replace(Regex("\\s+"), " ").trim()
+        val commaParts = normalized.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (commaParts.size < 2) return normalized
+
+        val suffix = commaParts.last()
+        val prefix = commaParts.dropLast(1).joinToString(", ").trim()
+        if (prefix.length < 2) return normalized
+
+        val suffixLower = suffix.lowercase()
+        val suffixLooksLikeChannel =
+            suffix.length in 2..48 &&
+            !looksLikeRelativeTime(suffix) &&
+            !suffixLower.contains("조회수") &&
+            !suffixLower.contains("views") &&
+            !suffixLower.contains("play video") &&
+            !suffixLower.contains("play short") &&
+            !looksLikeContentText(suffix)
+
+        return if (suffixLooksLikeChannel) prefix else normalized
     }
 
     private fun estimateCompositeTitleBounds(node: ParsedTextNode, isShortsGridCard: Boolean): BoundsRect {
@@ -166,7 +194,7 @@ object YoutubeAnalysisTargetExtractor {
             )
         }
 
-        if (height >= 300) {
+        if (height >= 520) {
             val titleTop = node.top + (height * 0.80f).toInt()
             val titleHeight = minOf(128, maxOf(56, height / 5))
             return BoundsRect(
