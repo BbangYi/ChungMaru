@@ -25,6 +25,13 @@ body:
     validations:
       required: true
   - type: textarea
+    id: cause-breakdown
+    attributes:
+      label: 원인 분해
+      placeholder: "모델/후처리, 후보 수집, 렌더링, 네트워크, 설정 race, 플랫폼 접근성/OCR 중 어디 문제였는지 적습니다."
+    validations:
+      required: true
+  - type: textarea
     id: solution
     attributes:
       label: 선택한 해결책

@@ -19,6 +19,8 @@ body:
         - 일반 텍스트 노드
         - Google 결과 카드
         - YouTube 댓글
+        - Android YouTube 제목/카드
+        - Android overlay
         - popup/options
         - 기타
     validations:
@@ -42,3 +44,13 @@ body:
     attributes:
       label: 제약 사항
       value: "- 입력창 fixed-token UX는 안정화 기준으로 보호\n- 일반 DOM은 exact span wrapper만 사용\n- UI 변경은 별도 PR로 검증"
+  - type: textarea
+    id: cause-notes
+    attributes:
+      label: 원인 분해 메모
+      placeholder: "예: Android는 DOM span이 불가능해 좌표 overlay만 가능하고, composite bounds를 그대로 쓰면 카드 전체가 가려짐"
+  - type: textarea
+    id: report-note
+    attributes:
+      label: 보고서 반영 메모
+      placeholder: "예: 플랫폼별 렌더링 제약 때문에 Chrome DOM span과 Android coordinate overlay를 분리해 관리함"

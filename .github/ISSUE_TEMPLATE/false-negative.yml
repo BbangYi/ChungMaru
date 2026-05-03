@@ -40,11 +40,41 @@ body:
         - Google 검색 결과
         - Google AI 개요
         - YouTube 댓글
+        - Android YouTube 제목/카드
+        - Android YouTube 검색창
+        - Android 이미지/썸네일 내부 텍스트
         - 일반 웹 페이지
         - Backend 직접 호출
         - 기타
+  - type: dropdown
+    id: likely-cause
+    attributes:
+      label: 의심 원인
+      description: 정확하지 않아도 됩니다. 이후 PR에서 실제 원인을 갱신합니다.
+      multiple: true
+      options:
+        - Backend 모델/후처리
+        - Evidence span 없음
+        - 후보 수집 누락
+        - foreground/reconcile 지연
+        - 캐시 또는 stale response
+        - 설정/민감도 반영
+        - Android 접근성 트리
+        - OCR이 필요한 이미지 내부 텍스트
+        - 기타
+  - type: textarea
+    id: cause-notes
+    attributes:
+      label: 원인 분해 메모
+      placeholder: "예: YouTube 제목이 text node가 아니라 contentDescription 안에만 존재함"
   - type: textarea
     id: validation
     attributes:
       label: 검증 계획
       placeholder: "예: regression case 추가, popup latency 확인, backend 직접 비교"
+  - type: textarea
+    id: report-note
+    attributes:
+      label: 보고서 반영 메모
+      description: 이 사례가 어떤 제약/개선 근거가 되는지 한두 줄로 적습니다.
+      placeholder: "예: 접근성 API만으로는 썸네일 내부 텍스트를 얻을 수 없어 OCR이 후속 과제로 분리됨"

@@ -32,6 +32,27 @@ body:
       placeholder: "예: 특정 span이 마스킹됨, 카드 일부가 늦게 가려짐"
     validations:
       required: true
+  - type: dropdown
+    id: likely-cause
+    attributes:
+      label: 의심 원인
+      description: 정확하지 않아도 됩니다. 이후 PR에서 실제 원인을 갱신합니다.
+      multiple: true
+      options:
+        - Backend 모델/후처리
+        - Evidence span 산출
+        - 후보 수집/컨테이너 병합
+        - 렌더링/마스킹 UI
+        - 캐시 또는 stale response
+        - 설정/민감도 반영
+        - Android 접근성 트리
+        - OCR이 필요한 이미지 내부 텍스트
+        - 기타
+  - type: textarea
+    id: cause-notes
+    attributes:
+      label: 원인 분해 메모
+      placeholder: "예: 정상 UI 단어인데 span으로 채택됨, safe-context가 늦게 적용됨"
   - type: textarea
     id: constraints
     attributes:
@@ -42,3 +63,9 @@ body:
     attributes:
       label: 검증 계획
       placeholder: "예: backend regression 추가, 실제 Google 화면 재확인"
+  - type: textarea
+    id: report-note
+    attributes:
+      label: 보고서 반영 메모
+      description: 이 사례가 어떤 제약/개선 근거가 되는지 한두 줄로 적습니다.
+      placeholder: "예: 단순 금칙어 차단은 문맥 오탐을 만들 수 있어 safe-context 후처리가 필요했음"

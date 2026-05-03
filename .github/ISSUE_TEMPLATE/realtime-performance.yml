@@ -30,8 +30,29 @@ body:
       placeholder: "예: 첫 화면 상단 후보가 사용자 인지 전 또는 즉시 반영"
     validations:
       required: true
+  - type: dropdown
+    id: bottleneck
+    attributes:
+      label: 병목 후보
+      multiple: true
+      options:
+        - Backend 왕복/timeout
+        - 모델 추론 지연
+        - 후보 수집 지연
+        - foreground batch 과다
+        - reconcile 지연
+        - DOM mutation 반복
+        - Android 접근성 이벤트 지연
+        - overlay 렌더링 비용
+        - 캐시 미적중
+        - 기타
   - type: textarea
     id: constraints
     attributes:
       label: 제약 사항
       value: "- 전체 DOM full scan 금지\n- whole-element masking 금지\n- backend authoritative 유지"
+  - type: textarea
+    id: report-note
+    attributes:
+      label: 보고서 반영 메모
+      placeholder: "예: 정확도를 위해 backend 문맥 판정을 유지하되 visible 후보 우선순위와 stale drop으로 체감 지연을 줄였음"

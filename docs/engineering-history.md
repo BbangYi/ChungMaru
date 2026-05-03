@@ -26,6 +26,8 @@
 | 서비스 차별성 약함 | 욕설 마스킹과 모델 비교만으로는 흔한 프로젝트처럼 보일 수 있음 | 교수 피드백, 현재 `service-definition.md`, `evaluation/api-vs-ml` 구조 확인 | 기능을 더 늘리기 전에 무엇이 차별점인지 먼저 고정해야 함 | 청마루를 문맥/불확실성/플랫폼 수집/근거 기반 중재 파이프라인으로 재정의 | 서비스 정의서, pipeline 평가 기준, 제약 문서 일관성 확인 | 실제 평가 표와 발표 자료에 같은 프레임을 반영해야 함 |
 | Android 분석 루프 부재 | Android 앱이 댓글 수집 JSON 업로드는 하지만 backend 모델 분석 결과가 앱에서 확인되지 않음 | Android 코드의 `ServerUploader`, backend `/analyze_android`, 빌드/테스트 결과 | 접근성 API는 DOM span을 직접 제어하지 못하므로 차단 UX 전에 수집/분석 품질을 분리 검증해야 함 | 별도 분석 API 주소 설정, `/analyze_android` 클라이언트, 분석 결과 저장, 최근 분석 진단 UI 추가 | `:app:testDebugUnitTest`, `:app:assembleDebug`, `/analyze_android` 직접 호출 | 실기기 접근성 이벤트 기반 수집 품질 검증 필요 |
 | Android no-span positive 구분 | backend가 `is_offensive=true`를 주더라도 `evidence_spans`가 비어 있는 경우가 있어 모바일 진단에서 차단 가능 항목처럼 보일 수 있음 | `/analyze_android` 직접 호출, `abstract factory pattern 설명` no-span positive 사례, Android unit test | Android 접근성 overlay는 좌표 기반이라 span이 없는 결과를 화면에 안정적으로 적용할 수 없음 | backend 원 응답은 저장하되 모바일 진단의 “마스킹 가능 댓글 수”는 `is_offensive && evidence_spans`가 있는 결과만 계산 | `AndroidAnalysisClientTest`, `:app:testDebugUnitTest`, `:app:assembleDebug` | 모델 positive와 실제 마스킹 가능 결과를 UI에서 더 세분화해 보여줄지 검토 필요 |
+| Android YouTube 제목 누락 | YouTube 검색 결과 제목과 영상 카드 제목이 마스킹되지 않음 | `uiautomator dump`, `parse_results`, `analysis_results` 비교 결과 제목이 일반 text node가 아니라 `content-desc`에 들어 있거나 아예 썸네일 이미지 안에만 존재 | 접근성 API는 이미지 내부 글자를 제공하지 않고, composite card bounds를 그대로 쓰면 카드 전체가 가려짐 | `content-desc`에서 제목만 분리해 backend 후보로 보내고, card bounds는 제목 strip으로 축소 | `:app:testDebugUnitTest`, `:app:assembleDebug`, `adb install`, 최신 parse/analysis JSON bounds 비교 | 썸네일/영상 프레임 내부 텍스트는 OCR 없이는 처리 불가 |
+| Android overlay 표현 과함 | 모바일에서 `***` 또는 큰 검은 박스가 카드 전체를 덮어 사용성이 낮음 | YouTube Shorts/grid 화면 캡처, MaskOverlayController signature, bounds 비교 | Android는 DOM span이 아니라 좌표 overlay라 정확한 단어 위치가 없는 경우가 있음 | 작은 영역은 compact token, 긴 제목 영역은 `민감 표현` label로 분리하고 oversized card는 제한 | `MaskOverlayPlannerTest`, 실제 APK 설치 후 YouTube 화면 확인 | OCR 또는 더 세밀한 텍스트 bounds 없이는 이미지 내부 텍스트에 exact masking 불가 |
 
 ## 3. 최근 GitHub PR 기준 이력
 
@@ -47,6 +49,8 @@
 이에 따라 backend 모델의 `/analyze_batch` 결과를 최종 판단 기준으로 유지하고, extension은 visible container 우선 수집, dirty queue, exact span 마스킹, stale response guard를 통해 실사용 환경에서의 안정성과 반응 속도를 개선했다.
 Android 앱에서는 Chrome extension과 달리 접근성 노드 기반으로 텍스트와 좌표를 수집해야 하므로, 바로 마스킹 UX를 구현하기보다 `/analyze_android` 분석 결과를 저장하고 앱에서 최근 분석 진단을 확인하는 루프를 먼저 구축했다.
 또한 Android에서는 backend가 유해 boolean을 반환하더라도 `evidence_spans`가 없으면 실제 화면에 단어 단위로 안전하게 적용할 근거가 부족하므로, 원 응답은 보존하되 “마스킹 가능 댓글 수”는 span이 있는 결과만 집계하도록 분리했다.
+YouTube 모바일 앱에서는 검색 결과 제목이 일반 text node가 아니라 `contentDescription`에 합쳐져 노출되거나, 썸네일 내부 이미지 텍스트처럼 접근성 트리에 아예 나타나지 않는 경우가 있었다.
+따라서 접근성으로 확보 가능한 제목은 backend 후보로 분리해 보내고, 좌표는 카드 전체가 아니라 제목 영역으로 축소했으며, 이미지 내부 텍스트는 OCR이 필요한 별도 제약으로 기록했다.
 다만 교수 피드백을 반영하면 “욕설 마스킹”이나 “모델 비교”만으로는 흔한 주제처럼 보일 수 있으므로, 청마루의 차별점은 문맥 민감성, 불확실성 관리, 플랫폼별 수집 제약 대응, evidence span 기반 중재로 정리했다.
 이 과정에서 `시발 - 위키낱말사전`, `카필 시발(Kapil Sibal)`, `scripts`, `README`, `warp theme` 등 정상 문맥 오탐 사례와 `시발 뭐하는 거야`, `병신아 꺼져`, romanized 표현 등 유해 사례를 regression set으로 관리했다.
 평가는 단순 API vs ML 비교가 아니라 keyword-only, ML-only, ML+normalization, ML+safe-context, full pipeline이 각각 어떤 실패 유형에서 다른지 확인하는 방식으로 확장한다.
