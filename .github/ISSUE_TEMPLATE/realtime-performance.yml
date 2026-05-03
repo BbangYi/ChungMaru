@@ -30,8 +30,46 @@ body:
       placeholder: "예: 첫 화면 상단 후보가 사용자 인지 전 또는 즉시 반영"
     validations:
       required: true
+  - type: dropdown
+    id: bottleneck
+    attributes:
+      label: 병목 후보
+      multiple: true
+      options:
+        - Backend 왕복/timeout
+        - 모델 추론 지연
+        - 후보 수집 지연
+        - foreground batch 과다
+        - reconcile 지연
+        - DOM mutation 반복
+        - Android 접근성 이벤트 지연
+        - overlay 렌더링 비용
+        - 캐시 미적중
+        - 기타
   - type: textarea
     id: constraints
     attributes:
       label: 제약 사항
       value: "- 전체 DOM full scan 금지\n- whole-element masking 금지\n- backend authoritative 유지"
+  - type: dropdown
+    id: constraint-code
+    attributes:
+      label: 제약 분류 코드
+      description: docs/constraints-and-decisions.md의 C1~C8 기준입니다.
+      multiple: true
+      options:
+        - C1 서비스 차별성
+        - C2 Backend 계약/모델
+        - C3 후보 수집/플랫폼 DOM
+        - C4 실시간성/비동기
+        - C5 마스킹 UI/렌더링
+        - C6 설정/민감도/캐시
+        - C7 Android 접근성/OCR
+        - C8 검증/운영 환경
+    validations:
+      required: true
+  - type: textarea
+    id: report-note
+    attributes:
+      label: 보고서 반영 메모
+      placeholder: "예: 정확도를 위해 backend 문맥 판정을 유지하되 visible 후보 우선순위와 stale drop으로 체감 지연을 줄였음"
