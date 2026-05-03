@@ -80,6 +80,9 @@ data class AndroidAnalysisAttempt(
     val commentCount: Int,
     val offensiveCount: Int,
     val filteredCount: Int,
+    val overlayCandidateCount: Int = 0,
+    val overlayRenderedCount: Int = 0,
+    val overlaySkippedUnstableCount: Int = 0,
     val response: AndroidAnalysisResponse? = null,
     val actionableSamples: List<String> = emptyList(),
     val error: String? = null
@@ -94,6 +97,9 @@ data class AndroidAnalysisDiagnostics(
     val commentCount: Int,
     val offensiveCount: Int,
     val filteredCount: Int,
+    val overlayCandidateCount: Int,
+    val overlayRenderedCount: Int,
+    val overlaySkippedUnstableCount: Int,
     val actionableSamples: List<String>,
     val error: String?
 )

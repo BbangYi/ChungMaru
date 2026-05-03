@@ -132,6 +132,30 @@ class MaskOverlayPlannerTest {
         assertTrue(specs.isEmpty())
     }
 
+    @Test
+    fun buildPlan_reportsCandidatesRenderedAndSkippedUnstableCounts() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 100, 240, 150),
+                spans = listOf(EvidenceSpan("시발", 0, 2, 0.99)),
+                original = "시발 뭐하는 거야"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(0, 260, 1040, 520),
+                spans = listOf(EvidenceSpan("시발", 0, 2, 0.99)),
+                original = "시발 " + "긴 설명 ".repeat(40)
+            )
+        )
+
+        val plan = AndroidMaskOverlayPlanner.buildPlan(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(2, plan.candidateCount)
+        assertEquals(1, plan.specs.size)
+        assertEquals(1, plan.skippedUnstableCount)
+    }
+
 
     @Test
     fun buildSpecs_deduplicatesSameGeometryAndBuildsStableSignature() {

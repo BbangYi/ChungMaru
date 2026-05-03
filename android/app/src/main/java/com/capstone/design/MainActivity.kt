@@ -127,6 +127,9 @@ class MainActivity : AppCompatActivity() {
             diagnostics.filteredCount,
             diagnostics.latencyMs,
             diagnostics.url,
+            diagnostics.overlayCandidateCount,
+            diagnostics.overlayRenderedCount,
+            diagnostics.overlaySkippedUnstableCount,
             diagnostics.actionableSamples.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: "-",
             diagnostics.error ?: "-"
         )

@@ -23,6 +23,13 @@ data class MaskOverlaySpec(
     val label: String
 )
 
+data class MaskOverlayPlan(
+    val specs: List<MaskOverlaySpec>,
+    val candidateCount: Int,
+    val skippedUnstableCount: Int,
+    val suppressedOverlapCount: Int
+)
+
 object AndroidMaskOverlayPlanner {
     private const val MIN_WIDTH_PX = 24
     private const val MIN_HEIGHT_PX = 16
@@ -42,18 +49,49 @@ object AndroidMaskOverlayPlanner {
         screenWidth: Int,
         screenHeight: Int
     ): List<MaskOverlaySpec> {
+        return buildPlan(response, screenWidth, screenHeight).specs
+    }
+
+    fun buildPlan(
+        response: AndroidAnalysisResponse?,
+        screenWidth: Int,
+        screenHeight: Int
+    ): MaskOverlayPlan {
         if (response == null || screenWidth <= 0 || screenHeight <= 0) {
-            return emptyList()
+            return MaskOverlayPlan(
+                specs = emptyList(),
+                candidateCount = 0,
+                skippedUnstableCount = 0,
+                suppressedOverlapCount = 0
+            )
         }
 
-        val rawSpecs = response.results
+        var candidateCount = 0
+        var skippedUnstableCount = 0
+        val rawSpecs = mutableListOf<MaskOverlaySpec>()
+
+        response.results
             .asSequence()
             .filter { it.isOffensive && it.evidenceSpans.isNotEmpty() }
-            .flatMap { toSpecs(it, screenWidth, screenHeight).asSequence() }
-            .toList()
+            .forEach { item ->
+                candidateCount += 1
+                val specs = toSpecs(item, screenWidth, screenHeight)
+                if (specs.isEmpty()) {
+                    skippedUnstableCount += 1
+                } else {
+                    rawSpecs += specs
+                }
+            }
 
-        return suppressOverlappingSpecs(rawSpecs)
-            .take(MAX_MASK_COUNT)
+        val suppressedSpecs = suppressOverlappingSpecs(rawSpecs)
+        val finalSpecs = suppressedSpecs.take(MAX_MASK_COUNT)
+
+        return MaskOverlayPlan(
+            specs = finalSpecs,
+            candidateCount = candidateCount,
+            skippedUnstableCount = skippedUnstableCount,
+            suppressedOverlapCount = (rawSpecs.size - finalSpecs.size).coerceAtLeast(0)
+        )
     }
 
     fun signature(specs: List<MaskOverlaySpec>): String {
@@ -250,14 +288,20 @@ class MaskOverlayController(
 
     fun render(response: AndroidAnalysisResponse?) {
         val metrics = service.resources.displayMetrics
-        val specs = AndroidMaskOverlayPlanner.buildSpecs(
+        val plan = AndroidMaskOverlayPlanner.buildPlan(
             response = response,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels
         )
+        val specs = plan.specs
 
         if (specs.isEmpty()) {
             clear()
+            Log.d(
+                TAG,
+                "render skipped candidates=${plan.candidateCount} unstable=${plan.skippedUnstableCount} " +
+                    "suppressed=${plan.suppressedOverlapCount}"
+            )
             return
         }
 

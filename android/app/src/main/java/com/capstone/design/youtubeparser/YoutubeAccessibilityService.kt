@@ -252,6 +252,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 val analysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
                     .copy(packageName = currentPackage)
+                    .withOverlayDiagnostics(currentPackage)
                 analysisForOverlay = analysis
                 handler.post {
                     updateMaskOverlay(currentPackage, analysis, snapshotOverlayRevision)
@@ -362,6 +363,23 @@ class YoutubeAccessibilityService : AccessibilityService() {
             packageName == INSTAGRAM_PACKAGE ||
             packageName == TIKTOK_PACKAGE ||
             packageName == TIKTOK_ALT_PACKAGE
+    }
+
+    private fun AndroidAnalysisAttempt.withOverlayDiagnostics(packageName: String): AndroidAnalysisAttempt {
+        if (!supportsMaskOverlay(packageName)) return this
+        val response = response ?: return this
+        val metrics = resources.displayMetrics
+        val plan = AndroidMaskOverlayPlanner.buildPlan(
+            response = response,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+
+        return copy(
+            overlayCandidateCount = plan.candidateCount,
+            overlayRenderedCount = plan.specs.size,
+            overlaySkippedUnstableCount = plan.skippedUnstableCount
+        )
     }
 
     private fun extractVisibleTextNodesFromCurrentWindow(currentPackage: String): List<ParsedTextNode> {
