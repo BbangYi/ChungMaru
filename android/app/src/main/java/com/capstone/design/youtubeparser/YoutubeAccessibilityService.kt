@@ -200,6 +200,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (comments.isEmpty()) {
+            saveVisualOnlyDiagnostics(currentPackage, visualRoiPlan)
             clearMaskOverlay()
             return
         }
@@ -388,6 +389,33 @@ class YoutubeAccessibilityService : AccessibilityService() {
             nodes = nodes,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels
+        )
+    }
+
+    private fun saveVisualOnlyDiagnostics(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan
+    ) {
+        if (visualRoiPlan.candidateCount <= 0 && visualRoiPlan.rois.isEmpty()) return
+
+        AnalysisDiagnosticsStore.saveAttempt(
+            applicationContext,
+            AndroidAnalysisClient
+                .analyzeSnapshot(
+                    applicationContext,
+                    ParseSnapshot(
+                        timestamp = System.currentTimeMillis(),
+                        comments = emptyList()
+                    )
+                )
+                .copy(
+                    packageName = packageName,
+                    actionableSamples = visualRoiPlan.rois.take(3).map { roi ->
+                        "OCR 후보(${roi.source}): ${roi.boundsInScreen.left},${roi.boundsInScreen.top}," +
+                            "${roi.boundsInScreen.right},${roi.boundsInScreen.bottom}"
+                    }
+                )
+                .withVisualCaptureDiagnostics(visualRoiPlan)
         )
     }
 
