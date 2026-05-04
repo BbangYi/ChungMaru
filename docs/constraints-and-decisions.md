@@ -146,6 +146,15 @@
 - 대안 보류 이유: OCR 의존성을 먼저 추가하면 빌드/성능/개인정보 제약이 한꺼번에 섞이고, 실제 실패가 권한 문제인지 OCR 품질 문제인지 분리하기 어렵다.
 - 다음 단계: 지원 가능 상태가 확인된 환경에서 viewport 상단 썸네일 2~4개만 캡처하고, OCR 결과를 backend `/analyze_android`로 보내는 제한 실험을 진행한다.
 
+### Decision 14. Android OCR은 전체 화면이 아니라 제한된 ROI만 분석
+
+- 선택: 스크린샷 기반 OCR을 도입하더라도 전체 화면을 매번 분석하지 않고, 접근성 노드에서 추론 가능한 상단 visible composite card/visual node만 ROI로 선별한다.
+- 이유: 전체 화면 OCR은 반응 속도, 배터리, 개인정보, 오탐 위험이 모두 크며, 카드 전체를 다시 blanket masking하는 문제로 돌아갈 수 있다.
+- 적용: `VisualTextRoiPlanner`가 `contentDescription` only composite card와 이미지형 노드를 별도 후보로 분리하고, root/system 영역과 과도하게 큰 영역은 제외하며 최대 4개만 선택한다.
+- 대안: 화면 전체 screenshot을 OCR로 보내고 결과 좌표를 전부 overlay로 렌더링한다.
+- 대안 보류 이유: 빠르게 움직이는 YouTube/Shorts 화면에서 전체 OCR은 지연과 flicker를 키우고, 실제 서비스 제약인 “사용자가 보기 전 안정적 적용”에 맞지 않는다.
+- 다음 단계: ROI crop -> OCR text box -> backend `/analyze_android` -> `VisualTextMaskPlanner` 순서로 연결하되, 기존 접근성 text node overlay와 섞지 않는다.
+
 ## 3. 보고서에 넣기 좋은 제약 요약
 
 청마루의 핵심 제약은 “정확한 문맥 판단”과 “사용자가 읽기 전 빠른 반영”이 서로 충돌한다는 점이다.

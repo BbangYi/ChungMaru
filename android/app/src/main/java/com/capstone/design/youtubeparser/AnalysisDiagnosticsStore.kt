@@ -18,6 +18,8 @@ object AnalysisDiagnosticsStore {
     private const val KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT = "analysis_diagnostics_overlay_skipped_unstable_count"
     private const val KEY_VISUAL_CAPTURE_SUPPORTED = "analysis_diagnostics_visual_capture_supported"
     private const val KEY_VISUAL_CAPTURE_REASON = "analysis_diagnostics_visual_capture_reason"
+    private const val KEY_VISUAL_ROI_CANDIDATE_COUNT = "analysis_diagnostics_visual_roi_candidate_count"
+    private const val KEY_VISUAL_ROI_SELECTED_COUNT = "analysis_diagnostics_visual_roi_selected_count"
     private const val KEY_ACTIONABLE_SAMPLES = "analysis_diagnostics_actionable_samples"
     private const val KEY_ERROR = "analysis_diagnostics_error"
 
@@ -37,6 +39,8 @@ object AnalysisDiagnosticsStore {
             .putInt(KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT, attempt.overlaySkippedUnstableCount)
             .putBoolean(KEY_VISUAL_CAPTURE_SUPPORTED, attempt.visualCaptureSupported)
             .putString(KEY_VISUAL_CAPTURE_REASON, attempt.visualCaptureReason)
+            .putInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, attempt.visualRoiCandidateCount)
+            .putInt(KEY_VISUAL_ROI_SELECTED_COUNT, attempt.visualRoiSelectedCount)
             .putString(KEY_ACTIONABLE_SAMPLES, attempt.actionableSamples.joinToString("\n"))
             .putString(KEY_ERROR, attempt.error.orEmpty())
             .apply()
@@ -64,6 +68,8 @@ object AnalysisDiagnosticsStore {
                 KEY_VISUAL_CAPTURE_REASON,
                 VisualTextCaptureSupport.REASON_SERVICE_NOT_CONNECTED
             ).orEmpty(),
+            visualRoiCandidateCount = prefs.getInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, 0),
+            visualRoiSelectedCount = prefs.getInt(KEY_VISUAL_ROI_SELECTED_COUNT, 0),
             actionableSamples = prefs.getString(KEY_ACTIONABLE_SAMPLES, "").orEmpty()
                 .lines()
                 .map { it.trim() }

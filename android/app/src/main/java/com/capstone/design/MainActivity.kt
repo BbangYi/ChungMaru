@@ -132,6 +132,8 @@ class MainActivity : AppCompatActivity() {
             diagnostics.overlaySkippedUnstableCount,
             if (diagnostics.visualCaptureSupported) "가능" else "불가",
             diagnostics.visualCaptureReason,
+            diagnostics.visualRoiSelectedCount,
+            diagnostics.visualRoiCandidateCount,
             diagnostics.actionableSamples.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: "-",
             diagnostics.error ?: "-"
         )

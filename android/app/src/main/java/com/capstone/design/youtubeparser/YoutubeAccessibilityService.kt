@@ -157,6 +157,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
+        val visualRoiPlan = buildVisualTextRoiPlan(nodes)
         val comments = when (currentPackage) {
             YOUTUBE_PACKAGE -> YoutubeAnalysisTargetExtractor.extractTargets(nodes)
             INSTAGRAM_PACKAGE -> InstagramCommentExtractor.extractComments(nodes)
@@ -164,7 +165,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
             else -> emptyList()
         }
 
-        Log.d(TAG, "package=$currentPackage parsed analysis target count=${comments.size}")
+        Log.d(
+            TAG,
+            "package=$currentPackage parsed analysis target count=${comments.size} " +
+                "visualRoiCandidates=${visualRoiPlan.candidateCount} visualRois=${visualRoiPlan.rois.size}"
+        )
 
         if (shouldLogRawNodes() && currentPackage == YOUTUBE_PACKAGE && comments.size <= 3) {
             nodes.take(80).forEachIndexed { index, node ->
@@ -260,7 +265,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 val analysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
                     .copy(packageName = currentPackage)
-                    .withOverlayDiagnostics(currentPackage)
+                    .withOverlayDiagnostics(currentPackage, visualRoiPlan)
                 analysisForOverlay = analysis
                 handler.post {
                     updateMaskOverlay(currentPackage, analysis, snapshotOverlayRevision)
@@ -373,9 +378,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
             packageName == TIKTOK_ALT_PACKAGE
     }
 
-    private fun AndroidAnalysisAttempt.withOverlayDiagnostics(packageName: String): AndroidAnalysisAttempt {
-        if (!supportsMaskOverlay(packageName)) return withVisualCaptureDiagnostics()
-        val response = response ?: return withVisualCaptureDiagnostics()
+    private fun buildVisualTextRoiPlan(nodes: List<ParsedTextNode>): VisualTextRoiPlan {
+        if (!visualCaptureState.supported) {
+            return VisualTextRoiPlan(rois = emptyList(), candidateCount = 0)
+        }
+
+        val metrics = resources.displayMetrics
+        return VisualTextRoiPlanner.buildPlanFromNodes(
+            nodes = nodes,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+    }
+
+    private fun AndroidAnalysisAttempt.withOverlayDiagnostics(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan
+    ): AndroidAnalysisAttempt {
+        if (!supportsMaskOverlay(packageName)) return withVisualCaptureDiagnostics(visualRoiPlan)
+        val response = response ?: return withVisualCaptureDiagnostics(visualRoiPlan)
         val metrics = resources.displayMetrics
         val plan = AndroidMaskOverlayPlanner.buildPlan(
             response = response,
@@ -388,14 +409,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
             overlayRenderedCount = plan.specs.size,
             overlaySkippedUnstableCount = plan.skippedUnstableCount,
             visualCaptureSupported = visualCaptureState.supported,
-            visualCaptureReason = visualCaptureState.reason
+            visualCaptureReason = visualCaptureState.reason,
+            visualRoiCandidateCount = visualRoiPlan.candidateCount,
+            visualRoiSelectedCount = visualRoiPlan.rois.size
         )
     }
 
-    private fun AndroidAnalysisAttempt.withVisualCaptureDiagnostics(): AndroidAnalysisAttempt {
+    private fun AndroidAnalysisAttempt.withVisualCaptureDiagnostics(
+        visualRoiPlan: VisualTextRoiPlan = VisualTextRoiPlan(rois = emptyList(), candidateCount = 0)
+    ): AndroidAnalysisAttempt {
         return copy(
             visualCaptureSupported = visualCaptureState.supported,
-            visualCaptureReason = visualCaptureState.reason
+            visualCaptureReason = visualCaptureState.reason,
+            visualRoiCandidateCount = visualRoiPlan.candidateCount,
+            visualRoiSelectedCount = visualRoiPlan.rois.size
         )
     }
 
