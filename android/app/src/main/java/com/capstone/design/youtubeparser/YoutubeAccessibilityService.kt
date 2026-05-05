@@ -1,14 +1,18 @@
 package com.capstone.design.youtubeparser
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 class YoutubeAccessibilityService : AccessibilityService() {
@@ -40,6 +44,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var lastAppliedSensitivity: Int? = null
     private var visualCaptureState: VisualTextCaptureState =
         VisualTextCaptureSupport.inspect(serviceInfo = null)
+    private val visualExecutor = Executors.newSingleThreadExecutor()
+    private val visualTextOcrProcessor by lazy { VisualTextOcrProcessor() }
+    @Volatile private var visualAnalysisInFlight = false
 
     private val parseRunnable = Runnable {
         parseScheduled = false
@@ -105,6 +112,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         cancelScheduledParse()
         maskOverlayController.clear()
+        visualExecutor.shutdownNow()
         super.onDestroy()
     }
 
@@ -200,6 +208,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (comments.isEmpty()) {
+            if (startVisualTextAnalysis(currentPackage, visualRoiPlan)) {
+                return
+            }
             saveVisualOnlyDiagnostics(currentPackage, visualRoiPlan)
             clearMaskOverlay()
             return
@@ -292,6 +303,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         "filtered=${analysis.filteredCount} analysisLatencyMs=${analysis.latencyMs} " +
                         "analysisError=${analysis.error.orEmpty()}"
                 )
+
+                if (shouldRunVisualTextSupplement(analysis, visualRoiPlan)) {
+                    handler.post {
+                        startVisualTextAnalysis(
+                            packageName = currentPackage,
+                            visualRoiPlan = visualRoiPlan,
+                            clearExistingOverlay = false
+                        )
+                    }
+                }
             } finally {
                 if (analysisForOverlay == null) {
                     handler.post {
@@ -414,6 +435,159 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         "OCR 후보(${roi.source}): ${roi.boundsInScreen.left},${roi.boundsInScreen.top}," +
                             "${roi.boundsInScreen.right},${roi.boundsInScreen.bottom}"
                     }
+                )
+                .withVisualCaptureDiagnostics(visualRoiPlan)
+        )
+    }
+
+    private fun shouldRunVisualTextSupplement(
+        analysis: AndroidAnalysisAttempt,
+        visualRoiPlan: VisualTextRoiPlan
+    ): Boolean {
+        return analysis.ok &&
+            analysis.offensiveCount == 0 &&
+            visualRoiPlan.rois.isNotEmpty() &&
+            !visualAnalysisInFlight
+    }
+
+    private fun startVisualTextAnalysis(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        clearExistingOverlay: Boolean = true
+    ): Boolean {
+        if (!supportsMaskOverlay(packageName)) return false
+        if (!visualCaptureState.supported) return false
+        if (visualRoiPlan.rois.isEmpty()) return false
+        if (visualAnalysisInFlight) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+
+        if (clearExistingOverlay) {
+            clearMaskOverlay()
+        }
+        val snapshotOverlayRevision = overlayRevision
+        visualAnalysisInFlight = true
+
+        try {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                visualExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        val screenshot = screenshotResult.toSoftwareBitmap()
+                        if (screenshot == null) {
+                            saveVisualFailureDiagnostics(
+                                packageName = packageName,
+                                visualRoiPlan = visualRoiPlan,
+                                error = "SCREENSHOT_BITMAP_UNAVAILABLE"
+                            )
+                            visualAnalysisInFlight = false
+                            return
+                        }
+
+                        visualTextOcrProcessor.recognize(screenshot, visualRoiPlan.rois) { ocrCandidates ->
+                            if (!screenshot.isRecycled) {
+                                screenshot.recycle()
+                            }
+
+                            if (ocrCandidates.isEmpty()) {
+                                saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
+                                visualAnalysisInFlight = false
+                                return@recognize
+                            }
+
+                            analyzeVisualTextCandidates(
+                                packageName = packageName,
+                                visualRoiPlan = visualRoiPlan,
+                                ocrCandidates = ocrCandidates,
+                                snapshotOverlayRevision = snapshotOverlayRevision
+                            )
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        saveVisualFailureDiagnostics(
+                            packageName = packageName,
+                            visualRoiPlan = visualRoiPlan,
+                            error = "SCREENSHOT_FAILED_$errorCode"
+                        )
+                        visualAnalysisInFlight = false
+                    }
+                }
+            )
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "visual text screenshot request failed", error)
+            saveVisualFailureDiagnostics(
+                packageName = packageName,
+                visualRoiPlan = visualRoiPlan,
+                error = error.javaClass.simpleName.takeIf { it.isNotBlank() }
+                    ?: "SCREENSHOT_REQUEST_FAILED"
+            )
+            visualAnalysisInFlight = false
+            return false
+        }
+
+        return true
+    }
+
+    private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {
+        val hardwareBuffer = hardwareBuffer
+        return try {
+            val wrapped = Bitmap.wrapHardwareBuffer(hardwareBuffer, colorSpace)
+            wrapped?.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "failed to convert screenshot to bitmap", error)
+            null
+        } finally {
+            hardwareBuffer.close()
+        }
+    }
+
+    private fun analyzeVisualTextCandidates(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        ocrCandidates: List<ParsedComment>,
+        snapshotOverlayRevision: Long
+    ) {
+        Thread {
+            try {
+                val snapshot = ParseSnapshot(
+                    timestamp = System.currentTimeMillis(),
+                    comments = ocrCandidates
+                )
+                val analysis = AndroidAnalysisClient
+                    .analyzeSnapshot(applicationContext, snapshot)
+                    .copy(packageName = packageName)
+                    .withOverlayDiagnostics(packageName, visualRoiPlan)
+
+                AnalysisDiagnosticsStore.saveAttempt(applicationContext, analysis)
+                handler.post {
+                    updateMaskOverlay(packageName, analysis, snapshotOverlayRevision)
+                }
+            } finally {
+                visualAnalysisInFlight = false
+            }
+        }.start()
+    }
+
+    private fun saveVisualFailureDiagnostics(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        error: String
+    ) {
+        AnalysisDiagnosticsStore.saveAttempt(
+            applicationContext,
+            AndroidAnalysisClient
+                .analyzeSnapshot(
+                    applicationContext,
+                    ParseSnapshot(
+                        timestamp = System.currentTimeMillis(),
+                        comments = emptyList()
+                    )
+                )
+                .copy(
+                    ok = false,
+                    packageName = packageName,
+                    error = error
                 )
                 .withVisualCaptureDiagnostics(visualRoiPlan)
         )

@@ -155,6 +155,15 @@
 - 대안 보류 이유: 빠르게 움직이는 YouTube/Shorts 화면에서 전체 OCR은 지연과 flicker를 키우고, 실제 서비스 제약인 “사용자가 보기 전 안정적 적용”에 맞지 않는다.
 - 다음 단계: ROI crop -> OCR text box -> backend `/analyze_android` -> `VisualTextMaskPlanner` 순서로 연결하되, 기존 접근성 text node overlay와 섞지 않는다.
 
+### Decision 15. OCR은 판정자가 아니라 visual text 수집기로 제한
+
+- 선택: Android OCR 결과는 바로 차단하지 않고, 기존 `ParsedComment` 후보로 변환해 backend `/analyze_android`에 보낸다.
+- 이유: 프로젝트의 핵심은 backend 모델 기반 문맥 판정이므로 OCR이 단독으로 욕설 여부를 결정하면 AI/문맥 기반 구조가 약해진다.
+- 적용: 접근성 텍스트 후보가 없는 화면에서는 OCR을 1차 visual 후보 경로로 실행한다. 접근성 분석이 실행됐지만 마스킹 가능한 span이 0개인 경우에는 동일 ROI를 후속 보정으로만 실행한다.
+- 대안: OCR 텍스트에 금칙어가 보이면 Android overlay에서 즉시 차단한다.
+- 대안 보류 이유: 속도는 빠르지만 문맥 판단과 `evidence_spans` 기준이 빠져 오탐/과차단이 늘 수 있다.
+- 다음 단계: 실기기에서 OCR latency, 배터리 영향, 썸네일/Shorts grid 정확도, backend round-trip까지 함께 측정한다.
+
 ## 3. 보고서에 넣기 좋은 제약 요약
 
 청마루의 핵심 제약은 “정확한 문맥 판단”과 “사용자가 읽기 전 빠른 반영”이 서로 충돌한다는 점이다.
