@@ -13,8 +13,12 @@ object ServerUploader {
     private const val TAG = "ServerUploader"
     private const val CONNECT_TIMEOUT_MS = 1500
     private const val READ_TIMEOUT_MS = 2500
+    private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
+    private const val INSTAGRAM_PACKAGE = "com.instagram.android"
+    private const val TIKTOK_PACKAGE = "com.zhiliaoapp.musically"
+    private const val TIKTOK_ALT_PACKAGE = "com.ss.android.ugc.trill"
 
-    fun uploadJsonFile(context: Context, file: File): Boolean {
+    fun uploadJsonFile(context: Context, file: File, sourcePackage: String? = null): Boolean {
         return try {
             val boundary = "Boundary-${UUID.randomUUID()}"
             val lineEnd = "\r\n"
@@ -33,6 +37,11 @@ object ServerUploader {
             )
 
             DataOutputStream(connection.outputStream).use { output ->
+                if (!sourcePackage.isNullOrBlank()) {
+                    writeFormField(output, boundary, lineEnd, "platform", platformNameFromPackage(sourcePackage))
+                    writeFormField(output, boundary, lineEnd, "source_package", sourcePackage)
+                }
+
                 output.writeBytes("--$boundary$lineEnd")
                 output.writeBytes(
                     "Content-Disposition: form-data; name=\"file\"; filename=\"${file.name}\"$lineEnd"
@@ -61,6 +70,29 @@ object ServerUploader {
         } catch (e: Exception) {
             Log.w(TAG, "upload skipped: ${e.javaClass.simpleName}: ${e.message.orEmpty()}")
             false
+        }
+    }
+
+    private fun writeFormField(
+        output: DataOutputStream,
+        boundary: String,
+        lineEnd: String,
+        name: String,
+        value: String
+    ) {
+        output.writeBytes("--$boundary$lineEnd")
+        output.writeBytes("Content-Disposition: form-data; name=\"$name\"$lineEnd")
+        output.writeBytes(lineEnd)
+        output.write(value.toByteArray(Charsets.UTF_8))
+        output.writeBytes(lineEnd)
+    }
+
+    private fun platformNameFromPackage(sourcePackage: String): String {
+        return when (sourcePackage) {
+            YOUTUBE_PACKAGE -> "youtube"
+            INSTAGRAM_PACKAGE -> "instagram"
+            TIKTOK_PACKAGE, TIKTOK_ALT_PACKAGE -> "tiktok"
+            else -> "unknown"
         }
     }
 }

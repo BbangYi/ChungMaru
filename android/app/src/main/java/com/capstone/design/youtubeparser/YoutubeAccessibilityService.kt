@@ -1,6 +1,9 @@
 package com.capstone.design.youtubeparser
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.content.Intent
+import android.graphics.Path
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
@@ -24,12 +27,29 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val PARSE_DELAY_CONTENT_MS = 160L
         private const val PARSE_DELAY_WINDOW_MS = 240L
         private const val RETRY_AFTER_IN_FLIGHT_MS = 90L
+        private const val AUTOMATION_VIDEO_STEP_MS = 14_000L
+        private const val AUTOMATION_AFTER_LAUNCH_MS = 5_000L
+        private const val COMMENT_PANEL_OPEN_MS = 1_200L
+        private const val COMMENT_SCROLL_1_MS = 2_600L
+        private const val COMMENT_SCROLL_2_MS = 4_100L
+        private const val COMMENT_SCROLL_3_MS = 5_600L
+        private const val COMMENT_CLOSE_MS = 7_200L
+        private const val NEXT_VIDEO_MS = 8_600L
+        private const val AD_SKIP_RECHECK_MS = 3_000L
+        private const val GESTURE_DURATION_MS = 420L
     }
 
     private val handler = Handler(Looper.getMainLooper())
     private var lastSnapshotSignature: String? = null
     private var lastUploadAt: Long = 0L
     private var lastObservedPackage: String? = null
+    private var automationPlatform: AutomationPlatform? = null
+    private var automationStepScheduled = false
+    private var automationRotationScheduled = false
+    private var shortFormEntryAttemptedFor: AutomationPlatform? = null
+    private var launchAttemptedFor: AutomationPlatform? = null
+    private var commentPanelOpenedFor: AutomationPlatform? = null
+    private var automationCycleId = 0L
     private val maskOverlayController by lazy { MaskOverlayController(this) }
     @Volatile private var analysisInFlight = false
     @Volatile private var pendingParseAfterAnalysis = false
@@ -48,8 +68,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val automationStepRunnable = Runnable {
+        automationStepScheduled = false
+        runAutomationVideoStep()
+    }
+
+    private val automationRotationRunnable = Runnable {
+        automationRotationScheduled = false
+        rotateAutomationPlatform()
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
+        ensureAutomationLoop()
         Log.d(TAG, "service connected")
     }
 
@@ -65,6 +96,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         ) return
 
         lastObservedPackage = packageName
+        ensureAutomationLoop()
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
@@ -89,12 +121,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         cancelScheduledParse()
+        cancelAutomationLoop()
         maskOverlayController.clear()
         Log.d(TAG, "service interrupted")
     }
 
     override fun onDestroy() {
         cancelScheduledParse()
+        cancelAutomationLoop()
         maskOverlayController.clear()
         super.onDestroy()
     }
@@ -127,6 +161,774 @@ class YoutubeAccessibilityService : AccessibilityService() {
         parseScheduled = false
         scheduledParseAtMs = 0L
         followUpParseRequested = false
+    }
+
+    private fun ensureAutomationLoop() {
+        if (!AutomationSettingsStore.isEnabled(applicationContext)) {
+            cancelAutomationLoop()
+            return
+        }
+
+        if (automationPlatform == null) {
+            rotateAutomationPlatform()
+            return
+        }
+
+        scheduleAutomationRotation()
+        scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
+    }
+
+    private fun cancelAutomationLoop() {
+        handler.removeCallbacks(automationStepRunnable)
+        handler.removeCallbacks(automationRotationRunnable)
+        automationStepScheduled = false
+        automationRotationScheduled = false
+        automationPlatform = null
+        shortFormEntryAttemptedFor = null
+        launchAttemptedFor = null
+        commentPanelOpenedFor = null
+        automationCycleId++
+    }
+
+    private fun rotateAutomationPlatform() {
+        if (!AutomationSettingsStore.isEnabled(applicationContext)) {
+            cancelAutomationLoop()
+            return
+        }
+
+        if (closeCommentPanelBeforeAppSwitch()) return
+        switchToNextAutomationPlatform()
+    }
+
+    private fun switchToNextAutomationPlatform() {
+        val platforms = AutomationPlatform.values().filter { isPlatformAvailable(it) }
+        if (platforms.isEmpty()) {
+            AutomationSettingsStore.saveStatus(applicationContext, "No supported app is installed")
+            return
+        }
+
+        val index = AutomationSettingsStore.getPlatformIndex(applicationContext) % platforms.size
+        val platform = platforms[index]
+        automationPlatform = platform
+        shortFormEntryAttemptedFor = null
+        launchAttemptedFor = platform
+        commentPanelOpenedFor = null
+        automationCycleId++
+
+        AutomationSettingsStore.savePlatformIndex(applicationContext, (index + 1) % platforms.size)
+        AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: launching")
+
+        launchPlatform(platform)
+        scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
+        scheduleAutomationRotation()
+    }
+
+    private fun closeCommentPanelBeforeAppSwitch(): Boolean {
+        val currentPlatform = automationPlatform ?: return false
+        val observedPackage = lastObservedPackage ?: return false
+        if (!currentPlatform.matches(observedPackage)) return false
+
+        val shouldClose = commentPanelOpenedFor == currentPlatform || isCommentPanelLikelyOpen(currentPlatform)
+        if (!shouldClose) return false
+
+        automationCycleId++
+        handler.removeCallbacks(automationStepRunnable)
+        automationStepScheduled = false
+
+        AutomationSettingsStore.saveStatus(applicationContext, "${currentPlatform.label}: closing comment panel")
+        val closedByButton = closeCommentPanel()
+        if (!closedByButton) {
+            dismissCommentPanelWithGesture()
+        }
+
+        handler.postDelayed(
+            {
+                if (AutomationSettingsStore.isEnabled(applicationContext)) {
+                    commentPanelOpenedFor = null
+                    switchToNextAutomationPlatform()
+                }
+            },
+            if (closedByButton) 550L else 1_100L
+        )
+        return true
+    }
+
+    private fun scheduleAutomationRotation() {
+        if (automationRotationScheduled) return
+        automationRotationScheduled = true
+        handler.postDelayed(
+            automationRotationRunnable,
+            AutomationSettingsStore.getRotationIntervalMs(applicationContext)
+        )
+    }
+
+    private fun scheduleAutomationStep(delayMs: Long = AUTOMATION_VIDEO_STEP_MS) {
+        if (automationStepScheduled) return
+        automationStepScheduled = true
+        handler.postDelayed(automationStepRunnable, delayMs)
+    }
+
+    private fun runAutomationVideoStep() {
+        if (!AutomationSettingsStore.isEnabled(applicationContext)) {
+            cancelAutomationLoop()
+            return
+        }
+
+        val platform = automationPlatform ?: run {
+            rotateAutomationPlatform()
+            return
+        }
+
+        val observedPackage = lastObservedPackage
+        if (observedPackage == null || !platform.matches(observedPackage)) {
+            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: waiting for app screen")
+            if (launchAttemptedFor != platform) {
+                launchAttemptedFor = platform
+                launchPlatform(platform)
+            }
+            scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
+            return
+        }
+        launchAttemptedFor = null
+
+        AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: parsing cycle")
+        if (enterShortFormIfNeeded(platform)) {
+            scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
+            return
+        }
+
+        val cycleId = ++automationCycleId
+
+        if (skipAdIfNeeded(platform)) {
+            scheduleAutomationStep(AD_SKIP_RECHECK_MS)
+            return
+        }
+
+        parseAndUploadCurrentWindow()
+        commentPanelOpenedFor = null
+
+        val commentsOpened = openCommentPanel(platform)
+        if (!commentsOpened) {
+            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: comments not opened")
+            moveToNextVideo(platform, strongSwipe = platform != AutomationPlatform.TIKTOK)
+            scheduleAutomationStep(if (platform == AutomationPlatform.YOUTUBE) AD_SKIP_RECHECK_MS else AUTOMATION_VIDEO_STEP_MS)
+            return
+        }
+
+        runLaterIfActive(platform, cycleId, COMMENT_PANEL_OPEN_MS) {
+            expandCommentPanel()
+            parseAndUploadCurrentWindow()
+        }
+        runLaterIfActive(platform, cycleId, COMMENT_SCROLL_1_MS) {
+            scrollCommentPanel(platform)
+            parseAndUploadCurrentWindow()
+        }
+        runLaterIfActive(platform, cycleId, COMMENT_SCROLL_2_MS) {
+            scrollCommentPanel(platform)
+            parseAndUploadCurrentWindow()
+        }
+        runLaterIfActive(platform, cycleId, COMMENT_SCROLL_3_MS) {
+            scrollCommentPanel(platform)
+            parseAndUploadCurrentWindow()
+        }
+        runLaterIfActive(platform, cycleId, COMMENT_CLOSE_MS) {
+            closeCommentPanel()
+        }
+        runLaterIfActive(platform, cycleId, NEXT_VIDEO_MS) {
+            moveToNextVideo(platform)
+        }
+
+        scheduleAutomationStep(AUTOMATION_VIDEO_STEP_MS)
+    }
+
+    private fun runLaterIfActive(
+        platform: AutomationPlatform,
+        cycleId: Long,
+        delayMs: Long,
+        action: () -> Unit
+    ) {
+        handler.postDelayed(
+            {
+                if (
+                    AutomationSettingsStore.isEnabled(applicationContext) &&
+                    automationPlatform == platform &&
+                    automationCycleId == cycleId &&
+                    lastObservedPackage?.let { platform.matches(it) } == true
+                ) {
+                    if (skipAdIfNeeded(platform)) return@postDelayed
+                    action()
+                }
+            },
+            delayMs
+        )
+    }
+
+    private fun launchPlatform(platform: AutomationPlatform) {
+        val intent = when (platform) {
+            AutomationPlatform.YOUTUBE -> packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE)
+            AutomationPlatform.INSTAGRAM -> packageManager.getLaunchIntentForPackage(INSTAGRAM_PACKAGE)
+            AutomationPlatform.TIKTOK -> packageManager.getLaunchIntentForPackage(TIKTOK_PACKAGE)
+                ?: packageManager.getLaunchIntentForPackage(TIKTOK_ALT_PACKAGE)
+        }?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        if (intent == null) {
+            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: launch intent missing")
+            return
+        }
+
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            AutomationSettingsStore.saveStatus(
+                applicationContext,
+                "${platform.label}: launch failed ${e.javaClass.simpleName}"
+            )
+        }
+    }
+
+    private fun isPlatformAvailable(platform: AutomationPlatform): Boolean {
+        return when (platform) {
+            AutomationPlatform.YOUTUBE -> packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE) != null
+            AutomationPlatform.INSTAGRAM -> packageManager.getLaunchIntentForPackage(INSTAGRAM_PACKAGE) != null
+            AutomationPlatform.TIKTOK -> packageManager.getLaunchIntentForPackage(TIKTOK_PACKAGE) != null ||
+                packageManager.getLaunchIntentForPackage(TIKTOK_ALT_PACKAGE) != null
+        }
+    }
+
+    private fun enterShortFormIfNeeded(platform: AutomationPlatform): Boolean {
+        if (platform == AutomationPlatform.TIKTOK) return false
+        if (shortFormEntryAttemptedFor == platform) return false
+
+        val clicked = when (platform) {
+            AutomationPlatform.YOUTUBE -> clickNamedButton("YouTube Shorts", shortFormButtonKeywords(platform))
+            AutomationPlatform.INSTAGRAM -> clickNamedButton("Instagram Reels", shortFormButtonKeywords(platform))
+            AutomationPlatform.TIKTOK -> false
+        }
+
+        if (clicked) {
+            shortFormEntryAttemptedFor = platform
+            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: short-form tab opened")
+        }
+
+        return clicked
+    }
+
+    private fun openCommentPanel(platform: AutomationPlatform): Boolean {
+        if (skipAdIfNeeded(platform)) return false
+
+        val clicked = when (platform) {
+            AutomationPlatform.YOUTUBE -> clickNamedButton("YouTube comments", commentButtonKeywords(platform))
+            AutomationPlatform.TIKTOK -> clickNamedButton("TikTok comments", commentButtonKeywords(platform))
+            AutomationPlatform.INSTAGRAM -> clickNamedButton("Instagram comments", commentButtonKeywords(platform))
+        }
+
+        if (clicked) {
+            commentPanelOpenedFor = platform
+        } else {
+            val message = "${platform.label}: comment button not found"
+            Log.w(TAG, message)
+            AutomationSettingsStore.saveStatus(applicationContext, message)
+        }
+
+        return clicked
+    }
+
+    private fun expandCommentPanel() {
+        swipeFraction(0.50f, 0.82f, 0.50f, 0.22f)
+    }
+
+    private fun scrollCommentPanel() {
+        swipeFraction(0.50f, 0.78f, 0.50f, 0.34f)
+    }
+
+    private fun scrollCommentPanel(platform: AutomationPlatform) {
+        when (platform) {
+            AutomationPlatform.INSTAGRAM -> swipeFraction(0.50f, 0.68f, 0.50f, 0.30f)
+            else -> scrollCommentPanel()
+        }
+    }
+
+    private fun closeCommentPanel(): Boolean {
+        val closed = clickNamedButton("close comments", closeButtonKeywords())
+        if (closed) {
+            commentPanelOpenedFor = null
+        } else {
+            Log.w(TAG, "close comments button not found")
+            AutomationSettingsStore.saveStatus(applicationContext, "close button not found; app kept open")
+        }
+        return closed
+    }
+
+    private fun moveToNextVideo(platform: AutomationPlatform, strongSwipe: Boolean = false) {
+        if (commentPanelOpenedFor == platform || isCommentPanelLikelyOpen(platform)) {
+            val closedByButton = closeCommentPanel()
+            if (!closedByButton) {
+                dismissCommentPanelWithGesture()
+                handler.postDelayed(
+                    {
+                        if (
+                            AutomationSettingsStore.isEnabled(applicationContext) &&
+                            automationPlatform == platform &&
+                            lastObservedPackage?.let { platform.matches(it) } == true &&
+                            platform == AutomationPlatform.TIKTOK &&
+                            (commentPanelOpenedFor == platform || isCommentPanelLikelyOpen(platform))
+                        ) {
+                            performGlobalAction(GLOBAL_ACTION_BACK)
+                            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: comment panel closed by back")
+                            commentPanelOpenedFor = null
+                        }
+                    },
+                    550L
+                )
+            }
+
+            handler.postDelayed(
+                {
+                    if (
+                        AutomationSettingsStore.isEnabled(applicationContext) &&
+                        automationPlatform == platform &&
+                        lastObservedPackage?.let { platform.matches(it) } == true
+                    ) {
+                        swipeNextVideo(platform, strongSwipe)
+                        AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: next video")
+                        commentPanelOpenedFor = null
+                    }
+                },
+                if (platform == AutomationPlatform.TIKTOK) 1_700L else 1_200L
+            )
+            return
+        }
+
+        swipeNextVideo(platform, strongSwipe)
+        AutomationSettingsStore.saveStatus(applicationContext, "${platform.label}: next video")
+        commentPanelOpenedFor = null
+    }
+
+    private fun dismissCommentPanelWithGesture(): Boolean {
+        return gestureFraction(0.50f, 0.30f, 0.50f, 0.90f, 520L)
+    }
+
+    private fun swipeNextVideo(platform: AutomationPlatform, strongSwipe: Boolean = false) {
+        val duration = if (strongSwipe) 760L else 650L
+        val swiped = when (platform) {
+            AutomationPlatform.INSTAGRAM -> gestureFraction(0.50f, 0.66f, 0.50f, 0.12f, duration)
+            AutomationPlatform.TIKTOK -> gestureFraction(0.50f, 0.76f, 0.50f, 0.16f, duration)
+            AutomationPlatform.YOUTUBE -> gestureFraction(0.50f, 0.88f, 0.50f, 0.08f, duration)
+        }
+        if (swiped) {
+            Log.d(TAG, "next video swipe dispatched")
+        }
+    }
+
+    private fun skipAdIfNeeded(platform: AutomationPlatform): Boolean {
+        val observedPackage = lastObservedPackage ?: return false
+        if (!platform.matches(observedPackage)) return false
+        if (!isAdVisible(platform)) return false
+
+        val message = "${platform.label}: ad detected; skipping"
+        Log.d(TAG, message)
+        AutomationSettingsStore.saveStatus(applicationContext, message)
+        swipeAdToNextVideo(platform)
+        return true
+    }
+
+    private fun swipeAdToNextVideo(platform: AutomationPlatform) {
+        automationCycleId++
+        commentPanelOpenedFor = null
+        swipeNextVideo(platform, strongSwipe = true)
+    }
+
+    private fun isAdVisible(platform: AutomationPlatform): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return containsLikelyAdNode(root, adKeywords(platform))
+    }
+
+    private fun containsLikelyAdNode(node: AccessibilityNodeInfo?, keywords: List<String>): Boolean {
+        if (node == null) return false
+
+        val text = buildString {
+            append(node.text?.toString().orEmpty())
+            append(' ')
+            append(node.contentDescription?.toString().orEmpty())
+            append(' ')
+            append(node.viewIdResourceName.orEmpty())
+        }.trim()
+        val lower = text.lowercase()
+
+        if (keywords.any { keyword -> lower.contains(keyword.lowercase()) }) {
+            return true
+        }
+
+        for (index in 0 until node.childCount) {
+            if (containsLikelyAdNode(node.getChild(index), keywords)) return true
+        }
+
+        return false
+    }
+
+    private fun adKeywords(platform: AutomationPlatform): List<String> {
+        val common = listOf(
+            "ad",
+            "ads",
+            "sponsored",
+            "promoted",
+            "learn more",
+            "visit site",
+            "shop now",
+            "install now",
+            "광고",
+            "스폰서"
+        )
+
+        return when (platform) {
+            AutomationPlatform.YOUTUBE -> common + listOf(
+                "skip ad",
+                "skip ads",
+                "visit advertiser",
+                "why this ad",
+                "광고 건너뛰기"
+            )
+            AutomationPlatform.INSTAGRAM -> common + listOf(
+                "learn more button",
+                "sponsored post",
+                "sponsored reel",
+                "더 알아보기 버튼"
+            )
+            AutomationPlatform.TIKTOK -> emptyList()
+        }
+    }
+
+    private fun isCommentPanelLikelyOpen(platform: AutomationPlatform): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val panelKeywords = when (platform) {
+            AutomationPlatform.YOUTUBE -> listOf(
+                "add a comment",
+                "write a comment",
+                "comment as",
+                "sort comments",
+                "댓글 추가",
+                "댓글 쓰기",
+                "댓글 정렬"
+            )
+            AutomationPlatform.TIKTOK -> listOf(
+                "add comment",
+                "write a comment",
+                "comment as",
+                "comments panel",
+                "댓글 추가",
+                "댓글 쓰기",
+                "댓글 패널"
+            )
+            AutomationPlatform.INSTAGRAM -> listOf(
+                "add a comment",
+                "write a comment",
+                "reply",
+                "댓글 추가",
+                "댓글 쓰기",
+                "답글 쓰기"
+            )
+        }
+
+        return containsAnyLabel(root, panelKeywords)
+    }
+
+    private fun containsAnyLabel(node: AccessibilityNodeInfo?, keywords: List<String>): Boolean {
+        if (node == null) return false
+        val label = nodeLabel(node).lowercase()
+        if (keywords.any { label.contains(it.lowercase()) }) return true
+
+        for (index in 0 until node.childCount) {
+            if (containsAnyLabel(node.getChild(index), keywords)) return true
+        }
+
+        return false
+    }
+
+    private fun shortFormButtonKeywords(platform: AutomationPlatform): List<String> {
+        return when (platform) {
+            AutomationPlatform.YOUTUBE -> listOf("shorts", "쇼츠")
+            AutomationPlatform.INSTAGRAM -> listOf(
+                "reels",
+                "reel",
+                "릴스",
+                "clips",
+                "clips tab"
+            )
+            AutomationPlatform.TIKTOK -> emptyList()
+        }
+    }
+
+    private fun commentButtonKeywords(platform: AutomationPlatform): List<String> {
+        return when (platform) {
+            AutomationPlatform.YOUTUBE -> listOf(
+                "comments",
+                "comment",
+                "댓글",
+                "댓글 보기",
+                "댓글 열기",
+                "view comments",
+                "open comments"
+            )
+            AutomationPlatform.TIKTOK -> listOf(
+                "comments",
+                "comment",
+                "댓글",
+                "댓글 보기",
+                "댓글 열기",
+                "view comments",
+                "open comments"
+            )
+            AutomationPlatform.INSTAGRAM -> listOf(
+                "comments",
+                "comment",
+                "댓글",
+                "답글",
+                "reply",
+                "view comments",
+                "open comments"
+            )
+        }
+    }
+
+    private fun closeButtonKeywords(): List<String> {
+        return listOf(
+            "close",
+            "닫기",
+            "뒤로",
+            "취소",
+            "collapse",
+            "댓글 닫기",
+            "댓글 패널 닫기",
+            "close comments",
+            "close comment",
+            "close panel",
+            "dismiss"
+        )
+    }
+
+    private fun clickNamedButton(actionLabel: String, keywords: List<String>): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val candidate = findBestNamedButton(root, keywords) ?: run {
+            logClickableCandidates(actionLabel, root)
+            return false
+        }
+        val clicked = clickNodeOrParent(candidate)
+        if (clicked) {
+            val message = "$actionLabel clicked: ${nodeLabel(candidate).ifBlank { candidate.className?.toString().orEmpty() }}"
+            Log.d(TAG, message)
+            AutomationSettingsStore.saveStatus(applicationContext, message)
+        }
+        return clicked
+    }
+
+    private fun logClickableCandidates(actionLabel: String, root: AccessibilityNodeInfo) {
+        val labels = mutableListOf<Pair<Int, String>>()
+
+        fun dfs(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+
+            val label = nodeLabel(node)
+            if (node.isVisibleToUser && label.isNotBlank() && hasClickableSelfOrParent(node)) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                labels += rect.top to "${label.take(80)} @${rect.flattenToString()}"
+            }
+
+            for (index in 0 until node.childCount) {
+                dfs(node.getChild(index))
+            }
+        }
+
+        dfs(root)
+        val snapshot = labels
+            .sortedBy { it.first }
+            .map { it.second }
+            .distinct()
+            .take(18)
+            .joinToString(" | ")
+
+        if (snapshot.isNotBlank()) {
+            Log.d(TAG, "$actionLabel not found. visible clickable labels: $snapshot")
+        }
+    }
+
+    private fun findBestNamedButton(
+        root: AccessibilityNodeInfo,
+        keywords: List<String>
+    ): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+
+        fun dfs(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+
+            if (
+                node.isVisibleToUser &&
+                matchesAnyKeyword(node, keywords) &&
+                hasClickableSelfOrParent(node)
+            ) {
+                candidates += node
+            }
+
+            for (index in 0 until node.childCount) {
+                dfs(node.getChild(index))
+            }
+        }
+
+        dfs(root)
+        return candidates.minWithOrNull(
+            compareByDescending<AccessibilityNodeInfo> { nodeMatchScore(it, keywords) }
+                .thenBy { nodeArea(it) }
+        )
+    }
+
+    private fun matchesAnyKeyword(node: AccessibilityNodeInfo, keywords: List<String>): Boolean {
+        val label = nodeLabel(node).lowercase()
+        return keywords.any { keyword -> label.contains(keyword.lowercase()) }
+    }
+
+    private fun nodeMatchScore(node: AccessibilityNodeInfo, keywords: List<String>): Int {
+        val text = node.text?.toString().orEmpty().lowercase()
+        val description = node.contentDescription?.toString().orEmpty().lowercase()
+        val viewId = node.viewIdResourceName.orEmpty().lowercase()
+        val className = node.className?.toString().orEmpty()
+        val keywordMatchedExactly = keywords.any { keyword ->
+            val normalized = keyword.lowercase()
+            text == normalized || description == normalized
+        }
+
+        var score = 0
+        if (keywordMatchedExactly) score += 100
+        if (keywords.any { description.contains(it.lowercase()) }) score += 60
+        if (keywords.any { text.contains(it.lowercase()) }) score += 40
+        if (keywords.any { viewId.contains(it.lowercase()) }) score += 20
+        if (node.isClickable) score += 20
+        if (className.contains("Button", ignoreCase = true)) score += 15
+        if (className.contains("ImageButton", ignoreCase = true)) score += 15
+        return score
+    }
+
+    private fun nodeLabel(node: AccessibilityNodeInfo): String {
+        return buildString {
+            append(node.text?.toString().orEmpty())
+            append(' ')
+            append(node.contentDescription?.toString().orEmpty())
+            append(' ')
+            append(node.viewIdResourceName.orEmpty())
+        }.trim()
+    }
+
+    private fun nodeArea(node: AccessibilityNodeInfo): Int {
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        return rect.width().coerceAtLeast(0) * rect.height().coerceAtLeast(0)
+    }
+
+    private fun hasClickableSelfOrParent(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        repeat(6) {
+            val candidate = current ?: return false
+            if (candidate.isClickable) return true
+            current = candidate.parent
+        }
+        return false
+    }
+
+    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = node
+        repeat(6) {
+            val candidate = current ?: return false
+            if (candidate.isClickable && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            current = candidate.parent
+        }
+
+        return tapNodeCenter(node)
+    }
+
+    private fun tapNodeCenter(node: AccessibilityNodeInfo): Boolean {
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.width() <= 0 || rect.height() <= 0) return false
+
+        return gestureAbsolute(
+            rect.centerX().toFloat(),
+            rect.centerY().toFloat(),
+            rect.centerX().toFloat(),
+            rect.centerY().toFloat(),
+            1L
+        )
+    }
+
+    private fun gestureAbsolute(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long
+    ): Boolean {
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, durationMs))
+            .build()
+
+        val dispatched = dispatchGesture(gesture, null, null)
+        if (!dispatched) {
+            val message = "gesture dispatch failed"
+            Log.w(TAG, message)
+            AutomationSettingsStore.saveStatus(applicationContext, message)
+        }
+        return dispatched
+    }
+
+    private fun swipeFraction(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float
+    ): Boolean {
+        return gestureFraction(startX, startY, endX, endY, GESTURE_DURATION_MS)
+    }
+
+    private fun gestureFraction(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long
+    ): Boolean {
+        val bounds = activeScreenBounds()
+        val path = Path().apply {
+            moveTo(bounds.left + bounds.width() * startX, bounds.top + bounds.height() * startY)
+            lineTo(bounds.left + bounds.width() * endX, bounds.top + bounds.height() * endY)
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, durationMs))
+            .build()
+
+        val dispatched = dispatchGesture(gesture, null, null)
+        if (!dispatched) {
+            val message = "gesture dispatch failed"
+            Log.w(TAG, message)
+            AutomationSettingsStore.saveStatus(applicationContext, message)
+        }
+        return dispatched
+    }
+
+    private fun activeScreenBounds(): Rect {
+        val rootRect = Rect()
+        rootInActiveWindow?.getBoundsInScreen(rootRect)
+        if (rootRect.width() > 0 && rootRect.height() > 0) {
+            return rootRect
+        }
+
+        val metrics = resources.displayMetrics
+        return Rect(0, 0, metrics.widthPixels, metrics.heightPixels)
     }
 
     private fun parseAndUploadCurrentWindow() {
@@ -264,7 +1066,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 releaseAnalysisGate()
 
                 val uploadOk = savedFile?.let {
-                    ServerUploader.uploadJsonFile(applicationContext, it)
+                    ServerUploader.uploadJsonFile(applicationContext, it, currentPackage)
                 } ?: false
 
                 Log.d(
@@ -733,6 +1535,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
             AccessibilityWindowInfo.TYPE_SYSTEM -> "system"
             AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "overlay"
             else -> window.type.toString()
+        }
+    }
+
+    private enum class AutomationPlatform(val label: String) {
+        YOUTUBE("YouTube"),
+        TIKTOK("TikTok"),
+        INSTAGRAM("Instagram");
+
+        fun matches(packageName: String): Boolean {
+            return when (this) {
+                YOUTUBE -> packageName == YOUTUBE_PACKAGE
+                TIKTOK -> packageName == TIKTOK_PACKAGE || packageName == TIKTOK_ALT_PACKAGE
+                INSTAGRAM -> packageName == INSTAGRAM_PACKAGE
+            }
         }
     }
 

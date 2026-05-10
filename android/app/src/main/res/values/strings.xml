@@ -20,4 +20,16 @@
     <string name="youtube_only_note">현재 파서는 YouTube, Instagram, TikTok 앱 댓글 영역을 대상으로 동작합니다.</string>
     <string name="server_endpoint_saved">서버 주소 저장 완료</string>
     <string name="analysis_endpoint_saved">분석 API 주소 저장 완료</string>
+    <string name="automation_label">자동 운전</string>
+    <string name="automation_interval_hint">앱 전환 간격(분): 테스트 1, 실제 180</string>
+    <string name="automation_status_empty">자동 운전 상태가 없습니다.</string>
+    <string name="automation_status_value">자동 운전: %1$s\n앱 전환 간격: %2$d분\n최근 상태: %3$s\n업데이트: %4$s</string>
+    <string name="start_automation">자동 시작</string>
+    <string name="stop_automation">자동 중지</string>
+    <string name="refresh_automation_status">자동 상태 새로고침</string>
+    <string name="automation_status_started">자동 운전 시작: YouTube부터 진입합니다.</string>
+    <string name="automation_status_stopped">자동 운전 중지됨</string>
+    <string name="automation_started">자동 운전 시작</string>
+    <string name="automation_stopped">자동 운전 중지</string>
+    <string name="youtube_app_not_found">YouTube 앱을 찾지 못했습니다.</string>
 </resources>
