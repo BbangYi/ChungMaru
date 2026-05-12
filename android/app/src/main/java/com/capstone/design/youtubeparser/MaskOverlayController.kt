@@ -921,23 +921,26 @@ class MaskOverlayController(
         }
 
         return try {
-            if (translatedSpecs.size != activeViews.size) {
-                clearViews()
-                translatedSpecs.forEach { spec ->
+            translatedSpecs.forEachIndexed { index, spec ->
+                val existing = activeViews.getOrNull(index)
+                if (existing == null) {
                     val maskView = createMaskView(spec)
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
-                    activeSpecs += spec
+                } else {
+                    windowManager.updateViewLayout(existing, createMaskLayoutParams(spec))
                 }
-                lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
-                lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
-                return true
             }
 
-            translatedSpecs.forEachIndexed { index, spec ->
-                val view = activeViews.getOrNull(index) ?: return@forEachIndexed
-                windowManager.updateViewLayout(view, createMaskLayoutParams(spec))
+            while (activeViews.size > translatedSpecs.size) {
+                val view = activeViews.removeAt(activeViews.lastIndex)
+                try {
+                    windowManager.removeView(view)
+                } catch (_: IllegalArgumentException) {
+                    // The view may already be detached after a fast window transition.
+                }
             }
+
             activeSpecs.clear()
             activeSpecs += translatedSpecs
             lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
