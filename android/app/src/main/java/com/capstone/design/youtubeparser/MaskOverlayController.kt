@@ -390,10 +390,17 @@ object AndroidMaskOverlayPlanner {
             isPreciseVisualAuthor(value)
         if (!isEstimatedMask) return false
 
-        if (
-            isPreciseVisualAuthor(value) &&
-            VisualTextGeometryPolicy.isTopHeroYoutubeComposite(value, screenWidth)
-        ) {
+        val trustedVisibleBandOcr = VisualTextGeometryPolicy.isTrustedVisibleBandOcr(
+            authorId = value,
+            left = spec.left,
+            top = spec.top,
+            right = spec.left + spec.width,
+            bottom = spec.top + spec.height
+        )
+        val preciseVisualContentNearTop = isPreciseVisualAuthor(value) &&
+            (VisualTextGeometryPolicy.isTopHeroYoutubeComposite(value, screenWidth) ||
+                trustedVisibleBandOcr)
+        if (preciseVisualContentNearTop) {
             return false
         }
 

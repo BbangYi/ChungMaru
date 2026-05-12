@@ -592,6 +592,7 @@ internal object VisualTextOcrMetadataCodec {
 internal object VisualTextGeometryPolicy {
     private const val TOP_HERO_MEDIA_MIN_HEIGHT_PX = 180
     private const val TOP_HERO_MEDIA_MIN_WIDTH_RATIO = 0.48f
+    private const val VISIBLE_BAND_BOUNDS_SLOP_PX = 4
 
     fun isTopHeroYoutubeComposite(authorId: String?, screenWidth: Int): Boolean {
         if (screenWidth <= 0) return false
@@ -604,6 +605,23 @@ internal object VisualTextGeometryPolicy {
         val height = bounds.bottom - bounds.top
         return height >= TOP_HERO_MEDIA_MIN_HEIGHT_PX &&
             width >= (screenWidth * TOP_HERO_MEDIA_MIN_WIDTH_RATIO).toInt()
+    }
+
+    fun isTrustedVisibleBandOcr(
+        authorId: String?,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int
+    ): Boolean {
+        val metadata = VisualTextOcrMetadataCodec.decode(authorId) ?: return false
+        if (metadata.source != "youtube-visible-band") return false
+
+        val roiBounds = metadata.roiBoundsInScreen ?: return false
+        return left >= roiBounds.left - VISIBLE_BAND_BOUNDS_SLOP_PX &&
+            top >= roiBounds.top - VISIBLE_BAND_BOUNDS_SLOP_PX &&
+            right <= roiBounds.right + VISIBLE_BAND_BOUNDS_SLOP_PX &&
+            bottom <= roiBounds.bottom + VISIBLE_BAND_BOUNDS_SLOP_PX
     }
 }
 

@@ -1402,6 +1402,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
         screenHeight: Int
     ): Boolean {
         if (candidate.visualOcrSource() == null) return false
+        if (
+            VisualTextGeometryPolicy.isTrustedVisibleBandOcr(
+                authorId = candidate.authorId,
+                left = candidate.boundsInScreen.left,
+                top = candidate.boundsInScreen.top,
+                right = candidate.boundsInScreen.right,
+                bottom = candidate.boundsInScreen.bottom
+            )
+        ) {
+            return false
+        }
         if (VisualTextGeometryPolicy.isTopHeroYoutubeComposite(candidate.authorId, screenWidth)) {
             return false
         }

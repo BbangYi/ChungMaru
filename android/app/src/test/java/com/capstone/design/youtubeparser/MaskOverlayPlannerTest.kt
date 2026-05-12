@@ -589,6 +589,25 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_keepsVisibleBandOcrLineNearTopWhenInsideFallbackBand() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(90, 190, 210, 238),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-visible-band:0,180,1080,844:tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().top < 220)
+        assertTrue(specs.single().allowScrollTranslation)
+    }
+
+    @Test
     fun buildSpecs_rejectsUnknownOcrSourcesUntilProjectionIsExplicitlyTrusted() {
         val response = responseOf(
             resultOf(

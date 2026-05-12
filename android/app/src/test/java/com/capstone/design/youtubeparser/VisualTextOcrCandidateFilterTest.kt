@@ -141,4 +141,32 @@ class VisualTextOcrCandidateFilterTest {
         assertTrue(VisualTextGeometryPolicy.isTopHeroYoutubeComposite(heroAuthorId, screenWidth = 681))
         assertFalse(VisualTextGeometryPolicy.isTopHeroYoutubeComposite(toolbarAuthorId, screenWidth = 681))
     }
+
+    @Test
+    fun visualTextGeometryPolicy_trustsVisibleBandOcrOnlyInsideRoi() {
+        val authorId = VisualTextOcrMetadataCodec.encode(
+            source = "youtube-visible-band",
+            roiBoundsInScreen = BoundsRect(left = 0, top = 180, right = 1080, bottom = 844),
+            visualText = "tlqkf"
+        )
+
+        assertTrue(
+            VisualTextGeometryPolicy.isTrustedVisibleBandOcr(
+                authorId = authorId,
+                left = 90,
+                top = 190,
+                right = 210,
+                bottom = 238
+            )
+        )
+        assertFalse(
+            VisualTextGeometryPolicy.isTrustedVisibleBandOcr(
+                authorId = authorId,
+                left = 90,
+                top = 120,
+                right = 210,
+                bottom = 168
+            )
+        )
+    }
 }
