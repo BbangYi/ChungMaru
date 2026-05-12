@@ -243,6 +243,38 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldClearAfterVisualAnalysisMiss_preservesMasksDuringOverlayStabilization() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                isOverlayStabilizing = true
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                isOverlayStabilizing = false
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = false,
+                hasRenderableVisualRois = true,
+                isOverlayStabilizing = true
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = false,
+                isOverlayStabilizing = true
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(

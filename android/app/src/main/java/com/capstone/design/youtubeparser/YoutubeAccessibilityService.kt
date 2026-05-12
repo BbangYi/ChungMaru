@@ -995,6 +995,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 if (clearExistingOverlayOnMiss) {
                                     clearMaskOverlayAfterVisualMiss(
                                         packageName = packageName,
+                                        visualRoiPlan = visualRoiPlan,
                                         visualRunId = visualRunId,
                                         snapshotVisualSceneRevision = snapshotVisualSceneRevision
                                     )
@@ -1089,6 +1090,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     if (clearExistingOverlayOnMiss) {
                         clearMaskOverlayAfterVisualMiss(
                             packageName = packageName,
+                            visualRoiPlan = visualRoiPlan,
                             visualRunId = visualRunId,
                             snapshotVisualSceneRevision = snapshotVisualSceneRevision
                         )
@@ -1126,6 +1128,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     if (clearExistingOverlayOnMiss) {
                         clearMaskOverlayAfterVisualMiss(
                             packageName = packageName,
+                            visualRoiPlan = visualRoiPlan,
                             visualRunId = visualRunId,
                             snapshotVisualSceneRevision = snapshotVisualSceneRevision
                         )
@@ -1200,12 +1203,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun clearMaskOverlayAfterVisualMiss(
         packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
         visualRunId: Long,
         snapshotVisualSceneRevision: Long
     ) {
         handler.post {
             if (packageName != lastObservedPackage) return@post
             if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@post
+            if (
+                !MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                    hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                    hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois(),
+                    isOverlayStabilizing = isInOverlayStabilizationWindow()
+                )
+            ) {
+                Log.d(TAG, "preserve mask overlay after visual OCR miss during stabilization")
+                markOverlayRevisionStale()
+                scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+                return@post
+            }
             clearMaskOverlay()
         }
     }
