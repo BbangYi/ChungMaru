@@ -640,14 +640,11 @@ internal object VisualTextOcrCandidateFilter {
             "꺼\\s*져",
             "ㄲ\\s*ㅈ",
             "엿\\s*먹",
-            "t[i1l]qk[fq]?",
-            "t[i1l]qkf",
-            "t[i1l]qkq",
-            "t[i1l][a4gq]k[fq]?",
-            "t[i1l][a4gq]kf",
+            "t\\s*[i1l]\\s*q\\s*k\\s*[fq]?",
+            "t\\s*[i1l]\\s*q\\s*k\\s*q",
+            "t\\s*[i1l]\\s*[a4gq]\\s*k\\s*[fq]?",
             "11\\s*k?t",
-            "ss?ibal",
-            "sibal",
+            "s\\s*s?\\s*i\\s*b\\s*a\\s*l",
             "qudtls",
             "wlfkf",
             "whssk",
@@ -733,6 +730,7 @@ internal object VisualTextOcrCandidateFilter {
             .joinToString("")
 
         return when {
+            rawCompact.matches(Regex("""ss?ibal""")) -> "ssibal"
             compact.matches(Regex("""(?:t|l){1,2}l?qkf?""")) -> "tlqkf"
             compact.matches(Regex("""tlqk[fq]?""")) -> "tlqkf"
             compact.matches(Regex("""tlqkq""")) -> "tlqkf"

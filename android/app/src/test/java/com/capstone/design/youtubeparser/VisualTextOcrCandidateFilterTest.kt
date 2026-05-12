@@ -65,6 +65,30 @@ class VisualTextOcrCandidateFilterTest {
     }
 
     @Test
+    fun findAnalysisRanges_canonicalizesSpacedLatinOcrGlyphsForBackend() {
+        val samples = listOf("T l q k f", "T l a k f", "T | q k f")
+
+        samples.forEach { sample ->
+            val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("$sample 또 보여줘야 돼")
+
+            assertEquals(sample, "tlqkf", ranges.single().analysisText)
+            assertEquals(sample, ranges.single().visualText)
+        }
+    }
+
+    @Test
+    fun findAnalysisRanges_canonicalizesSpacedSibalOcrGlyphsForBackend() {
+        val samples = listOf("s s i b a l", "s i b a l", "ssibal")
+
+        samples.forEach { sample ->
+            val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("$sample 뜻")
+
+            assertEquals(sample, listOf("ssibal"), ranges.map { it.analysisText })
+            assertEquals(sample, listOf(sample), ranges.map { it.visualText })
+        }
+    }
+
+    @Test
     fun findAnalysisRanges_canonicalizesAdditionalKeyboardVariantsForBackend() {
         val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("wlfkf / whssk / alcls / rjwu")
 
