@@ -138,6 +138,8 @@ data class AndroidAnalysisAttempt(
     val visualCaptureReason: String = VisualTextCaptureSupport.REASON_SERVICE_NOT_CONNECTED,
     val visualRoiCandidateCount: Int = 0,
     val visualRoiSelectedCount: Int = 0,
+    val visualOcrRawCount: Int = 0,
+    val visualOcrSelectedCount: Int = 0,
     val response: AndroidAnalysisResponse? = null,
     val actionableSamples: List<String> = emptyList(),
     val error: String? = null
@@ -161,6 +163,8 @@ data class AndroidAnalysisDiagnostics(
     val visualCaptureReason: String,
     val visualRoiCandidateCount: Int,
     val visualRoiSelectedCount: Int,
+    val visualOcrRawCount: Int,
+    val visualOcrSelectedCount: Int,
     val actionableSamples: List<String>,
     val error: String?
 )

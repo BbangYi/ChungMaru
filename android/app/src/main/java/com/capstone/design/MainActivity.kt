@@ -136,6 +136,8 @@ class MainActivity : AppCompatActivity() {
             diagnostics.visualCaptureReason,
             diagnostics.visualRoiSelectedCount,
             diagnostics.visualRoiCandidateCount,
+            diagnostics.visualOcrSelectedCount,
+            diagnostics.visualOcrRawCount,
             diagnostics.actionableSamples.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: "-",
             diagnostics.error ?: "-"
         )

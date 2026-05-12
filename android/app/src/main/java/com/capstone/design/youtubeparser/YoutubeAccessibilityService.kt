@@ -877,7 +877,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun saveVisualOnlyDiagnostics(
         packageName: String,
-        visualRoiPlan: VisualTextRoiPlan
+        visualRoiPlan: VisualTextRoiPlan,
+        visualOcrRawCount: Int = 0,
+        visualOcrSelectedCount: Int = 0
     ) {
         if (visualRoiPlan.candidateCount <= 0 && visualRoiPlan.rois.isEmpty()) return
 
@@ -893,6 +895,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 )
                 .copy(
                     packageName = packageName,
+                    visualOcrRawCount = visualOcrRawCount,
+                    visualOcrSelectedCount = visualOcrSelectedCount,
                     actionableSamples = visualRoiPlan.rois.take(3).map { roi ->
                         "OCR 후보(${roi.source}): ${roi.boundsInScreen.left},${roi.boundsInScreen.top}," +
                             "${roi.boundsInScreen.right},${roi.boundsInScreen.bottom}"
@@ -1086,7 +1090,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         "visual OCR candidates selected=0 raw=${ocrCandidates.size} " +
                             "base=${baseResponse?.results?.size ?: 0}"
                     )
-                    saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
+                    saveVisualOnlyDiagnostics(
+                        packageName = packageName,
+                        visualRoiPlan = visualRoiPlan,
+                        visualOcrRawCount = ocrCandidates.size,
+                        visualOcrSelectedCount = 0
+                    )
                     if (clearExistingOverlayOnMiss) {
                         clearMaskOverlayAfterVisualMiss(
                             packageName = packageName,
@@ -1123,7 +1132,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 if (!rawAnalysis.ok) {
                     AnalysisDiagnosticsStore.saveAttempt(
                         applicationContext,
-                        rawAnalysis.withOverlayDiagnostics(packageName, visualRoiPlan)
+                        rawAnalysis
+                            .copy(
+                                visualOcrRawCount = ocrCandidates.size,
+                                visualOcrSelectedCount = selectedOcrCandidates.size
+                            )
+                            .withOverlayDiagnostics(packageName, visualRoiPlan)
                     )
                     if (clearExistingOverlayOnMiss) {
                         clearMaskOverlayAfterVisualMiss(
@@ -1158,7 +1172,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         response = mergedResponse,
                         commentCount = mergedResponse?.results?.size ?: rawAnalysis.commentCount,
                         offensiveCount = countActionableResults(mergedResponse),
-                        filteredCount = mergedResponse?.filteredCount ?: rawAnalysis.filteredCount
+                        filteredCount = mergedResponse?.filteredCount ?: rawAnalysis.filteredCount,
+                        visualOcrRawCount = ocrCandidates.size,
+                        visualOcrSelectedCount = selectedOcrCandidates.size
                     )
                     .withOverlayDiagnostics(packageName, visualRoiPlan)
 

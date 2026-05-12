@@ -23,6 +23,8 @@ object AnalysisDiagnosticsStore {
     private const val KEY_VISUAL_CAPTURE_REASON = "analysis_diagnostics_visual_capture_reason"
     private const val KEY_VISUAL_ROI_CANDIDATE_COUNT = "analysis_diagnostics_visual_roi_candidate_count"
     private const val KEY_VISUAL_ROI_SELECTED_COUNT = "analysis_diagnostics_visual_roi_selected_count"
+    private const val KEY_VISUAL_OCR_RAW_COUNT = "analysis_diagnostics_visual_ocr_raw_count"
+    private const val KEY_VISUAL_OCR_SELECTED_COUNT = "analysis_diagnostics_visual_ocr_selected_count"
     private const val KEY_ACTIONABLE_SAMPLES = "analysis_diagnostics_actionable_samples"
     private const val KEY_ERROR = "analysis_diagnostics_error"
 
@@ -46,6 +48,8 @@ object AnalysisDiagnosticsStore {
             putString(KEY_VISUAL_CAPTURE_REASON, attempt.visualCaptureReason)
             putInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, attempt.visualRoiCandidateCount)
             putInt(KEY_VISUAL_ROI_SELECTED_COUNT, attempt.visualRoiSelectedCount)
+            putInt(KEY_VISUAL_OCR_RAW_COUNT, attempt.visualOcrRawCount)
+            putInt(KEY_VISUAL_OCR_SELECTED_COUNT, attempt.visualOcrSelectedCount)
             putString(KEY_ACTIONABLE_SAMPLES, attempt.actionableSamples.joinToString("\n"))
             putString(KEY_ERROR, attempt.error.orEmpty())
         }
@@ -80,6 +84,8 @@ object AnalysisDiagnosticsStore {
             ).orEmpty(),
             visualRoiCandidateCount = prefs.getInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, 0),
             visualRoiSelectedCount = prefs.getInt(KEY_VISUAL_ROI_SELECTED_COUNT, 0),
+            visualOcrRawCount = prefs.getInt(KEY_VISUAL_OCR_RAW_COUNT, 0),
+            visualOcrSelectedCount = prefs.getInt(KEY_VISUAL_OCR_SELECTED_COUNT, 0),
             actionableSamples = prefs.getString(KEY_ACTIONABLE_SAMPLES, "").orEmpty()
                 .lines()
                 .map { it.trim() }
