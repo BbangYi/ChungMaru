@@ -382,16 +382,26 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (comments.isEmpty()) {
+            val deferClearForVisualOnlyAnalysis =
+                MaskOverlayEventPolicy.shouldDeferClearForVisualOnlyAnalysis(
+                    hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                    hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois()
+                )
             if (
                 startVisualTextAnalysis(
                     packageName = currentPackage,
                     visualRoiPlan = visualRoiPlan,
-                    clearExistingOverlay = true
+                    clearExistingOverlay = !deferClearForVisualOnlyAnalysis,
+                    clearExistingOverlayOnMiss = deferClearForVisualOnlyAnalysis
                 )
             ) {
                 return
             }
             saveVisualOnlyDiagnostics(currentPackage, visualRoiPlan)
+            if (deferClearForVisualOnlyAnalysis) {
+                markOverlayRevisionStale()
+                return
+            }
             clearMaskOverlay()
             return
         }
@@ -915,6 +925,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         packageName: String,
         visualRoiPlan: VisualTextRoiPlan,
         clearExistingOverlay: Boolean = true,
+        clearExistingOverlayOnMiss: Boolean = false,
         baseResponse: AndroidAnalysisResponse? = null
     ): Boolean {
         if (!supportsMaskOverlay(packageName)) return false
@@ -981,6 +992,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
                             if (ocrCandidates.isEmpty()) {
                                 saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
+                                if (clearExistingOverlayOnMiss) {
+                                    clearMaskOverlayAfterVisualMiss(
+                                        packageName = packageName,
+                                        visualRunId = visualRunId,
+                                        snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                                    )
+                                }
                                 finishVisualAnalysis(visualRunId)
                                 return@recognize
                             }
@@ -994,6 +1012,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 snapshotOverlayRevision = snapshotOverlayRevision,
                                 snapshotVisualSceneRevision = snapshotVisualSceneRevision,
                                 baseResponse = baseResponse,
+                                clearExistingOverlayOnMiss = clearExistingOverlayOnMiss,
                                 visualRunId = visualRunId
                             )
                         }
@@ -1047,6 +1066,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         snapshotOverlayRevision: Long,
         snapshotVisualSceneRevision: Long,
         baseResponse: AndroidAnalysisResponse?,
+        clearExistingOverlayOnMiss: Boolean,
         visualRunId: Long
     ) {
         Thread {
@@ -1066,6 +1086,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             "base=${baseResponse?.results?.size ?: 0}"
                     )
                     saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
+                    if (clearExistingOverlayOnMiss) {
+                        clearMaskOverlayAfterVisualMiss(
+                            packageName = packageName,
+                            visualRunId = visualRunId,
+                            snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                        )
+                    }
                     return@Thread
                 }
                 Log.d(
@@ -1096,6 +1123,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         applicationContext,
                         rawAnalysis.withOverlayDiagnostics(packageName, visualRoiPlan)
                     )
+                    if (clearExistingOverlayOnMiss) {
+                        clearMaskOverlayAfterVisualMiss(
+                            packageName = packageName,
+                            visualRunId = visualRunId,
+                            snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                        )
+                    }
                     return@Thread
                 }
 
@@ -1162,6 +1196,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (visualRunId != visualAnalysisRunId) return
         visualAnalysisInFlight = false
         scheduleFollowUpAfterVisualGate()
+    }
+
+    private fun clearMaskOverlayAfterVisualMiss(
+        packageName: String,
+        visualRunId: Long,
+        snapshotVisualSceneRevision: Long
+    ) {
+        handler.post {
+            if (packageName != lastObservedPackage) return@post
+            if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@post
+            clearMaskOverlay()
+        }
     }
 
     private fun scheduleFollowUpAfterVisualGate() {

@@ -97,6 +97,13 @@ internal object MaskOverlayEventPolicy {
             hasResolvedScrollDelta
     }
 
+    fun shouldDeferClearForVisualOnlyAnalysis(
+        hasActiveMasks: Boolean,
+        hasRenderableVisualRois: Boolean
+    ): Boolean {
+        return hasActiveMasks && hasRenderableVisualRois
+    }
+
     fun isLikelySelfContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,

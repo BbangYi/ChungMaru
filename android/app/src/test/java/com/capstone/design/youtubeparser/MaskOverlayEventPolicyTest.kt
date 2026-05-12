@@ -221,6 +221,28 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldDeferClearForVisualOnlyAnalysis_keepsMasksWhileVisualOcrCanReplaceThem() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldDeferClearForVisualOnlyAnalysis(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldDeferClearForVisualOnlyAnalysis(
+                hasActiveMasks = false,
+                hasRenderableVisualRois = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldDeferClearForVisualOnlyAnalysis(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = false
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(
