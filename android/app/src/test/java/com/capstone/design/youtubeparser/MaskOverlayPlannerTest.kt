@@ -568,7 +568,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_rejectsFallbackVisibleBandOcrMasks() {
+    fun buildSpecs_keepsFallbackVisibleBandOcrLineMasks() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -581,7 +581,11 @@ class MaskOverlayPlannerTest {
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
-        assertTrue(specs.isEmpty())
+        assertEquals(1, specs.size)
+        assertEquals(90, specs.single().left)
+        assertTrue(specs.single().width in 90..120)
+        assertTrue(specs.single().height <= 32)
+        assertTrue(specs.single().allowScrollTranslation)
     }
 
     @Test

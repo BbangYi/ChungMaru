@@ -340,7 +340,8 @@ object AndroidMaskOverlayPlanner {
 
     private fun isPreciseVisualAuthor(authorId: String?): Boolean {
         val value = authorId ?: return false
-        return value.startsWith("ocr:youtube-composite-card:")
+        return value.startsWith("ocr:youtube-composite-card:") ||
+            value.startsWith("ocr:youtube-visible-band:")
     }
 
     private fun isFallbackVisualAuthor(authorId: String?): Boolean {
