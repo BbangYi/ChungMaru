@@ -65,6 +65,18 @@ internal object MaskOverlayEventPolicy {
             !isScrollStabilizing
     }
 
+    fun shouldPreserveOnScrollContentChange(
+        eventType: Int,
+        hasActiveMasks: Boolean,
+        isScrollStabilizing: Boolean,
+        isLikelySelfContentChange: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            hasActiveMasks &&
+            isScrollStabilizing &&
+            !isLikelySelfContentChange
+    }
+
     fun isLikelySelfContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,

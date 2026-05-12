@@ -189,6 +189,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 } else if (overlaySelfContentChange) {
                     Log.d(TAG, "ignore overlay self content change")
                 } else if (
+                    MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
+                        eventType = event.eventType,
+                        hasActiveMasks = hasActiveMasks,
+                        isScrollStabilizing = isInScrollStabilizationWindow(),
+                        isLikelySelfContentChange = overlaySelfContentChange
+                    )
+                ) {
+                    Log.d(TAG, "preserve mask overlay during scroll content change")
+                    markOverlayRevisionStale()
+                    markVisualSceneChanged(event.eventType)
+                } else if (
                     event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
                     maskOverlayController.hasActiveMasks()
                 ) {

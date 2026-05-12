@@ -121,6 +121,42 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldPreserveOnScrollContentChange_keepsTranslatedMasksDuringLayoutBursts() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                hasActiveMasks = true,
+                isScrollStabilizing = true,
+                isLikelySelfContentChange = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                hasActiveMasks = true,
+                isScrollStabilizing = false,
+                isLikelySelfContentChange = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
+                eventType = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+                hasActiveMasks = true,
+                isScrollStabilizing = true,
+                isLikelySelfContentChange = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                hasActiveMasks = true,
+                isScrollStabilizing = true,
+                isLikelySelfContentChange = true
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(
