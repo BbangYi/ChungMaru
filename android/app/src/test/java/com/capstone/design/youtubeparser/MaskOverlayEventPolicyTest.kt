@@ -8,38 +8,76 @@ import org.junit.Test
 class MaskOverlayEventPolicyTest {
 
     @Test
-    fun shouldTranslateOnViewportScroll_requiresScrollEventActiveMasksAndDelta() {
-        assertTrue(
-            MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
+    fun resolveScrollTranslationDelta_prefersExplicitScrollDeltaWhenAvailable() {
+        val delta = MaskOverlayEventPolicy.resolveScrollTranslationDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
-                deltaX = 0,
-                deltaY = -12
-            )
+            explicitScrollDeltaX = 0,
+            explicitScrollDeltaY = 12,
+            absoluteScrollX = 0,
+            absoluteScrollY = 400,
+            lastAbsoluteScrollX = 0,
+            lastAbsoluteScrollY = 200
         )
+
+        assertTrue(delta != null)
+        assertTrue(delta?.deltaY == -12)
+    }
+
+    @Test
+    fun resolveScrollTranslationDelta_usesAbsoluteScrollPositionFallback() {
+        val delta = MaskOverlayEventPolicy.resolveScrollTranslationDelta(
+            eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+            hasActiveMasks = true,
+            explicitScrollDeltaX = 0,
+            explicitScrollDeltaY = 0,
+            absoluteScrollX = 0,
+            absoluteScrollY = 460,
+            lastAbsoluteScrollX = 0,
+            lastAbsoluteScrollY = 400
+        )
+
+        assertTrue(delta != null)
+        assertTrue(delta?.deltaY == -60)
+    }
+
+    @Test
+    fun resolveScrollTranslationDelta_rejectsUnknownOrUnsafeInputs() {
         assertFalse(
-            MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
+            MaskOverlayEventPolicy.resolveScrollTranslationDelta(
                 eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 hasActiveMasks = true,
-                deltaX = 0,
-                deltaY = -12
-            )
+                explicitScrollDeltaX = 0,
+                explicitScrollDeltaY = 12,
+                absoluteScrollX = 0,
+                absoluteScrollY = 460,
+                lastAbsoluteScrollX = 0,
+                lastAbsoluteScrollY = 400
+            ) != null
         )
         assertFalse(
-            MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
+            MaskOverlayEventPolicy.resolveScrollTranslationDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = false,
-                deltaX = 0,
-                deltaY = -12
-            )
+                explicitScrollDeltaX = 0,
+                explicitScrollDeltaY = 12,
+                absoluteScrollX = 0,
+                absoluteScrollY = 460,
+                lastAbsoluteScrollX = 0,
+                lastAbsoluteScrollY = 400
+            ) != null
         )
         assertFalse(
-            MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
+            MaskOverlayEventPolicy.resolveScrollTranslationDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
-                deltaX = 0,
-                deltaY = 0
-            )
+                explicitScrollDeltaX = 0,
+                explicitScrollDeltaY = 0,
+                absoluteScrollX = -1,
+                absoluteScrollY = -1,
+                lastAbsoluteScrollX = null,
+                lastAbsoluteScrollY = null
+            ) != null
         )
     }
 

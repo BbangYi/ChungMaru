@@ -63,6 +63,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var scheduledParseAtMs = 0L
     private var scheduledParseEventType: Int? = null
     private var lastScrollEventAtMs = 0L
+    private var lastAbsoluteScrollX: Int? = null
+    private var lastAbsoluteScrollY: Int? = null
     private var lastPointerInteractionAtMs = 0L
     private var lastOverlayContentChangeAtMs = 0L
     private var lastAppliedSensitivity: Int? = null
@@ -723,22 +725,43 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun translateMaskOverlayForScroll(event: AccessibilityEvent): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        val scrollDelta = MaskOverlayEventPolicy.resolveScrollTranslationDelta(
+            eventType = event.eventType,
+            hasActiveMasks = maskOverlayController.hasActiveMasks(),
+            explicitScrollDeltaX = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                event.scrollDeltaX
+            } else {
+                0
+            },
+            explicitScrollDeltaY = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                event.scrollDeltaY
+            } else {
+                0
+            },
+            absoluteScrollX = event.scrollX,
+            absoluteScrollY = event.scrollY,
+            lastAbsoluteScrollX = lastAbsoluteScrollX,
+            lastAbsoluteScrollY = lastAbsoluteScrollY
+        )
+        rememberAbsoluteScrollPosition(event)
 
-        val deltaX = -event.scrollDeltaX
-        val deltaY = -event.scrollDeltaY
-        if (
-            !MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
-                eventType = event.eventType,
-                hasActiveMasks = maskOverlayController.hasActiveMasks(),
-                deltaX = deltaX,
-                deltaY = deltaY
-            )
-        ) {
+        if (scrollDelta == null) {
             return false
         }
 
-        return maskOverlayController.translateBy(deltaX = deltaX, deltaY = deltaY)
+        return maskOverlayController.translateBy(
+            deltaX = scrollDelta.deltaX,
+            deltaY = scrollDelta.deltaY
+        )
+    }
+
+    private fun rememberAbsoluteScrollPosition(event: AccessibilityEvent) {
+        MaskOverlayEventPolicy.knownAbsoluteScroll(event.scrollX)?.let { scrollX ->
+            lastAbsoluteScrollX = scrollX
+        }
+        MaskOverlayEventPolicy.knownAbsoluteScroll(event.scrollY)?.let { scrollY ->
+            lastAbsoluteScrollY = scrollY
+        }
     }
 
     private fun shouldLogRawNodes(): Boolean {
