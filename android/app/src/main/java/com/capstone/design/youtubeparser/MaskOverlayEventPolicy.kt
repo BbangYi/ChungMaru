@@ -65,6 +65,14 @@ internal object MaskOverlayEventPolicy {
             !isScrollStabilizing
     }
 
+    fun shouldRetryAfterStaleOverlayResult(
+        analysisOk: Boolean,
+        snapshotOverlayRevision: Long,
+        currentOverlayRevision: Long
+    ): Boolean {
+        return analysisOk && snapshotOverlayRevision != currentOverlayRevision
+    }
+
     fun shouldPreserveOnScrollContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,

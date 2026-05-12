@@ -569,6 +569,15 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 TAG,
                 "skip mask overlay: stale overlay revision snapshot=$snapshotOverlayRevision current=$overlayRevision"
             )
+            if (
+                MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(
+                    analysisOk = analysis?.ok == true,
+                    snapshotOverlayRevision = snapshotOverlayRevision,
+                    currentOverlayRevision = overlayRevision
+                )
+            ) {
+                scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+            }
             return
         }
 

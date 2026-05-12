@@ -121,6 +121,31 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldRetryAfterStaleOverlayResult_retriesOnlyForOkStaleAnalysis() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(
+                analysisOk = true,
+                snapshotOverlayRevision = 7L,
+                currentOverlayRevision = 8L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(
+                analysisOk = true,
+                snapshotOverlayRevision = 7L,
+                currentOverlayRevision = 7L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(
+                analysisOk = false,
+                snapshotOverlayRevision = 7L,
+                currentOverlayRevision = 8L
+            )
+        )
+    }
+
+    @Test
     fun shouldPreserveOnScrollContentChange_keepsTranslatedMasksDuringLayoutBursts() {
         assertTrue(
             MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
