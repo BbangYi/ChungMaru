@@ -591,6 +591,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 response = analysis.response,
                 preserveExistingIfEmpty = preserveExistingIfEmpty
             )
+            resetAbsoluteScrollPosition()
         } else {
             Log.d(
                 TAG,
@@ -605,6 +606,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         lastSnapshotSignature = null
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
+        resetAbsoluteScrollPosition()
     }
 
     private fun markOverlayRevisionStale() {
@@ -812,6 +814,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         MaskOverlayEventPolicy.knownAbsoluteScroll(event.scrollY)?.let { scrollY ->
             lastAbsoluteScrollY = scrollY
         }
+    }
+
+    private fun resetAbsoluteScrollPosition() {
+        lastAbsoluteScrollX = null
+        lastAbsoluteScrollY = null
     }
 
     private fun shouldLogRawNodes(): Boolean {
