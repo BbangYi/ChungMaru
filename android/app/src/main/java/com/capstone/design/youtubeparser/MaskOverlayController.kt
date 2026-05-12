@@ -77,7 +77,8 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_COMPOSITE_SOURCE_HEIGHT_PX = 132
     private const val MAX_COMPOSITE_SOURCE_AREA_RATIO = 0.06f
     private const val NEAR_DUPLICATE_OVERLAP_RATIO = 0.25f
-    private const val MAX_SCROLL_TRANSLATION_DELTA_PX = 96
+    private const val MIN_SCROLL_TRANSLATION_DELTA_PX = 96
+    private const val MAX_SCROLL_TRANSLATION_AXIS_RATIO = 0.25f
     private const val TOP_CONTROL_REGION_RATIO = 0.14f
     private const val TOP_CONTROL_REGION_MAX_PX = 220
     private const val TOP_GENERIC_VISUAL_CONTROL_REGION_RATIO = 0.26f
@@ -153,10 +154,9 @@ object AndroidMaskOverlayPlanner {
     ): List<MaskOverlaySpec> {
         if (specs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) return emptyList()
         if (deltaX == 0 && deltaY == 0) return specs
-        if (
-            abs(deltaX) > MAX_SCROLL_TRANSLATION_DELTA_PX ||
-            abs(deltaY) > MAX_SCROLL_TRANSLATION_DELTA_PX
-        ) {
+        val maxDeltaX = maxScrollTranslationDeltaPx(screenWidth)
+        val maxDeltaY = maxScrollTranslationDeltaPx(screenHeight)
+        if (abs(deltaX) > maxDeltaX || abs(deltaY) > maxDeltaY) {
             return emptyList()
         }
 
@@ -746,6 +746,13 @@ object AndroidMaskOverlayPlanner {
         return (height / ESTIMATED_LINE_HEIGHT_PX)
             .coerceAtLeast(1)
             .coerceAtMost(8)
+    }
+
+    private fun maxScrollTranslationDeltaPx(axisSize: Int): Int {
+        return max(
+            MIN_SCROLL_TRANSLATION_DELTA_PX,
+            (axisSize * MAX_SCROLL_TRANSLATION_AXIS_RATIO).roundToInt()
+        )
     }
 
     private fun suppressOverlappingSpecs(specs: List<MaskOverlaySpec>): List<MaskOverlaySpec> {

@@ -583,7 +583,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_dropsOcrMasksDuringLargeScrollInsteadOfDrifting() {
+    fun translateSpecs_keepsPreciseOcrMasksDuringNormalViewportScroll() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -607,7 +607,8 @@ class MaskOverlayPlannerTest {
             screenHeight = 2400
         )
 
-        assertTrue(translated.isEmpty())
+        assertEquals(1, translated.size)
+        assertEquals(specs.single().top - 120, translated.single().top)
     }
 
     @Test
@@ -1002,15 +1003,15 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_dropsAllMasksForLargeScrollDeltaInsteadOfGuessing() {
+    fun translateSpecs_dropsAllMasksForExtremeScrollDeltaInsteadOfGuessing() {
         val specs = listOf(
-            MaskOverlaySpec(left = 80, top = 420, width = 96, height = 34, label = "***")
+            MaskOverlaySpec(left = 80, top = 1200, width = 96, height = 34, label = "***")
         )
 
         val translated = AndroidMaskOverlayPlanner.translateSpecs(
             specs = specs,
             deltaX = 0,
-            deltaY = -120,
+            deltaY = -720,
             screenWidth = 1080,
             screenHeight = 2400
         )
