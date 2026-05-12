@@ -517,7 +517,8 @@ class VisualTextOcrProcessor {
 
 internal data class VisualTextOcrMetadata(
     val source: String,
-    val roiBoundsInScreen: BoundsRect?
+    val roiBoundsInScreen: BoundsRect?,
+    val visualText: String?
 )
 
 internal object VisualTextOcrMetadataCodec {
@@ -553,10 +554,16 @@ internal object VisualTextOcrMetadataCodec {
         val rest = payload.substringAfter(":", missingDelimiterValue = "")
         val boundsToken = rest.substringBefore(":", missingDelimiterValue = "")
         val bounds = parseBounds(boundsToken)
+        val visualText = if (bounds == null) {
+            rest
+        } else {
+            rest.substringAfter(":", missingDelimiterValue = "")
+        }.takeIf { it.isNotBlank() }
 
         return VisualTextOcrMetadata(
             source = source,
-            roiBoundsInScreen = bounds
+            roiBoundsInScreen = bounds,
+            visualText = visualText
         )
     }
 

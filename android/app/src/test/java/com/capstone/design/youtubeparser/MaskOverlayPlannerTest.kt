@@ -512,6 +512,25 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_usesVisualOcrTextWidthForSpacedGlyphMasks() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(66, 260, 210, 286),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:0,220,720,520:T l q k f"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
+
+        assertEquals(1, specs.size)
+        assertEquals(66, specs.single().left)
+        assertEquals(144, specs.single().width)
+    }
+
+    @Test
     fun buildSpecs_usesReadableLabelForLargeTitleRows() {
         val response = responseOf(
             resultOf(

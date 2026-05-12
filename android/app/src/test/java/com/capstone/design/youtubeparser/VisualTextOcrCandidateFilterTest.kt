@@ -113,6 +113,7 @@ class VisualTextOcrCandidateFilterTest {
 
         assertEquals("youtube-composite-card", decoded?.source)
         assertEquals(BoundsRect(left = 0, top = 309, right = 1080, bottom = 993), decoded?.roiBoundsInScreen)
+        assertEquals("Tlqkf 공부법", decoded?.visualText)
     }
 
     @Test
@@ -121,6 +122,7 @@ class VisualTextOcrCandidateFilterTest {
 
         assertEquals("youtube-visible-band", decoded?.source)
         assertNull(decoded?.roiBoundsInScreen)
+        assertEquals("시발", decoded?.visualText)
     }
 
     @Test

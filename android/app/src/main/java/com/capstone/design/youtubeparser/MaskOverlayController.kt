@@ -204,6 +204,11 @@ object AndroidMaskOverlayPlanner {
 
         val allowScrollTranslation = shouldAllowScrollTranslation(item.authorId)
         val preciseVisualBounds = isPreciseVisualAuthor(item.authorId)
+        val visualTextForSizing = if (preciseVisualBounds) {
+            VisualTextOcrMetadataCodec.decode(item.authorId)?.visualText
+        } else {
+            null
+        }
         val debugSource = buildDebugSource(item)
         val spanSpecs = item.evidenceSpans.mapNotNull { span ->
             toSpanSpec(
@@ -213,6 +218,7 @@ object AndroidMaskOverlayPlanner {
                 originalLength = originalLength,
                 allowScrollTranslation = allowScrollTranslation,
                 preciseVisualBounds = preciseVisualBounds,
+                visualTextForSizing = visualTextForSizing,
                 debugSource = debugSource
             )
         }
@@ -444,6 +450,7 @@ object AndroidMaskOverlayPlanner {
         originalLength: Int,
         allowScrollTranslation: Boolean,
         preciseVisualBounds: Boolean,
+        visualTextForSizing: String?,
         debugSource: String
     ): MaskOverlaySpec? {
         val resolvedRange = resolveSpanRange(
@@ -461,7 +468,10 @@ object AndroidMaskOverlayPlanner {
         if (preciseVisualBounds && isWholeTextSpan(start, end, originalLength)) {
             return toPreciseVisualSpanSpec(
                 fullSpec = fullSpec,
-                spanText = span.text,
+                spanText = visualTextSizingOverride(
+                    spanText = span.text,
+                    visualText = visualTextForSizing
+                ),
                 lineHeight = lineHeight,
                 allowScrollTranslation = allowScrollTranslation,
                 debugSource = debugSource
@@ -625,6 +635,32 @@ object AndroidMaskOverlayPlanner {
             allowScrollTranslation = allowScrollTranslation,
             debugSource = debugSource
         )
+    }
+
+    private fun visualTextSizingOverride(spanText: String, visualText: String?): String {
+        val cleanVisualText = visualText?.trim()?.takeIf { it.isNotBlank() } ?: return spanText
+        val spanKey = visualSizingKey(spanText)
+        if (spanKey.isBlank()) return spanText
+
+        return if (visualSizingKey(cleanVisualText) == spanKey) {
+            cleanVisualText
+        } else {
+            spanText
+        }
+    }
+
+    private fun visualSizingKey(text: String): String {
+        return text
+            .lowercase()
+            .replace(Regex("""[\s"'`.,!?_\-]+"""), "")
+            .map { char ->
+                when (char) {
+                    '|', '!', '1', 'i' -> 'l'
+                    'a', 'g' -> 'q'
+                    else -> char
+                }
+            }
+            .joinToString("")
     }
 
     private fun buildDebugSource(item: AndroidAnalysisResultItem): String {
