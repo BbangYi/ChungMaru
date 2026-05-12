@@ -1,6 +1,7 @@
 package com.capstone.design.youtubeparser
 
 import android.view.accessibility.AccessibilityEvent
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,7 +22,8 @@ class MaskOverlayEventPolicyTest {
         )
 
         assertTrue(delta != null)
-        assertTrue(delta?.deltaY == -12)
+        assertEquals(MaskOverlayScrollDeltaSource.EXPLICIT_DELTA, delta?.source)
+        assertEquals(-12, delta?.deltaY)
     }
 
     @Test
@@ -38,7 +40,8 @@ class MaskOverlayEventPolicyTest {
         )
 
         assertTrue(delta != null)
-        assertTrue(delta?.deltaY == -60)
+        assertEquals(MaskOverlayScrollDeltaSource.ABSOLUTE_POSITION, delta?.source)
+        assertEquals(-60, delta?.deltaY)
     }
 
     @Test

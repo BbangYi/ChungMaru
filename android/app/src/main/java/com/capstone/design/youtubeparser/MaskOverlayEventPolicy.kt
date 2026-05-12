@@ -4,8 +4,14 @@ import android.view.accessibility.AccessibilityEvent
 
 internal data class MaskOverlayScrollDelta(
     val deltaX: Int,
-    val deltaY: Int
+    val deltaY: Int,
+    val source: MaskOverlayScrollDeltaSource
 )
+
+internal enum class MaskOverlayScrollDeltaSource {
+    EXPLICIT_DELTA,
+    ABSOLUTE_POSITION
+}
 
 internal object MaskOverlayEventPolicy {
     fun resolveScrollTranslationDelta(
@@ -22,19 +28,26 @@ internal object MaskOverlayEventPolicy {
             return null
         }
 
-        val deltaX = if (explicitScrollDeltaX != 0) {
+        val explicitXAvailable = explicitScrollDeltaX != 0
+        val explicitYAvailable = explicitScrollDeltaY != 0
+        val deltaX = if (explicitXAvailable) {
             -explicitScrollDeltaX
         } else {
             absoluteOverlayDelta(absoluteScrollX, lastAbsoluteScrollX)
         }
-        val deltaY = if (explicitScrollDeltaY != 0) {
+        val deltaY = if (explicitYAvailable) {
             -explicitScrollDeltaY
         } else {
             absoluteOverlayDelta(absoluteScrollY, lastAbsoluteScrollY)
         }
 
         if (deltaX == 0 && deltaY == 0) return null
-        return MaskOverlayScrollDelta(deltaX = deltaX, deltaY = deltaY)
+        val source = if (explicitXAvailable || explicitYAvailable) {
+            MaskOverlayScrollDeltaSource.EXPLICIT_DELTA
+        } else {
+            MaskOverlayScrollDeltaSource.ABSOLUTE_POSITION
+        }
+        return MaskOverlayScrollDelta(deltaX = deltaX, deltaY = deltaY, source = source)
     }
 
     fun knownAbsoluteScroll(value: Int): Int? {

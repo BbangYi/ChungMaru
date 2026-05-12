@@ -30,9 +30,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val TIKTOK_ALT_PACKAGE = "com.ss.android.ugc.trill"
         private const val MIN_UPLOAD_INTERVAL_MS = 1000L
         private const val PARSE_DELAY_TEXT_MS = 12L
-        private const val PARSE_DELAY_SCROLL_MS = 80L
-        private const val SCROLL_OVERLAY_STABILIZATION_MS = 120L
-        private const val CONTENT_OVERLAY_STABILIZATION_MS = 80L
+        private const val PARSE_DELAY_SCROLL_MS = 32L
+        private const val SCROLL_OVERLAY_STABILIZATION_MS = 64L
+        private const val CONTENT_OVERLAY_STABILIZATION_MS = 48L
         private const val OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS = 250L
         private const val PARSE_DELAY_CONTENT_MS = 40L
         private const val PARSE_DELAY_WINDOW_MS = 60L
@@ -749,10 +749,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return false
         }
 
-        return maskOverlayController.translateBy(
+        val translated = maskOverlayController.translateBy(
             deltaX = scrollDelta.deltaX,
             deltaY = scrollDelta.deltaY
         )
+        if (translated) {
+            Log.d(
+                TAG,
+                "translate mask overlay scroll source=${scrollDelta.source} " +
+                    "delta=${scrollDelta.deltaX},${scrollDelta.deltaY}"
+            )
+        }
+        return translated
     }
 
     private fun rememberAbsoluteScrollPosition(event: AccessibilityEvent) {
