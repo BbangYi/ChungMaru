@@ -157,6 +157,38 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldPreserveOnUnresolvedScrollDelta_keepsMasksUntilScrollPositionIsKnown() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = false,
+                hasResolvedScrollDelta = false
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(

@@ -102,6 +102,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val boundsInScreen: BoundsRect
     )
 
+    private data class ScrollTranslationResult(
+        val translated: Boolean,
+        val hasResolvedScrollDelta: Boolean
+    )
+
     private val parseRunnable = Runnable {
         val triggerEventType = scheduledParseEventType
         parseScheduled = false
@@ -182,8 +187,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
                 if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                     lastScrollEventAtMs = SystemClock.uptimeMillis()
-                    val translatedOverlay = translateMaskOverlayForScroll(event)
-                    if (translatedOverlay) {
+                    val scrollTranslation = translateMaskOverlayForScroll(event)
+                    if (scrollTranslation.translated) {
+                        markOverlayRevisionStale()
+                    } else if (
+                        MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                            eventType = event.eventType,
+                            hasActiveMasks = hasActiveMasks,
+                            hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta
+                        )
+                    ) {
+                        Log.d(TAG, "preserve mask overlay: unresolved scroll delta")
                         markOverlayRevisionStale()
                     } else {
                         clearMaskOverlay()
@@ -745,10 +759,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         return (CONTENT_OVERLAY_STABILIZATION_MS - elapsedMs).coerceAtLeast(0L)
     }
 
-    private fun translateMaskOverlayForScroll(event: AccessibilityEvent): Boolean {
+    private fun translateMaskOverlayForScroll(event: AccessibilityEvent): ScrollTranslationResult {
+        val hasActiveMasks = maskOverlayController.hasActiveMasks()
         val scrollDelta = MaskOverlayEventPolicy.resolveScrollTranslationDelta(
             eventType = event.eventType,
-            hasActiveMasks = maskOverlayController.hasActiveMasks(),
+            hasActiveMasks = hasActiveMasks,
             explicitScrollDeltaX = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 event.scrollDeltaX
             } else {
@@ -767,7 +782,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
         rememberAbsoluteScrollPosition(event)
 
         if (scrollDelta == null) {
-            return false
+            return ScrollTranslationResult(
+                translated = false,
+                hasResolvedScrollDelta = false
+            )
         }
 
         val translated = maskOverlayController.translateBy(
@@ -781,7 +799,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     "delta=${scrollDelta.deltaX},${scrollDelta.deltaY}"
             )
         }
-        return translated
+        return ScrollTranslationResult(
+            translated = translated,
+            hasResolvedScrollDelta = true
+        )
     }
 
     private fun rememberAbsoluteScrollPosition(event: AccessibilityEvent) {
