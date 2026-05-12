@@ -2,6 +2,7 @@ package com.capstone.design.youtubeparser
 
 import android.content.Context
 import android.os.Build
+import androidx.core.content.edit
 
 object AnalysisEndpointStore {
 
@@ -32,7 +33,9 @@ object AnalysisEndpointStore {
 
     fun saveRawInput(context: Context, value: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_ANALYSIS_INPUT, value.trim()).apply()
+        prefs.edit {
+            putString(KEY_ANALYSIS_INPUT, value.trim())
+        }
     }
 
     fun resolveAnalyzeUrl(context: Context): String {

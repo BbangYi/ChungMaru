@@ -35,6 +35,13 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    lint {
+        disable += setOf(
+            "AndroidGradlePluginVersion",
+            "GradleDependency",
+            "NewerVersionAvailable"
+        )
+    }
 }
 
 dependencies {

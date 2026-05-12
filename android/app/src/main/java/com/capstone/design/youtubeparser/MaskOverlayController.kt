@@ -6,11 +6,13 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -20,22 +22,38 @@ data class MaskOverlaySpec(
     val top: Int,
     val width: Int,
     val height: Int,
-    val label: String
+    val label: String,
+    val allowScrollTranslation: Boolean = true,
+    val debugSource: String = ""
 )
 
 data class MaskOverlayPlan(
     val specs: List<MaskOverlaySpec>,
     val candidateCount: Int,
     val skippedUnstableCount: Int,
-    val suppressedOverlapCount: Int
+    val suppressedOverlapCount: Int,
+    val renderedSamples: List<String> = emptyList()
 )
 
 object AndroidMaskOverlayPlanner {
     private const val MIN_WIDTH_PX = 24
     private const val MIN_HEIGHT_PX = 16
-    private const val MIN_SPAN_MASK_WIDTH_PX = 30
-    private const val SPAN_HORIZONTAL_PADDING_PX = 8
-    private const val MAX_SPAN_MASK_HEIGHT_PX = 48
+    private const val MIN_SPAN_MASK_WIDTH_PX = 24
+    private const val SPAN_HORIZONTAL_PADDING_PX = 4
+    private const val MAX_SPAN_MASK_HEIGHT_PX = 32
+    private const val KOREAN_SPAN_CHAR_WIDTH_PX = 28
+    private const val LATIN_SPAN_CHAR_WIDTH_PX = 14
+    private const val KOREAN_SPAN_MAX_CHAR_WIDTH_PX = 28
+    private const val LATIN_SPAN_MAX_CHAR_WIDTH_PX = 14
+    private const val KOREAN_SPAN_HEIGHT_WIDTH_RATIO = 0.56f
+    private const val LATIN_SPAN_HEIGHT_WIDTH_RATIO = 0.38f
+    private const val PRECISE_VISUAL_KOREAN_WIDTH_RATIO = 0.86f
+    private const val PRECISE_VISUAL_LATIN_WIDTH_RATIO = 0.76f
+    private const val PRECISE_VISUAL_WIDTH_PADDING_PX = 10
+    private const val MAX_COMPACT_KOREAN_SPAN_WIDTH_PX = 112
+    private const val MAX_COMPACT_LATIN_SPAN_WIDTH_PX = 84
+    private const val COMPACT_SPAN_CODEPOINT_LIMIT = 8
+    private const val LEADING_SPAN_PREFIX_TOLERANCE = 2
     private const val ESTIMATED_LINE_HEIGHT_PX = 34
     private const val MAX_MASK_COUNT = 24
     private const val MAX_SCREEN_WIDTH_RATIO = 0.88f
@@ -43,6 +61,29 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_HIGH_CONFIDENCE_HEIGHT_PX = 160
     private const val MAX_HIGH_CONFIDENCE_TEXT_LENGTH = 180
     private const val MAX_HIGH_CONFIDENCE_AREA_RATIO = 0.09f
+    private const val MAX_ACCESSIBILITY_SOURCE_HEIGHT_PX = 360
+    private const val MAX_ACCESSIBILITY_SOURCE_TEXT_LENGTH = 420
+    private const val MAX_ACCESSIBILITY_SOURCE_AREA_RATIO = 0.14f
+    private const val MAX_ESTIMATED_ACCESSIBILITY_TEXT_LENGTH = 96
+    private const val MAX_ESTIMATED_ACCESSIBILITY_HEIGHT_PX = 96
+    private const val MAX_ESTIMATED_ACCESSIBILITY_LINE_COUNT = 2
+    private const val MAX_ESTIMATED_ACCESSIBILITY_WIDTH_RATIO = 0.78f
+    private const val MAX_ACCESSIBILITY_RANGE_WIDTH_PX = 180
+    private const val MAX_ACCESSIBILITY_RANGE_HEIGHT_PX = 64
+    private const val MAX_UNSOURCED_LONG_TEXT_LENGTH = 70
+    private const val MAX_UNSOURCED_LONG_TEXT_HEIGHT_PX = 72
+    private const val MAX_VISUAL_SOURCE_HEIGHT_PX = 110
+    private const val MAX_VISUAL_SOURCE_AREA_RATIO = 0.08f
+    private const val MAX_COMPOSITE_SOURCE_HEIGHT_PX = 132
+    private const val MAX_COMPOSITE_SOURCE_AREA_RATIO = 0.06f
+    private const val NEAR_DUPLICATE_OVERLAP_RATIO = 0.25f
+    private const val MAX_SCROLL_TRANSLATION_DELTA_PX = 96
+    private const val TOP_CONTROL_REGION_RATIO = 0.14f
+    private const val TOP_CONTROL_REGION_MAX_PX = 220
+    private const val TOP_GENERIC_VISUAL_CONTROL_REGION_RATIO = 0.26f
+    private const val TOP_GENERIC_VISUAL_CONTROL_REGION_MAX_PX = 360
+    private const val TOP_USER_INPUT_REGION_RATIO = 0.24f
+    private const val TOP_USER_INPUT_REGION_MAX_PX = 360
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -90,12 +131,56 @@ object AndroidMaskOverlayPlanner {
             specs = finalSpecs,
             candidateCount = candidateCount,
             skippedUnstableCount = skippedUnstableCount,
-            suppressedOverlapCount = (rawSpecs.size - finalSpecs.size).coerceAtLeast(0)
+            suppressedOverlapCount = (rawSpecs.size - finalSpecs.size).coerceAtLeast(0),
+            renderedSamples = finalSpecs.mapNotNull { spec ->
+                spec.debugSource.takeIf { it.isNotBlank() }
+            }.take(6)
         )
     }
 
     fun signature(specs: List<MaskOverlaySpec>): String {
-        return specs.joinToString("|") { "${it.left},${it.top},${it.width},${it.height},${it.label}" }
+        return specs.joinToString("|") {
+            "${it.left},${it.top},${it.width},${it.height},${it.label},${it.allowScrollTranslation}"
+        }
+    }
+
+    fun translateSpecs(
+        specs: List<MaskOverlaySpec>,
+        deltaX: Int,
+        deltaY: Int,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<MaskOverlaySpec> {
+        if (specs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) return emptyList()
+        if (deltaX == 0 && deltaY == 0) return specs
+        if (
+            abs(deltaX) > MAX_SCROLL_TRANSLATION_DELTA_PX ||
+            abs(deltaY) > MAX_SCROLL_TRANSLATION_DELTA_PX
+        ) {
+            return emptyList()
+        }
+
+        return specs.mapNotNull { spec ->
+            if (!spec.allowScrollTranslation) {
+                return@mapNotNull null
+            }
+
+            val nextLeft = spec.left + deltaX
+            val nextTop = spec.top + deltaY
+            val nextRight = nextLeft + spec.width
+            val nextBottom = nextTop + spec.height
+
+            if (
+                nextRight <= 0 ||
+                nextBottom <= 0 ||
+                nextLeft >= screenWidth ||
+                nextTop >= screenHeight
+            ) {
+                null
+            } else {
+                spec.copy(left = nextLeft, top = nextTop)
+            }
+        }
     }
 
     private fun toSpecs(
@@ -106,37 +191,223 @@ object AndroidMaskOverlayPlanner {
         val fullSpec = toSpec(item.boundsInScreen, screenWidth, screenHeight) ?: return emptyList()
         val originalLength = item.original.codePointCount(0, item.original.length)
         if (originalLength <= 0) return emptyList()
-        if (!hasHighConfidenceTextBounds(fullSpec, originalLength, screenWidth, screenHeight)) {
+        if (!hasHighConfidenceTextBounds(
+                spec = fullSpec,
+                originalLength = originalLength,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight,
+                authorId = item.authorId
+            )
+        ) {
             return emptyList()
         }
 
+        val allowScrollTranslation = shouldAllowScrollTranslation(item.authorId)
+        val preciseVisualBounds = isPreciseVisualAuthor(item.authorId)
+        val debugSource = buildDebugSource(item)
         val spanSpecs = item.evidenceSpans.mapNotNull { span ->
             toSpanSpec(
                 fullSpec = fullSpec,
                 span = span,
-                originalLength = originalLength
+                original = item.original,
+                originalLength = originalLength,
+                allowScrollTranslation = allowScrollTranslation,
+                preciseVisualBounds = preciseVisualBounds,
+                debugSource = debugSource
             )
         }
 
         return spanSpecs
     }
 
+    private fun shouldAllowScrollTranslation(authorId: String?): Boolean {
+        // Only explicit input fields and exact OCR boxes are stable enough to
+        // translate. Coarse accessibility rows still get dropped and reanalyzed.
+        val value = authorId ?: return false
+        return value == "android-accessibility:user_input" ||
+            isPreciseVisualAuthor(value)
+    }
+
     private fun hasHighConfidenceTextBounds(
         spec: MaskOverlaySpec,
         originalLength: Int,
         screenWidth: Int,
-        screenHeight: Int
+        screenHeight: Int,
+        authorId: String?
     ): Boolean {
-        if (originalLength > MAX_HIGH_CONFIDENCE_TEXT_LENGTH) return false
-        if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX) return false
+        val accessibilityAuthor = isAccessibilityAuthor(authorId)
+        if (originalLength > MAX_HIGH_CONFIDENCE_TEXT_LENGTH && !accessibilityAuthor) return false
+        if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX && !accessibilityAuthor) return false
 
         val screenArea = (screenWidth * screenHeight).coerceAtLeast(1)
         val specArea = spec.width * spec.height
-        if (specArea.toFloat() / screenArea.toFloat() > MAX_HIGH_CONFIDENCE_AREA_RATIO) {
+        val areaRatio = specArea.toFloat() / screenArea.toFloat()
+
+        if (!accessibilityAuthor && areaRatio > MAX_HIGH_CONFIDENCE_AREA_RATIO) {
+            return false
+        }
+
+        if (isFallbackVisualAuthor(authorId)) {
+            return false
+        }
+
+        if (isTopControlMask(spec, screenWidth, screenHeight, authorId)) {
+            return false
+        }
+
+        if (isPreciseVisualAuthor(authorId)) {
+            return spec.height <= MAX_VISUAL_SOURCE_HEIGHT_PX &&
+                areaRatio <= MAX_VISUAL_SOURCE_AREA_RATIO
+        }
+
+        if (isCompositeYoutubeAuthor(authorId)) {
+            return spec.height <= MAX_COMPOSITE_SOURCE_HEIGHT_PX &&
+                areaRatio <= MAX_COMPOSITE_SOURCE_AREA_RATIO
+        }
+
+        if (accessibilityAuthor) {
+            if (!hasStableAccessibilityGeometry(spec, originalLength, screenWidth, authorId)) {
+                return false
+            }
+            return originalLength <= MAX_ACCESSIBILITY_SOURCE_TEXT_LENGTH &&
+                spec.height <= MAX_ACCESSIBILITY_SOURCE_HEIGHT_PX &&
+                areaRatio <= MAX_ACCESSIBILITY_SOURCE_AREA_RATIO
+        }
+
+        if (originalLength > MAX_UNSOURCED_LONG_TEXT_LENGTH &&
+            spec.height > MAX_UNSOURCED_LONG_TEXT_HEIGHT_PX
+        ) {
             return false
         }
 
         return true
+    }
+
+    private fun hasStableAccessibilityGeometry(
+        spec: MaskOverlaySpec,
+        originalLength: Int,
+        screenWidth: Int,
+        authorId: String?
+    ): Boolean {
+        if (authorId == "android-accessibility:user_input") {
+            return true
+        }
+        if (isAccessibilityRangeAuthor(authorId)) {
+            return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
+                spec.height <= MAX_ACCESSIBILITY_RANGE_HEIGHT_PX
+        }
+        if (isBrowserAccessibilityAuthor(authorId)) {
+            // Browser accessibility nodes are reliable context, not reliable word geometry.
+            // Chrome/Firefox often expose row, snippet, or card bounds as a short text node,
+            // which caused floating masks on scroll. Keep these candidates analysis-only until
+            // OCR/range projection can provide an exact visual box.
+            return false
+        }
+        if (isGenericScreenAccessibilityAuthor(authorId)) {
+            // ScreenTextCandidateExtractor emits this generic source for cross-app
+            // context collection. The bounds can be a row/card/container instead
+            // of a word box, so rendering it directly creates detached floating
+            // masks. Keep it analysis-only unless a precise range/OCR source exists.
+            return false
+        }
+
+        val estimatedLineCount = estimateLineCount(spec.height, originalLength)
+        if (estimatedLineCount > MAX_ESTIMATED_ACCESSIBILITY_LINE_COUNT) {
+            return false
+        }
+        if (
+            originalLength > MAX_ESTIMATED_ACCESSIBILITY_TEXT_LENGTH &&
+            spec.height > MAX_ESTIMATED_ACCESSIBILITY_HEIGHT_PX
+        ) {
+            return false
+        }
+        if (
+            spec.width > (screenWidth * MAX_ESTIMATED_ACCESSIBILITY_WIDTH_RATIO).roundToInt() &&
+            spec.height > MAX_SPAN_MASK_HEIGHT_PX &&
+            originalLength > MAX_UNSOURCED_LONG_TEXT_LENGTH
+        ) {
+            return false
+        }
+
+        return true
+    }
+
+    private fun isPreciseVisualAuthor(authorId: String?): Boolean {
+        val value = authorId ?: return false
+        return value.startsWith("ocr:youtube-composite-card:")
+    }
+
+    private fun isFallbackVisualAuthor(authorId: String?): Boolean {
+        val value = authorId ?: return false
+        return (value.startsWith("ocr:") && !isPreciseVisualAuthor(value)) ||
+            value.startsWith("youtube-visual-range:")
+    }
+
+    private fun isGenericVisualAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("ocr:generic-visual-region:") == true
+    }
+
+    private fun isCompositeYoutubeAuthor(authorId: String?): Boolean {
+        return authorId == "youtube-composite-description"
+    }
+
+    private fun isAccessibilityAuthor(authorId: String?): Boolean {
+        val value = authorId ?: return false
+        return value.startsWith("android-accessibility:") ||
+            value.startsWith("android-accessibility-range:") ||
+            value.startsWith("android-accessibility-browser:") ||
+            value.startsWith("screen:accessibility_text:")
+    }
+
+    private fun isAccessibilityRangeAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("android-accessibility-range:") == true
+    }
+
+    private fun isBrowserAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("android-accessibility-browser:") == true
+    }
+
+    private fun isGenericScreenAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("screen:accessibility_text:") == true
+    }
+
+    private fun isTopControlMask(
+        spec: MaskOverlaySpec,
+        screenWidth: Int,
+        screenHeight: Int,
+        authorId: String?
+    ): Boolean {
+        val value = authorId ?: return false
+
+        val isEstimatedMask = isAccessibilityAuthor(value) ||
+            isPreciseVisualAuthor(value)
+        if (!isEstimatedMask) return false
+
+        if (
+            isPreciseVisualAuthor(value) &&
+            VisualTextGeometryPolicy.isTopHeroYoutubeComposite(value, screenWidth)
+        ) {
+            return false
+        }
+
+        if (value == "android-accessibility:user_input") {
+            val inputCutoff = min(
+                TOP_USER_INPUT_REGION_MAX_PX,
+                (screenHeight * TOP_USER_INPUT_REGION_RATIO).roundToInt()
+            )
+            return spec.top < inputCutoff
+        }
+
+        if (isGenericVisualAuthor(value)) {
+            val genericVisualCutoff = min(
+                TOP_GENERIC_VISUAL_CONTROL_REGION_MAX_PX,
+                (screenHeight * TOP_GENERIC_VISUAL_CONTROL_REGION_RATIO).roundToInt()
+            )
+            return spec.top < genericVisualCutoff
+        }
+
+        val cutoff = min(TOP_CONTROL_REGION_MAX_PX, (screenHeight * TOP_CONTROL_REGION_RATIO).roundToInt())
+        return spec.top < cutoff
     }
 
     private fun toSpec(bounds: BoundsRect, screenWidth: Int, screenHeight: Int): MaskOverlaySpec? {
@@ -169,13 +440,34 @@ object AndroidMaskOverlayPlanner {
     private fun toSpanSpec(
         fullSpec: MaskOverlaySpec,
         span: EvidenceSpan,
-        originalLength: Int
+        original: String,
+        originalLength: Int,
+        allowScrollTranslation: Boolean,
+        preciseVisualBounds: Boolean,
+        debugSource: String
     ): MaskOverlaySpec? {
-        val start = span.start.coerceIn(0, originalLength)
-        val end = span.end.coerceIn(start, originalLength)
+        val resolvedRange = resolveSpanRange(
+            original = original,
+            span = span,
+            originalLength = originalLength
+        ) ?: return null
+        val start = resolvedRange.first
+        val end = resolvedRange.second
         if (end <= start) return null
 
         val lineCount = estimateLineCount(fullSpec.height, originalLength)
+        val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
+
+        if (preciseVisualBounds && isWholeTextSpan(start, end, originalLength)) {
+            return toPreciseVisualSpanSpec(
+                fullSpec = fullSpec,
+                spanText = span.text,
+                lineHeight = lineHeight,
+                allowScrollTranslation = allowScrollTranslation,
+                debugSource = debugSource
+            )
+        }
+
         val charsPerLine = ((originalLength + lineCount - 1) / lineCount).coerceAtLeast(1)
         val lineIndex = (start / charsPerLine).coerceIn(0, lineCount - 1)
         val lineStart = lineIndex * charsPerLine
@@ -216,10 +508,28 @@ object AndroidMaskOverlayPlanner {
         left = left.coerceAtLeast(fullSpec.left)
         right = right.coerceAtMost(fullSpec.left + fullSpec.width)
 
+        val maxSpanWidth = estimateMaxSpanMaskWidth(
+            spanText = span.text,
+            fullSpecWidth = fullSpec.width,
+            lineHeight = lineHeight
+        )
+        if (right - left > maxSpanWidth) {
+            val anchored = anchorCompactSpanBounds(
+                fullSpec = fullSpec,
+                rawLeft = rawLeft,
+                rawRight = rawRight,
+                start = start,
+                end = end,
+                originalLength = originalLength,
+                maxSpanWidth = maxSpanWidth
+            )
+            left = anchored.first
+            right = anchored.second
+        }
+
         val width = right - left
         if (width < MIN_WIDTH_PX) return null
 
-        val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
         val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
         val top = fullSpec.top + (lineIndex * lineHeight) + ((lineHeight - height) / 2).coerceAtLeast(0)
 
@@ -228,8 +538,204 @@ object AndroidMaskOverlayPlanner {
             top = top,
             width = width,
             height = height,
-            label = MASK_LABEL
+            label = MASK_LABEL,
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
         )
+    }
+
+    private fun resolveSpanRange(
+        original: String,
+        span: EvidenceSpan,
+        originalLength: Int
+    ): Pair<Int, Int>? {
+        val clampedStart = span.start.coerceIn(0, originalLength)
+        val clampedEnd = span.end.coerceIn(clampedStart, originalLength)
+        val spanText = span.text.trim()
+        if (spanText.isNotBlank()) {
+            val clampedText = codePointSubstring(original, clampedStart, clampedEnd)
+            val spanCodePointLength = spanText.codePointCount(0, spanText.length).coerceAtLeast(1)
+            val shouldRepair =
+                clampedEnd - clampedStart < spanCodePointLength ||
+                    !clampedText.equals(spanText, ignoreCase = true)
+            if (shouldRepair) {
+                val matchedStart = codePointIndexOf(original, spanText)
+                if (matchedStart >= 0) {
+                    return matchedStart to min(originalLength, matchedStart + spanCodePointLength)
+                }
+            }
+        }
+
+        return if (clampedEnd > clampedStart) {
+            clampedStart to clampedEnd
+        } else {
+            null
+        }
+    }
+
+    private fun codePointIndexOf(value: String, query: String): Int {
+        val charIndex = value.indexOf(query, ignoreCase = true)
+        if (charIndex < 0) return -1
+        return value.codePointCount(0, charIndex)
+    }
+
+    private fun codePointSubstring(value: String, start: Int, end: Int): String {
+        val total = value.codePointCount(0, value.length)
+        val safeStart = start.coerceIn(0, total)
+        val safeEnd = end.coerceIn(safeStart, total)
+        val startCharIndex = value.offsetByCodePoints(0, safeStart)
+        val endCharIndex = value.offsetByCodePoints(0, safeEnd)
+        return value.substring(startCharIndex, endCharIndex)
+    }
+
+    private fun isWholeTextSpan(start: Int, end: Int, originalLength: Int): Boolean {
+        return start <= LEADING_SPAN_PREFIX_TOLERANCE &&
+            end >= originalLength - LEADING_SPAN_PREFIX_TOLERANCE
+    }
+
+    private fun toPreciseVisualSpanSpec(
+        fullSpec: MaskOverlaySpec,
+        spanText: String,
+        lineHeight: Int,
+        allowScrollTranslation: Boolean,
+        debugSource: String
+    ): MaskOverlaySpec? {
+        val maxWidth = estimatePreciseVisualSpanMaxWidth(
+            spanText = spanText,
+            fullSpecWidth = fullSpec.width,
+            lineHeight = lineHeight
+        )
+        val width = minOf(fullSpec.width, maxWidth).coerceAtLeast(MIN_WIDTH_PX)
+        if (width < MIN_WIDTH_PX) return null
+
+        val left = if (width >= fullSpec.width) {
+            fullSpec.left
+        } else {
+            fullSpec.left + ((fullSpec.width - width) / 2).coerceAtLeast(0)
+        }
+        val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val top = fullSpec.top + ((fullSpec.height - height) / 2).coerceAtLeast(0)
+
+        return MaskOverlaySpec(
+            left = left,
+            top = top,
+            width = width,
+            height = height,
+            label = MASK_LABEL,
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
+        )
+    }
+
+    private fun buildDebugSource(item: AndroidAnalysisResultItem): String {
+        val bounds = item.boundsInScreen
+        val spanText = item.evidenceSpans.firstOrNull()?.text.orEmpty()
+        val source = item.authorId.orEmpty().ifBlank { "unsourced" }
+        val originalSample = item.original
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(36)
+        return "$source span=${spanText.take(16)} rect=${bounds.left},${bounds.top},${bounds.right},${bounds.bottom} text=$originalSample"
+    }
+
+    private fun estimatePreciseVisualSpanMaxWidth(
+        spanText: String,
+        fullSpecWidth: Int,
+        lineHeight: Int
+    ): Int {
+        val visibleText = spanText.ifBlank { MASK_LABEL }
+        val codePointLength = visibleText.codePointCount(0, visibleText.length).coerceAtLeast(1)
+        val hasKorean = visibleText.any { it.code in 0xAC00..0xD7A3 }
+        val charWidth = if (hasKorean) {
+            max(KOREAN_SPAN_CHAR_WIDTH_PX, (lineHeight * PRECISE_VISUAL_KOREAN_WIDTH_RATIO).roundToInt())
+        } else {
+            max(LATIN_SPAN_CHAR_WIDTH_PX, (lineHeight * PRECISE_VISUAL_LATIN_WIDTH_RATIO).roundToInt())
+        }
+
+        return minOf(
+            fullSpecWidth,
+            maxOf(
+                MIN_SPAN_MASK_WIDTH_PX,
+                codePointLength * charWidth + PRECISE_VISUAL_WIDTH_PADDING_PX
+            )
+        )
+    }
+
+    private fun estimateMaxSpanMaskWidth(
+        spanText: String,
+        fullSpecWidth: Int,
+        lineHeight: Int
+    ): Int {
+        val visibleText = spanText.ifBlank { MASK_LABEL }
+        val codePointLength = visibleText.codePointCount(0, visibleText.length).coerceAtLeast(1)
+        val hasKorean = visibleText.any { it.code in 0xAC00..0xD7A3 }
+        val scaledCharWidth = if (hasKorean) {
+            max(
+                KOREAN_SPAN_CHAR_WIDTH_PX,
+                min(KOREAN_SPAN_MAX_CHAR_WIDTH_PX, (lineHeight * KOREAN_SPAN_HEIGHT_WIDTH_RATIO).roundToInt())
+            )
+        } else {
+            max(
+                LATIN_SPAN_CHAR_WIDTH_PX,
+                min(LATIN_SPAN_MAX_CHAR_WIDTH_PX, (lineHeight * LATIN_SPAN_HEIGHT_WIDTH_RATIO).roundToInt())
+            )
+        }
+        val estimatedWidth = codePointLength * scaledCharWidth
+        val paddedWidth = estimatedWidth + SPAN_HORIZONTAL_PADDING_PX * 2
+        val compactCap = if (codePointLength <= COMPACT_SPAN_CODEPOINT_LIMIT) {
+            max(
+                if (hasKorean) MAX_COMPACT_KOREAN_SPAN_WIDTH_PX else MAX_COMPACT_LATIN_SPAN_WIDTH_PX,
+                paddedWidth
+            )
+        } else {
+            fullSpecWidth
+        }
+
+        return minOf(
+            fullSpecWidth,
+            maxOf(MIN_SPAN_MASK_WIDTH_PX, minOf(paddedWidth, compactCap))
+        )
+    }
+
+    private fun anchorCompactSpanBounds(
+        fullSpec: MaskOverlaySpec,
+        rawLeft: Int,
+        rawRight: Int,
+        start: Int,
+        end: Int,
+        originalLength: Int,
+        maxSpanWidth: Int
+    ): Pair<Int, Int> {
+        val fullRight = fullSpec.left + fullSpec.width
+        var left: Int
+        var right: Int
+
+        when {
+            start <= LEADING_SPAN_PREFIX_TOLERANCE -> {
+                left = (rawLeft - SPAN_HORIZONTAL_PADDING_PX).coerceAtLeast(fullSpec.left)
+                right = left + maxSpanWidth
+            }
+            end >= originalLength -> {
+                right = (rawRight + SPAN_HORIZONTAL_PADDING_PX).coerceAtMost(fullRight)
+                left = right - maxSpanWidth
+            }
+            else -> {
+                val center = (rawLeft + rawRight) / 2
+                left = center - maxSpanWidth / 2
+                right = left + maxSpanWidth
+            }
+        }
+
+        if (right > fullRight) {
+            left -= right - fullRight
+            right = fullRight
+        }
+        if (left < fullSpec.left) {
+            right += fullSpec.left - left
+            left = fullSpec.left
+        }
+
+        return left.coerceAtLeast(fullSpec.left) to right.coerceAtMost(fullRight)
     }
 
     private fun estimateLineCount(height: Int, originalLength: Int): Int {
@@ -239,23 +745,48 @@ object AndroidMaskOverlayPlanner {
 
         return (height / ESTIMATED_LINE_HEIGHT_PX)
             .coerceAtLeast(1)
-            .coerceAtMost(4)
+            .coerceAtMost(8)
     }
 
     private fun suppressOverlappingSpecs(specs: List<MaskOverlaySpec>): List<MaskOverlaySpec> {
         val kept = mutableListOf<MaskOverlaySpec>()
         specs
             .distinctBy { "${it.left}|${it.top}|${it.width}|${it.height}" }
-            .sortedWith(compareBy<MaskOverlaySpec> { it.top }.thenBy { it.left }.thenBy { it.width * it.height })
+            .sortedWith(
+                compareBy<MaskOverlaySpec> { it.top / MAX_SPAN_MASK_HEIGHT_PX }
+                    .thenBy { it.width * it.height }
+                    .thenBy { it.left }
+                    .thenBy { it.top }
+            )
             .forEach { spec ->
                 val overlapsExisting = kept.any { existing ->
-                    overlapRatio(spec, existing) >= 0.65f
+                    isNearDuplicateMask(spec, existing)
                 }
                 if (!overlapsExisting) {
                     kept += spec
                 }
             }
         return kept
+    }
+
+    private fun isNearDuplicateMask(left: MaskOverlaySpec, right: MaskOverlaySpec): Boolean {
+        if (overlapRatio(left, right) >= NEAR_DUPLICATE_OVERLAP_RATIO) return true
+
+        val horizontalOverlap = min(left.left + left.width, right.left + right.width) -
+            max(left.left, right.left)
+        if (horizontalOverlap <= 0) return false
+
+        val verticalOverlap = min(left.top + left.height, right.top + right.height) -
+            max(left.top, right.top)
+        if (verticalOverlap <= 0) return false
+
+        val smallerHeight = min(left.height, right.height).coerceAtLeast(1)
+        val smallerWidth = min(left.width, right.width).coerceAtLeast(1)
+        val verticalOverlapRatio = verticalOverlap.toFloat() / smallerHeight.toFloat()
+        val horizontalOverlapRatio = horizontalOverlap.toFloat() / smallerWidth.toFloat()
+
+        return verticalOverlapRatio >= SAME_LINE_VERTICAL_OVERLAP_RATIO &&
+            horizontalOverlapRatio >= SAME_LINE_HORIZONTAL_OVERLAP_RATIO
     }
 
     private fun overlapRatio(left: MaskOverlaySpec, right: MaskOverlaySpec): Float {
@@ -273,6 +804,8 @@ object AndroidMaskOverlayPlanner {
     }
 
     private const val MASK_LABEL = "***"
+    private const val SAME_LINE_VERTICAL_OVERLAP_RATIO = 0.55f
+    private const val SAME_LINE_HORIZONTAL_OVERLAP_RATIO = 0.03f
 }
 
 class MaskOverlayController(
@@ -284,9 +817,14 @@ class MaskOverlayController(
 
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val activeViews = mutableListOf<TextView>()
+    private val activeSpecs = mutableListOf<MaskOverlaySpec>()
     private var lastSignature: String = ""
+    private var lastOverlayUpdateAtMs: Long = 0L
 
-    fun render(response: AndroidAnalysisResponse?) {
+    fun render(
+        response: AndroidAnalysisResponse?,
+        preserveExistingIfEmpty: Boolean = false
+    ) {
         val metrics = service.resources.displayMetrics
         val plan = AndroidMaskOverlayPlanner.buildPlan(
             response = response,
@@ -296,6 +834,14 @@ class MaskOverlayController(
         val specs = plan.specs
 
         if (specs.isEmpty()) {
+            if (preserveExistingIfEmpty && activeViews.isNotEmpty()) {
+                Log.d(
+                    TAG,
+                    "render empty plan preserved existing masks candidates=${plan.candidateCount} " +
+                        "unstable=${plan.skippedUnstableCount} suppressed=${plan.suppressedOverlapCount}"
+                )
+                return
+            }
             clear()
             Log.d(
                 TAG,
@@ -317,14 +863,17 @@ class MaskOverlayController(
                     val maskView = createMaskView(spec)
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
+                    activeSpecs += spec
                 } else {
-                    existing.text = spec.label
+                    existing.text = MASK_RENDER_TEXT
                     windowManager.updateViewLayout(existing, createMaskLayoutParams(spec))
+                    activeSpecs[index] = spec
                 }
             }
 
             while (activeViews.size > specs.size) {
                 val view = activeViews.removeAt(activeViews.lastIndex)
+                activeSpecs.removeAt(activeSpecs.lastIndex)
                 try {
                     windowManager.removeView(view)
                 } catch (_: IllegalArgumentException) {
@@ -332,24 +881,95 @@ class MaskOverlayController(
                 }
             }
 
-            Log.d(TAG, "render maskCount=${specs.size} signature=$signature")
+            Log.d(
+                TAG,
+                "render maskCount=${specs.size} signature=$signature sources=${
+                    specs.mapNotNull { spec -> spec.debugSource.takeIf { it.isNotBlank() } }.take(3)
+                }"
+            )
             lastSignature = signature
+            lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
         } catch (error: RuntimeException) {
             clearViews()
             Log.w(TAG, "render mask overlay failed", error)
         }
     }
 
+    fun translateBy(deltaX: Int = 0, deltaY: Int = 0): Boolean {
+        if (activeViews.isEmpty() || activeSpecs.isEmpty()) return false
+        if (deltaX == 0 && deltaY == 0) return false
+
+        val metrics = service.resources.displayMetrics
+        val translatedSpecs = AndroidMaskOverlayPlanner.translateSpecs(
+            specs = activeSpecs,
+            deltaX = deltaX,
+            deltaY = deltaY,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+
+        if (translatedSpecs.isEmpty()) {
+            clear()
+            return false
+        }
+
+        return try {
+            if (translatedSpecs.size != activeViews.size) {
+                clearViews()
+                translatedSpecs.forEach { spec ->
+                    val maskView = createMaskView(spec)
+                    windowManager.addView(maskView, createMaskLayoutParams(spec))
+                    activeViews += maskView
+                    activeSpecs += spec
+                }
+                lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
+                lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
+                return true
+            }
+
+            translatedSpecs.forEachIndexed { index, spec ->
+                val view = activeViews.getOrNull(index) ?: return@forEachIndexed
+                windowManager.updateViewLayout(view, createMaskLayoutParams(spec))
+            }
+            activeSpecs.clear()
+            activeSpecs += translatedSpecs
+            lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
+            lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
+            true
+        } catch (error: RuntimeException) {
+            clearViews()
+            Log.w(TAG, "translate mask overlay failed", error)
+            false
+        }
+    }
+
     fun clear() {
         clearViews()
         lastSignature = ""
+        lastOverlayUpdateAtMs = 0L
+    }
+
+    fun hasActiveMasks(): Boolean {
+        return activeViews.isNotEmpty()
+    }
+
+    fun wasUpdatedWithin(windowMs: Long, nowMs: Long = SystemClock.uptimeMillis()): Boolean {
+        if (windowMs <= 0L || lastOverlayUpdateAtMs <= 0L) return false
+
+        val elapsedMs = nowMs - lastOverlayUpdateAtMs
+        return elapsedMs in 0..windowMs
     }
 
     private fun clearViews() {
-        if (activeViews.isEmpty()) return
+        if (activeViews.isEmpty()) {
+            activeSpecs.clear()
+            lastSignature = ""
+            return
+        }
 
         val viewsToRemove = activeViews.toList()
         activeViews.clear()
+        activeSpecs.clear()
         lastSignature = ""
 
         viewsToRemove.forEach { view ->
@@ -364,15 +984,15 @@ class MaskOverlayController(
     private fun createMaskView(spec: MaskOverlaySpec): TextView {
         return TextView(service).apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            text = spec.label
+            text = MASK_RENDER_TEXT
             gravity = Gravity.CENTER
             includeFontPadding = false
-            setTextColor(Color.WHITE)
+            setTextColor(Color.TRANSPARENT)
             textSize = if (spec.height <= 90) 13f else 14f
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
-                cornerRadius = 6f * service.resources.displayMetrics.density
-                setColor(Color.rgb(18, 18, 18))
+                cornerRadius = 8f * service.resources.displayMetrics.density
+                setColor(Color.argb(245, 12, 12, 12))
             }
         }
     }
@@ -393,3 +1013,5 @@ class MaskOverlayController(
         }
     }
 }
+
+private const val MASK_RENDER_TEXT = ""

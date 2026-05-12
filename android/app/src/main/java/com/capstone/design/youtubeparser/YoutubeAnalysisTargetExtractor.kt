@@ -1,26 +1,67 @@
 package com.capstone.design.youtubeparser
 
 object YoutubeAnalysisTargetExtractor {
-    private const val MAX_TARGET_COUNT = 40
+    private const val MAX_TARGET_COUNT = 28
+    private const val MAX_LOW_PRIORITY_TARGET_COUNT = 8
+    private const val COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX = 56
+    private const val VISUAL_RANGE_MIN_WIDTH_PX = 30
+    private const val VISUAL_RANGE_HORIZONTAL_PADDING_PX = 6
+    private const val VISUAL_RANGE_LINE_HEIGHT_PX = 34
+    private const val SHORT_TEXT_VISUAL_RANGE_LIMIT = 14
 
     fun extractTargets(nodes: List<ParsedTextNode>): List<ParsedComment> {
         val commentTargets = YoutubeCommentExtractor.extractComments(nodes)
         val standaloneTargets = nodes
             .asSequence()
-            .mapNotNull { toStandaloneTarget(it) }
+            .flatMap { toStandaloneTargets(it).asSequence() }
             .toList()
 
-        return (standaloneTargets + commentTargets)
+        return selectTargetsForAnalysis(standaloneTargets + commentTargets)
+    }
+
+    private fun selectTargetsForAnalysis(targets: List<ParsedComment>): List<ParsedComment> {
+        val selected = mutableListOf<ParsedComment>()
+        var lowPriorityCount = 0
+
+        targets
             .distinctBy { target ->
                 val normalizedText = target.commentText.replace(Regex("\\s+"), " ").trim()
                 "${normalizedText}|${target.boundsInScreen.left}|${target.boundsInScreen.top}"
             }
-            .sortedWith(compareBy<ParsedComment> { it.boundsInScreen.top }.thenBy { it.boundsInScreen.left })
-            .take(MAX_TARGET_COUNT)
+            .sortedWith(
+                compareBy<ParsedComment> { targetSelectionPriority(it) }
+                    .thenBy { it.boundsInScreen.top }
+                    .thenBy { it.boundsInScreen.left }
+            )
+            .forEach { target ->
+                if (selected.size >= MAX_TARGET_COUNT) return@forEach
+
+                if (targetSelectionPriority(target) >= 2) {
+                    if (lowPriorityCount >= MAX_LOW_PRIORITY_TARGET_COUNT) return@forEach
+                    lowPriorityCount += 1
+                }
+
+                selected += target
+            }
+
+        return selected.sortedWith(compareBy<ParsedComment> { it.boundsInScreen.top }.thenBy { it.boundsInScreen.left })
     }
 
     private fun isUsefulStandaloneTarget(node: ParsedTextNode): Boolean {
-        return toStandaloneTarget(node) != null
+        return toStandaloneTargets(node).isNotEmpty()
+    }
+
+    private fun toStandaloneTargets(node: ParsedTextNode): List<ParsedComment> {
+        val primary = toStandaloneTarget(node) ?: return emptyList()
+        val isCompositeDescription = primary.authorId == COMPOSITE_DESCRIPTION_AUTHOR_ID
+        if (isCompositeDescription) {
+            return toVisualRangeTargets(
+                primary = primary,
+                allowShortText = true
+            )
+        }
+
+        return listOf(primary)
     }
 
     private fun toStandaloneTarget(node: ParsedTextNode): ParsedComment? {
@@ -33,11 +74,8 @@ object YoutubeAnalysisTargetExtractor {
 
         if (!node.isVisibleToUser) return null
         if (width < 24 || height < 16) return null
-        if (contentDescriptionOnly && isCompositeYoutubeCardDescription(lower, width, height)) {
-            // Composite card descriptions do not expose reliable glyph bounds.
-            // Masking them creates floating overlays on thumbnails/cards, so keep
-            // the Android path limited to nodes with real text bounds.
-            return null
+        if (contentDescriptionOnly && shouldTreatAsCompositeYoutubeCard(text, lower, width, height)) {
+            return toCompositeYoutubeTitleTarget(node, text, width, height)
         }
         if (text.length !in 2..220) return null
         if (text.startsWith("@")) return null
@@ -68,6 +106,176 @@ object YoutubeAnalysisTargetExtractor {
                 right = node.right,
                 bottom = node.bottom
             )
+        )
+    }
+
+    private fun toVisualRangeTargets(
+        primary: ParsedComment,
+        allowShortText: Boolean = false
+    ): List<ParsedComment> {
+        if (!allowShortText && primary.commentText.length <= SHORT_TEXT_VISUAL_RANGE_LIMIT) return emptyList()
+
+        val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(primary.commentText)
+        if (ranges.isEmpty()) return emptyList()
+
+        return ranges.mapNotNull { range ->
+            val rangeBounds = estimateVisualRangeBounds(
+                bounds = primary.boundsInScreen,
+                textLength = primary.commentText.length,
+                start = range.start,
+                end = range.end
+            ) ?: return@mapNotNull null
+
+            ParsedComment(
+                commentText = range.analysisText,
+                boundsInScreen = rangeBounds,
+                authorId = "youtube-visual-range:${range.visualText}"
+            )
+        }
+    }
+
+    private fun targetSelectionPriority(target: ParsedComment): Int {
+        val authorId = target.authorId.orEmpty()
+        if (authorId.startsWith("youtube-visual-range:") || authorId.startsWith("ocr:")) {
+            return 0
+        }
+        if (VisualTextOcrCandidateFilter.shouldAnalyze(target.commentText)) {
+            return 1
+        }
+        return 2
+    }
+
+    private fun estimateVisualRangeBounds(
+        bounds: BoundsRect,
+        textLength: Int,
+        start: Int,
+        end: Int
+    ): BoundsRect? {
+        if (textLength <= 0 || end <= start) return null
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        if (width < VISUAL_RANGE_MIN_WIDTH_PX || height < 16) return null
+
+        val lineCount = estimateVisualRangeLineCount(height, textLength)
+        val charsPerLine = ((textLength + lineCount - 1) / lineCount).coerceAtLeast(1)
+        val lineIndex = (start / charsPerLine).coerceIn(0, lineCount - 1)
+        val lineStart = lineIndex * charsPerLine
+        val lineEnd = minOf(textLength, lineStart + charsPerLine).coerceAtLeast(lineStart + 1)
+        val lineLength = (lineEnd - lineStart).coerceAtLeast(1)
+        val localStart = (start - lineStart).coerceIn(0, lineLength)
+        val localEnd = (end - lineStart).coerceIn(localStart + 1, lineLength)
+
+        val rawLeft = bounds.left + (width * (localStart.toFloat() / lineLength.toFloat())).toInt()
+        val rawRight = bounds.left + (width * (localEnd.toFloat() / lineLength.toFloat())).toInt()
+        val center = (rawLeft + rawRight) / 2
+        var left = rawLeft - VISUAL_RANGE_HORIZONTAL_PADDING_PX
+        var right = rawRight + VISUAL_RANGE_HORIZONTAL_PADDING_PX
+        val minWidth = minOf(
+            width,
+            maxOf(VISUAL_RANGE_MIN_WIDTH_PX, (localEnd - localStart) * 18)
+        )
+
+        if (right - left < minWidth) {
+            left = center - minWidth / 2
+            right = left + minWidth
+        }
+
+        if (left < bounds.left) {
+            right += bounds.left - left
+            left = bounds.left
+        }
+        if (right > bounds.right) {
+            left -= right - bounds.right
+            right = bounds.right
+        }
+
+        left = left.coerceAtLeast(bounds.left)
+        right = right.coerceAtMost(bounds.right)
+        if (right - left < VISUAL_RANGE_MIN_WIDTH_PX) return null
+
+        val lineHeight = (height / lineCount).coerceAtLeast(16)
+        val top = bounds.top + lineIndex * lineHeight
+        val bottom = minOf(bounds.bottom, top + lineHeight)
+        if (bottom - top < 16) return null
+
+        return BoundsRect(left, top, right, bottom)
+    }
+
+    private fun estimateVisualRangeLineCount(height: Int, textLength: Int): Int {
+        if (height <= COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX || textLength <= 24) return 1
+        return (height / VISUAL_RANGE_LINE_HEIGHT_PX)
+            .coerceAtLeast(1)
+            .coerceAtMost(3)
+    }
+
+    private fun toCompositeYoutubeTitleTarget(
+        node: ParsedTextNode,
+        description: String,
+        width: Int,
+        height: Int
+    ): ParsedComment? {
+        if (width < 320 || height < 260) return null
+
+        val title = extractCompositeYoutubeTitle(description) ?: return null
+        if (title.length !in 2..180) return null
+        if (!VisualTextOcrCandidateFilter.shouldAnalyze(title)) return null
+
+        val titleBounds = estimateCompositeYoutubeTitleBounds(node, width, height) ?: return null
+        return ParsedComment(
+            commentText = title,
+            boundsInScreen = titleBounds,
+            authorId = COMPOSITE_DESCRIPTION_AUTHOR_ID
+        )
+    }
+
+    private fun extractCompositeYoutubeTitle(description: String): String? {
+        val normalized = description.replace(Regex("\\s+"), " ").trim()
+        if (normalized.isBlank()) return null
+
+        metadataTitlePatterns.firstNotNullOfOrNull { pattern ->
+            pattern.find(normalized)?.groupValues?.getOrNull(1)?.trim(' ', '-', ',')
+        }?.let { title ->
+            return title.takeIf { it.isNotBlank() }
+        }
+
+        val cutIndexes = listOfNotNull(
+            Regex("""\s+-\s+\d+\s+(?:second|seconds|minute|minutes|hour|hours)(?:,\s*\d+\s+(?:second|seconds|minute|minutes|hour|hours))?\s+-""")
+                .find(normalized)
+                ?.range
+                ?.first,
+            normalized.indexOf(" - Go to channel ").takeIf { it >= 0 },
+            normalized.indexOf(" - play video").takeIf { it >= 0 },
+            normalized.indexOf(" - play Short").takeIf { it >= 0 },
+            normalized.indexOf(" - 동영상 재생").takeIf { it >= 0 },
+            normalized.indexOf(" - 쇼츠 재생").takeIf { it >= 0 }
+        )
+
+        val title = if (cutIndexes.isEmpty()) {
+            normalized
+        } else {
+            normalized.substring(0, cutIndexes.minOrNull() ?: normalized.length)
+        }.trim(' ', '-', ',')
+
+        return title.takeIf { it.isNotBlank() }
+    }
+
+    private fun estimateCompositeYoutubeTitleBounds(
+        node: ParsedTextNode,
+        width: Int,
+        height: Int
+    ): BoundsRect? {
+        val top = node.top + (height * 0.78f).toInt()
+        val left = node.left + (width * 0.14f).toInt()
+        val right = node.right - (width * 0.10f).toInt()
+        val bottom = minOf(node.bottom, top + COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX)
+
+        if (right - left < 80 || bottom - top < 24) return null
+
+        return BoundsRect(
+            left = left,
+            top = top,
+            right = right,
+            bottom = bottom
         )
     }
 
@@ -122,6 +330,8 @@ object YoutubeAnalysisTargetExtractor {
             lower.endsWith(" - play short") ||
             lower.contains(" views,") && lower.contains("play short") ||
             lower.contains(" views - ") ||
+            Regex("""\bviews?\s*[·•]\s*""").containsMatchIn(lower) ||
+            Regex("""\b\d+(?:\.\d+)?\s*[kmb]\s+views?\b""").containsMatchIn(lower) ||
             lower.contains("조회수") && lower.contains("전")
     }
 
@@ -135,5 +345,32 @@ object YoutubeAnalysisTargetExtractor {
             text.endsWith("주 전") ||
             text.endsWith("개월 전") ||
             text.endsWith("년 전")
+    }
+
+    private val metadataTitlePatterns = listOf(
+        Regex("""^(.+?),\s*[^,]{1,80},\s*[\d.]+\s*(?:[kmb]|thousand|million|billion)?\s+views\b""", RegexOption.IGNORE_CASE),
+        Regex("""^(.+?),\s*[\d.]+\s*(?:[kmb]|thousand|million|billion)?\s+views\b""", RegexOption.IGNORE_CASE),
+        Regex("""^(.+?)\s*[·•]\s*[^·•]{1,80}\s*[·•]\s*[\d.]+\s*(?:[kmb]|thousand|million|billion)?\s+views\b""", RegexOption.IGNORE_CASE),
+        Regex("""^(.+?),\s*[^,]{1,80},\s*조회수\s*[\d.,]+[천만억]?\s*회?"""),
+        Regex("""^(.+?),\s*조회수\s*[\d.,]+[천만억]?\s*회?""")
+    )
+
+    private const val COMPOSITE_DESCRIPTION_AUTHOR_ID = "youtube-composite-description"
+
+    private fun shouldTreatAsCompositeYoutubeCard(
+        text: String,
+        lower: String,
+        width: Int,
+        height: Int
+    ): Boolean {
+        if (isCompositeYoutubeCardDescription(lower, width, height)) return true
+
+        // Some YouTube result nodes expose one large contentDescription without a
+        // stable "play video" suffix. If it is a large card and contains an
+        // analyzable profanity-like token, estimate the title row instead of
+        // sending the whole card bounds to the overlay planner.
+        return width >= 320 &&
+            height >= 180 &&
+            VisualTextOcrCandidateFilter.shouldAnalyze(text)
     }
 }

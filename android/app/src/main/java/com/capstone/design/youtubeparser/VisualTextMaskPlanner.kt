@@ -32,7 +32,18 @@ object VisualTextMaskPlanner {
     private const val MAX_VISUAL_TEXT_LENGTH = 120
     private const val MAX_VISUAL_TEXT_HEIGHT_PX = 96
     private const val MAX_VISUAL_TEXT_AREA_RATIO = 0.06f
-    private const val HORIZONTAL_PADDING_PX = 6
+    private const val HORIZONTAL_PADDING_PX = 4
+    private const val KOREAN_SPAN_CHAR_WIDTH_PX = 28
+    private const val LATIN_SPAN_CHAR_WIDTH_PX = 14
+    private const val KOREAN_SPAN_MAX_CHAR_WIDTH_PX = 28
+    private const val LATIN_SPAN_MAX_CHAR_WIDTH_PX = 14
+    private const val KOREAN_SPAN_HEIGHT_WIDTH_RATIO = 0.56f
+    private const val LATIN_SPAN_HEIGHT_WIDTH_RATIO = 0.38f
+    private const val MAX_COMPACT_KOREAN_SPAN_WIDTH_PX = 112
+    private const val MAX_COMPACT_LATIN_SPAN_WIDTH_PX = 84
+    private const val MAX_SPAN_MASK_HEIGHT_PX = 32
+    private const val COMPACT_SPAN_CODEPOINT_LIMIT = 8
+    private const val LEADING_SPAN_PREFIX_TOLERANCE = 2
     private const val MASK_LABEL = "***"
 
     fun buildPlan(
@@ -108,7 +119,8 @@ object VisualTextMaskPlanner {
             top = top,
             width = width,
             height = height,
-            label = MASK_LABEL
+            label = MASK_LABEL,
+            allowScrollTranslation = false
         )
     }
 
@@ -163,15 +175,80 @@ object VisualTextMaskPlanner {
         left = left.coerceAtLeast(fullSpec.left)
         right = right.coerceAtMost(fullSpec.left + fullSpec.width)
 
+        val maxSpanWidth = estimateMaxSpanMaskWidth(
+            spanText = labelText,
+            fullSpecWidth = fullSpec.width,
+            textHeight = fullSpec.height
+        )
+        if (right - left > maxSpanWidth) {
+            val fullRight = fullSpec.left + fullSpec.width
+            left = when {
+                start <= LEADING_SPAN_PREFIX_TOLERANCE -> rawLeft - HORIZONTAL_PADDING_PX
+                end >= originalLength -> rawRight + HORIZONTAL_PADDING_PX - maxSpanWidth
+                else -> center - maxSpanWidth / 2
+            }
+            right = left + maxSpanWidth
+
+            if (left < fullSpec.left) {
+                right += fullSpec.left - left
+                left = fullSpec.left
+            }
+            if (right > fullRight) {
+                left -= right - fullRight
+                right = fullRight
+            }
+            left = left.coerceAtLeast(fullSpec.left)
+            right = right.coerceAtMost(fullRight)
+        }
+
         val width = right - left
         if (width < MIN_WIDTH_PX) return null
 
+        val height = minOf(fullSpec.height, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val top = fullSpec.top + ((fullSpec.height - height) / 2).coerceAtLeast(0)
+
         return MaskOverlaySpec(
             left = left,
-            top = fullSpec.top,
+            top = top,
             width = width,
-            height = fullSpec.height,
-            label = MASK_LABEL
+            height = height,
+            label = MASK_LABEL,
+            allowScrollTranslation = false
+        )
+    }
+
+    private fun estimateMaxSpanMaskWidth(
+        spanText: String,
+        fullSpecWidth: Int,
+        textHeight: Int
+    ): Int {
+        val visibleText = spanText.ifBlank { MASK_LABEL }
+        val codePointLength = visibleText.codePointCount(0, visibleText.length).coerceAtLeast(1)
+        val hasKorean = visibleText.any { it.code in 0xAC00..0xD7A3 }
+        val scaledCharWidth = if (hasKorean) {
+            max(
+                KOREAN_SPAN_CHAR_WIDTH_PX,
+                min(KOREAN_SPAN_MAX_CHAR_WIDTH_PX, (textHeight * KOREAN_SPAN_HEIGHT_WIDTH_RATIO).roundToInt())
+            )
+        } else {
+            max(
+                LATIN_SPAN_CHAR_WIDTH_PX,
+                min(LATIN_SPAN_MAX_CHAR_WIDTH_PX, (textHeight * LATIN_SPAN_HEIGHT_WIDTH_RATIO).roundToInt())
+            )
+        }
+        val estimatedWidth = codePointLength * scaledCharWidth
+        val compactCap = if (codePointLength <= COMPACT_SPAN_CODEPOINT_LIMIT) {
+            max(
+                if (hasKorean) MAX_COMPACT_KOREAN_SPAN_WIDTH_PX else MAX_COMPACT_LATIN_SPAN_WIDTH_PX,
+                estimatedWidth + HORIZONTAL_PADDING_PX * 2
+            )
+        } else {
+            fullSpecWidth
+        }
+
+        return minOf(
+            fullSpecWidth,
+            maxOf(MIN_MASK_WIDTH_PX, minOf(estimatedWidth + HORIZONTAL_PADDING_PX * 2, compactCap))
         )
     }
 }

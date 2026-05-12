@@ -25,6 +25,11 @@ object VisualTextRoiPlanner {
     private const val MAX_FULL_WIDTH_RATIO = 0.92f
     private const val MAX_VISIBLE_TOP_RATIO = 0.9f
     private const val OVERLAP_SUPPRESSION_RATIO = 0.72f
+    private const val FALLBACK_BAND_HEIGHT_RATIO = 0.26f
+    private const val TOP_CONTROL_REGION_RATIO = 0.14f
+    private const val TOP_CONTROL_REGION_MAX_PX = 230
+    private const val TOP_HERO_MEDIA_MIN_HEIGHT_PX = 180
+    private const val TOP_HERO_MEDIA_MIN_WIDTH_RATIO = 0.48f
 
     fun planFromNodes(
         nodes: List<ParsedTextNode>,
@@ -46,9 +51,10 @@ object VisualTextRoiPlanner {
         val rawCandidates = nodes.mapNotNull { node ->
             toCandidate(node, screenWidth, screenHeight)
         }
+        val fallbackCandidates = buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
 
         val selected = mutableListOf<VisualTextRoi>()
-        rawCandidates
+        (rawCandidates + fallbackCandidates)
             .sortedWith(
                 compareBy<VisualTextRoi> { it.priority }
                     .thenBy { it.boundsInScreen.top }
@@ -63,7 +69,7 @@ object VisualTextRoiPlanner {
 
         return VisualTextRoiPlan(
             rois = selected,
-            candidateCount = rawCandidates.size
+            candidateCount = rawCandidates.size + fallbackCandidates.size
         )
     }
 
@@ -80,21 +86,29 @@ object VisualTextRoiPlanner {
             ?: return null
         val normalized = sourceText.replace(Regex("\\s+"), " ").trim()
         if (!isUsefulSourceText(normalized)) return null
-
-        val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
-        val className = node.className.orEmpty()
-        val isImageLike = className.contains("Image", ignoreCase = true)
-        val isYoutubeComposite = contentDescriptionOnly && isMediaCardDescription(normalized)
-        val isGenericVisual = contentDescriptionOnly && (isImageLike || looksLikeVisualCard(className, normalized))
-        if (!isYoutubeComposite && !isGenericVisual) return null
+        if (node.packageName in ACCESSIBILITY_FIRST_PACKAGES) return null
 
         val clamped = clampBounds(
             BoundsRect(node.left, node.top, node.right, node.bottom),
             screenWidth,
             screenHeight
         ) ?: return null
+        val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
+        val className = node.className.orEmpty()
+        val isImageLike = className.contains("Image", ignoreCase = true)
+        val isYoutubeComposite = contentDescriptionOnly &&
+            (isMediaCardDescription(normalized) || isLargeAnalyzableVisualCard(normalized, clamped))
+        val isGenericVisual = contentDescriptionOnly && (isImageLike || looksLikeVisualCard(className, normalized))
+        if (!isYoutubeComposite && !isGenericVisual) return null
+
         if (!isNearCurrentViewport(clamped, screenHeight)) return null
         if (looksLikeRootOrSystemRegion(clamped, screenWidth, screenHeight)) return null
+        if (
+            looksLikeTopControlRegion(clamped, screenHeight) &&
+            !isTopHeroMediaRegion(isYoutubeComposite, clamped, screenWidth)
+        ) {
+            return null
+        }
 
         val roiBounds = normalizeRoiBounds(clamped, screenWidth, screenHeight) ?: return null
 
@@ -123,6 +137,14 @@ object VisualTextRoiPlanner {
             lower.contains("조회수") ||
             lower.contains("go to channel") ||
             lower.contains("동영상 재생")
+    }
+
+    private fun isLargeAnalyzableVisualCard(text: String, bounds: BoundsRect): Boolean {
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        return width >= 320 &&
+            height >= 180 &&
+            VisualTextOcrCandidateFilter.shouldAnalyze(text)
     }
 
     private fun looksLikeVisualCard(className: String, text: String): Boolean {
@@ -162,6 +184,24 @@ object VisualTextRoiPlanner {
             (bounds.top <= SCREEN_EDGE_PADDING_PX && heightRatio >= 0.35f)
     }
 
+    private fun looksLikeTopControlRegion(bounds: BoundsRect, screenHeight: Int): Boolean {
+        val cutoff = min(TOP_CONTROL_REGION_MAX_PX, (screenHeight * TOP_CONTROL_REGION_RATIO).toInt())
+        return bounds.top < cutoff
+    }
+
+    private fun isTopHeroMediaRegion(
+        isYoutubeComposite: Boolean,
+        bounds: BoundsRect,
+        screenWidth: Int
+    ): Boolean {
+        if (!isYoutubeComposite) return false
+
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        return height >= TOP_HERO_MEDIA_MIN_HEIGHT_PX &&
+            width >= (screenWidth * TOP_HERO_MEDIA_MIN_WIDTH_RATIO).toInt()
+    }
+
     private fun normalizeRoiBounds(
         bounds: BoundsRect,
         screenWidth: Int,
@@ -175,7 +215,12 @@ object VisualTextRoiPlanner {
             return padAndClamp(bounds, screenWidth, screenHeight)
         }
 
-        val croppedHeight = max(MIN_HEIGHT_PX, min(height, (screenHeight * 0.32f).toInt()))
+        val maxArea = (screenArea * MAX_ROI_AREA_RATIO).toInt().coerceAtLeast(MIN_WIDTH_PX * MIN_HEIGHT_PX)
+        val maxHeightForWidth = (maxArea / max(1, width)).coerceAtLeast(MIN_HEIGHT_PX)
+        val croppedHeight = max(
+            MIN_HEIGHT_PX,
+            min(height, min((screenHeight * 0.32f).toInt(), maxHeightForWidth))
+        )
         val cropped = BoundsRect(
             left = bounds.left,
             top = bounds.top,
@@ -217,4 +262,82 @@ object VisualTextRoiPlanner {
 
         return overlapArea.toFloat() / smallerArea.toFloat() >= OVERLAP_SUPPRESSION_RATIO
     }
+
+    private fun buildYoutubeFallbackRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int,
+        rawCandidates: List<VisualTextRoi>
+    ): List<VisualTextRoi> {
+        if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
+        if (rawCandidates.isNotEmpty()) return emptyList()
+
+        val topControlBottom = nodes
+            .asSequence()
+            .filter { node ->
+                val height = node.bottom - node.top
+                node.top in 0..(screenHeight * TOP_CONTROL_REGION_RATIO).toInt() &&
+                    height in MIN_HEIGHT_PX..TOP_CONTROL_REGION_MAX_PX
+            }
+            .map { it.bottom }
+            .maxOrNull()
+
+        val filterBottom = nodes
+            .asSequence()
+            .filter { node ->
+                val text = node.displayText.orEmpty().trim().lowercase()
+                text in YOUTUBE_FILTER_LABELS && node.top in 0..(screenHeight * 0.28f).toInt()
+            }
+            .map { it.bottom }
+            .maxOrNull()
+            ?: topControlBottom
+            ?: return emptyList()
+
+        val firstTop = filterBottom + SCREEN_EDGE_PADDING_PX
+        val bandHeight = (screenHeight * FALLBACK_BAND_HEIGHT_RATIO).toInt().coerceAtLeast(MIN_HEIGHT_PX)
+        val firstBottom = min(screenHeight, firstTop + bandHeight)
+        if (firstBottom - firstTop < MIN_HEIGHT_PX) return emptyList()
+
+        return listOf(
+            VisualTextRoi(
+                boundsInScreen = BoundsRect(
+                    left = 0,
+                    top = firstTop,
+                    right = screenWidth,
+                    bottom = firstBottom
+                ),
+                source = "youtube-visible-band",
+                priority = 9,
+                reason = "fallback-first-viewport-band"
+            )
+        ).filter { roi ->
+            roi.boundsInScreen.bottom - roi.boundsInScreen.top >= MIN_HEIGHT_PX
+        }
+    }
+
+    private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
+
+    private val ACCESSIBILITY_FIRST_PACKAGES = setOf(
+        "com.android.chrome",
+        "com.chrome.beta",
+        "com.chrome.dev",
+        "com.chrome.canary",
+        "com.google.android.googlequicksearchbox",
+        "com.google.android.apps.searchlite",
+        "com.android.browser",
+        "org.mozilla.firefox",
+        "com.microsoft.emmx",
+        "com.sec.android.app.sbrowser"
+    )
+
+    private val YOUTUBE_FILTER_LABELS = setOf(
+        "all",
+        "shorts",
+        "unwatched",
+        "watched",
+        "videos",
+        "전체",
+        "쇼츠",
+        "동영상"
+    )
 }

@@ -1,6 +1,7 @@
 package com.capstone.design.youtubeparser
 
 import android.content.Context
+import androidx.core.content.edit
 
 object UploadEndpointStore {
 
@@ -16,7 +17,9 @@ object UploadEndpointStore {
 
     fun saveRawInput(context: Context, value: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_SERVER_INPUT, value.trim()).apply()
+        prefs.edit {
+            putString(KEY_SERVER_INPUT, value.trim())
+        }
     }
 
     fun resolveUploadUrl(context: Context): String {

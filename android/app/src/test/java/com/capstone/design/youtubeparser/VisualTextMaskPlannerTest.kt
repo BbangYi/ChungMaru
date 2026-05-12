@@ -1,6 +1,7 @@
 package com.capstone.design.youtubeparser
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,9 +27,48 @@ class VisualTextMaskPlannerTest {
         assertEquals("***", spec.label)
         assertTrue(spec.left >= 60)
         assertTrue(spec.left + spec.width <= 330)
-        assertEquals(240, spec.top)
-        assertEquals(50, spec.height)
+        assertTrue(spec.top in 240..254)
+        assertTrue(spec.height in 12..36)
         assertTrue(spec.width < 270)
+        assertFalse(spec.allowScrollTranslation)
+    }
+
+    @Test
+    fun buildPlan_capsShortLatinSpanInsideWideOcrLine() {
+        val analyzed = analyzedVisualText(
+            text = "Tlqkf 또 다시 보여줘야돼!!!",
+            bounds = BoundsRect(40, 240, 680, 290),
+            spans = listOf(EvidenceSpan("Tlqkf", 0, 5, 0.98))
+        )
+
+        val plan = VisualTextMaskPlanner.buildPlan(
+            analyzedCandidates = listOf(analyzed),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        val spec = plan.specs.single()
+        assertEquals(40, spec.left)
+        assertTrue(spec.width in 72..90)
+    }
+
+    @Test
+    fun buildPlan_capsShortKoreanSpanInsideWideOcrLine() {
+        val analyzed = analyzedVisualText(
+            text = "개새끼 뭐하는 거야",
+            bounds = BoundsRect(40, 320, 680, 370),
+            spans = listOf(EvidenceSpan("개새끼", 0, 3, 0.98))
+        )
+
+        val plan = VisualTextMaskPlanner.buildPlan(
+            analyzedCandidates = listOf(analyzed),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        val spec = plan.specs.single()
+        assertEquals(40, spec.left)
+        assertTrue(spec.width in 88..108)
     }
 
     @Test

@@ -17,6 +17,7 @@ class AndroidAnalysisClientTest {
                 {
                   "original": "시발 뭐하는 거야",
                   "boundsInScreen": {"left": 0, "top": 10, "right": 300, "bottom": 60},
+                  "author_id": "ocr:youtube-composite-card:0,0,300,80:시발",
                   "is_offensive": true,
                   "is_profane": true,
                   "is_toxic": true,
@@ -35,6 +36,7 @@ class AndroidAnalysisClientTest {
         assertEquals(1, response.filteredCount)
         assertEquals(1, response.results.size)
         assertEquals(true, response.results.first().isOffensive)
+        assertEquals("ocr:youtube-composite-card:0,0,300,80:시발", response.results.first().authorId)
         assertEquals(1, AndroidAnalysisClient.countActionableOffensiveResults(response))
     }
 
@@ -63,6 +65,52 @@ class AndroidAnalysisClientTest {
         )
 
         assertEquals(0, AndroidAnalysisClient.countActionableOffensiveResults(response))
+    }
+
+    @Test
+    fun matchFreshResultsToComments_doesNotApplyFilteredResponseByPosition() {
+        val safeFilteredBeforeOffensive = ParsedComment(
+            commentText = "청소년에게 유해한 결과는 제외되었습니다.",
+            boundsInScreen = BoundsRect(left = 0, top = 10, right = 300, bottom = 60),
+            authorId = "android-accessibility:title"
+        )
+        val offensive = ParsedComment(
+            commentText = "씨발",
+            boundsInScreen = BoundsRect(left = 0, top = 80, right = 120, bottom = 120),
+            authorId = "android-accessibility:title"
+        )
+        val response = AndroidAnalysisClient.parseAndroidAnalysisResponse(
+            """
+            {
+              "timestamp": 1710000000000,
+              "filtered_count": 1,
+              "results": [
+                {
+                  "original": "씨발",
+                  "boundsInScreen": {"left": 0, "top": 80, "right": 120, "bottom": 120},
+                  "author_id": "android-accessibility:title",
+                  "is_offensive": true,
+                  "is_profane": true,
+                  "is_toxic": true,
+                  "is_hate": false,
+                  "scores": {"profanity": 0.98, "toxicity": 0.9, "hate": 0.01},
+                  "evidence_spans": [
+                    {"text": "씨발", "start": 0, "end": 2, "score": 0.98}
+                  ]
+                }
+              ]
+            }
+            """.trimIndent(),
+            expectedCommentCount = 2
+        )
+
+        val matched = AndroidAnalysisClient.matchFreshResultsToComments(
+            comments = listOf(safeFilteredBeforeOffensive, offensive),
+            results = response.results
+        )
+
+        assertEquals(null, matched[0])
+        assertEquals("씨발", matched[1]?.original)
     }
 
     @Test

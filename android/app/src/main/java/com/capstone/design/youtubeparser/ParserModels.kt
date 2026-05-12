@@ -31,6 +31,53 @@ data class ParsedComment(
     val authorId: String? = null
 )
 
+enum class CandidateSource {
+    ACCESSIBILITY_TEXT,
+    ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY,
+    VISUAL_OCR
+}
+
+enum class CandidateRole {
+    CONTENT,
+    USER_INPUT,
+    TITLE,
+    SNIPPET,
+    THUMBNAIL_TEXT,
+    VIDEO_FRAME_TEXT,
+    BUTTON_OR_NAVIGATION
+}
+
+data class CharBox(
+    val start: Int,
+    val end: Int,
+    val boundsInScreen: BoundsRect,
+    val text: String? = null
+)
+
+data class ScreenTextCandidate(
+    val id: String,
+    val packageName: String,
+    val source: CandidateSource,
+    val role: CandidateRole,
+    val rawText: String,
+    val normalizedVariants: List<String> = emptyList(),
+    val screenRect: BoundsRect,
+    val charBoxes: List<CharBox>? = null,
+    val confidence: Float? = null,
+    val sceneRevision: Long = 0L,
+    val captureId: String? = null,
+    val roiId: String? = null,
+    val backendSourceId: String? = null
+) {
+    fun toParsedComment(): ParsedComment {
+        return ParsedComment(
+            commentText = rawText,
+            boundsInScreen = screenRect,
+            authorId = backendSourceId ?: "screen:${source.name.lowercase()}:${role.name.lowercase()}"
+        )
+    }
+}
+
 data class ParseSnapshot(
     val timestamp: Long,
     val comments: List<ParsedComment>
@@ -52,6 +99,8 @@ data class HarmScores(
 data class AndroidAnalysisResultItem(
     val original: String,
     val boundsInScreen: BoundsRect,
+    @SerializedName("author_id")
+    val authorId: String? = null,
     @SerializedName("is_offensive")
     val isOffensive: Boolean,
     @SerializedName("is_profane")
@@ -76,6 +125,7 @@ data class AndroidAnalysisAttempt(
     val ok: Boolean,
     val packageName: String? = null,
     val url: String,
+    val sensitivity: Int? = null,
     val latencyMs: Long,
     val commentCount: Int,
     val offensiveCount: Int,
@@ -83,6 +133,7 @@ data class AndroidAnalysisAttempt(
     val overlayCandidateCount: Int = 0,
     val overlayRenderedCount: Int = 0,
     val overlaySkippedUnstableCount: Int = 0,
+    val overlayRenderedSamples: List<String> = emptyList(),
     val visualCaptureSupported: Boolean = false,
     val visualCaptureReason: String = VisualTextCaptureSupport.REASON_SERVICE_NOT_CONNECTED,
     val visualRoiCandidateCount: Int = 0,
@@ -97,6 +148,7 @@ data class AndroidAnalysisDiagnostics(
     val ok: Boolean,
     val packageName: String?,
     val url: String,
+    val sensitivity: Int?,
     val latencyMs: Long,
     val commentCount: Int,
     val offensiveCount: Int,
@@ -104,6 +156,7 @@ data class AndroidAnalysisDiagnostics(
     val overlayCandidateCount: Int,
     val overlayRenderedCount: Int,
     val overlaySkippedUnstableCount: Int,
+    val overlayRenderedSamples: List<String>,
     val visualCaptureSupported: Boolean,
     val visualCaptureReason: String,
     val visualRoiCandidateCount: Int,

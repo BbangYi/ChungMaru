@@ -1,6 +1,7 @@
 package com.capstone.design.youtubeparser
 
 import android.content.Context
+import androidx.core.content.edit
 
 object AnalysisDiagnosticsStore {
 
@@ -9,6 +10,7 @@ object AnalysisDiagnosticsStore {
     private const val KEY_OK = "analysis_diagnostics_ok"
     private const val KEY_PACKAGE = "analysis_diagnostics_package"
     private const val KEY_URL = "analysis_diagnostics_url"
+    private const val KEY_SENSITIVITY = "analysis_diagnostics_sensitivity"
     private const val KEY_LATENCY_MS = "analysis_diagnostics_latency_ms"
     private const val KEY_COMMENT_COUNT = "analysis_diagnostics_comment_count"
     private const val KEY_OFFENSIVE_COUNT = "analysis_diagnostics_offensive_count"
@@ -16,6 +18,7 @@ object AnalysisDiagnosticsStore {
     private const val KEY_OVERLAY_CANDIDATE_COUNT = "analysis_diagnostics_overlay_candidate_count"
     private const val KEY_OVERLAY_RENDERED_COUNT = "analysis_diagnostics_overlay_rendered_count"
     private const val KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT = "analysis_diagnostics_overlay_skipped_unstable_count"
+    private const val KEY_OVERLAY_RENDERED_SAMPLES = "analysis_diagnostics_overlay_rendered_samples"
     private const val KEY_VISUAL_CAPTURE_SUPPORTED = "analysis_diagnostics_visual_capture_supported"
     private const val KEY_VISUAL_CAPTURE_REASON = "analysis_diagnostics_visual_capture_reason"
     private const val KEY_VISUAL_ROI_CANDIDATE_COUNT = "analysis_diagnostics_visual_roi_candidate_count"
@@ -25,25 +28,27 @@ object AnalysisDiagnosticsStore {
 
     fun saveAttempt(context: Context, attempt: AndroidAnalysisAttempt) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putLong(KEY_ANALYZED_AT, System.currentTimeMillis())
-            .putBoolean(KEY_OK, attempt.ok)
-            .putString(KEY_PACKAGE, attempt.packageName.orEmpty())
-            .putString(KEY_URL, attempt.url)
-            .putLong(KEY_LATENCY_MS, attempt.latencyMs)
-            .putInt(KEY_COMMENT_COUNT, attempt.commentCount)
-            .putInt(KEY_OFFENSIVE_COUNT, attempt.offensiveCount)
-            .putInt(KEY_FILTERED_COUNT, attempt.filteredCount)
-            .putInt(KEY_OVERLAY_CANDIDATE_COUNT, attempt.overlayCandidateCount)
-            .putInt(KEY_OVERLAY_RENDERED_COUNT, attempt.overlayRenderedCount)
-            .putInt(KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT, attempt.overlaySkippedUnstableCount)
-            .putBoolean(KEY_VISUAL_CAPTURE_SUPPORTED, attempt.visualCaptureSupported)
-            .putString(KEY_VISUAL_CAPTURE_REASON, attempt.visualCaptureReason)
-            .putInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, attempt.visualRoiCandidateCount)
-            .putInt(KEY_VISUAL_ROI_SELECTED_COUNT, attempt.visualRoiSelectedCount)
-            .putString(KEY_ACTIONABLE_SAMPLES, attempt.actionableSamples.joinToString("\n"))
-            .putString(KEY_ERROR, attempt.error.orEmpty())
-            .apply()
+        prefs.edit {
+            putLong(KEY_ANALYZED_AT, System.currentTimeMillis())
+            putBoolean(KEY_OK, attempt.ok)
+            putString(KEY_PACKAGE, attempt.packageName.orEmpty())
+            putString(KEY_URL, attempt.url)
+            putInt(KEY_SENSITIVITY, attempt.sensitivity ?: -1)
+            putLong(KEY_LATENCY_MS, attempt.latencyMs)
+            putInt(KEY_COMMENT_COUNT, attempt.commentCount)
+            putInt(KEY_OFFENSIVE_COUNT, attempt.offensiveCount)
+            putInt(KEY_FILTERED_COUNT, attempt.filteredCount)
+            putInt(KEY_OVERLAY_CANDIDATE_COUNT, attempt.overlayCandidateCount)
+            putInt(KEY_OVERLAY_RENDERED_COUNT, attempt.overlayRenderedCount)
+            putInt(KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT, attempt.overlaySkippedUnstableCount)
+            putString(KEY_OVERLAY_RENDERED_SAMPLES, attempt.overlayRenderedSamples.joinToString("\n"))
+            putBoolean(KEY_VISUAL_CAPTURE_SUPPORTED, attempt.visualCaptureSupported)
+            putString(KEY_VISUAL_CAPTURE_REASON, attempt.visualCaptureReason)
+            putInt(KEY_VISUAL_ROI_CANDIDATE_COUNT, attempt.visualRoiCandidateCount)
+            putInt(KEY_VISUAL_ROI_SELECTED_COUNT, attempt.visualRoiSelectedCount)
+            putString(KEY_ACTIONABLE_SAMPLES, attempt.actionableSamples.joinToString("\n"))
+            putString(KEY_ERROR, attempt.error.orEmpty())
+        }
     }
 
     fun getLatest(context: Context): AndroidAnalysisDiagnostics? {
@@ -56,6 +61,7 @@ object AnalysisDiagnosticsStore {
             ok = prefs.getBoolean(KEY_OK, false),
             packageName = prefs.getString(KEY_PACKAGE, "").orEmpty().ifBlank { null },
             url = prefs.getString(KEY_URL, "").orEmpty(),
+            sensitivity = prefs.getInt(KEY_SENSITIVITY, -1).takeIf { it >= 0 },
             latencyMs = prefs.getLong(KEY_LATENCY_MS, 0L),
             commentCount = prefs.getInt(KEY_COMMENT_COUNT, 0),
             offensiveCount = prefs.getInt(KEY_OFFENSIVE_COUNT, 0),
@@ -63,6 +69,10 @@ object AnalysisDiagnosticsStore {
             overlayCandidateCount = prefs.getInt(KEY_OVERLAY_CANDIDATE_COUNT, 0),
             overlayRenderedCount = prefs.getInt(KEY_OVERLAY_RENDERED_COUNT, 0),
             overlaySkippedUnstableCount = prefs.getInt(KEY_OVERLAY_SKIPPED_UNSTABLE_COUNT, 0),
+            overlayRenderedSamples = prefs.getString(KEY_OVERLAY_RENDERED_SAMPLES, "").orEmpty()
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() },
             visualCaptureSupported = prefs.getBoolean(KEY_VISUAL_CAPTURE_SUPPORTED, false),
             visualCaptureReason = prefs.getString(
                 KEY_VISUAL_CAPTURE_REASON,

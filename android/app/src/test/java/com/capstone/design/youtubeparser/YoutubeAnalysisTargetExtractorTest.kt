@@ -16,9 +16,10 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertEquals(1, targets.size)
-        assertEquals("TLqkf 또 보여줘야 돼! : 식케이", targets.single().commentText)
-        assertEquals(BoundsRect(10, 350, 700, 430), targets.single().boundsInScreen)
+        val primaryTargets = targets.primaryTargets()
+        assertEquals(1, primaryTargets.size)
+        assertEquals("TLqkf 또 보여줘야 돼! : 식케이", primaryTargets.single().commentText)
+        assertEquals(BoundsRect(10, 350, 700, 430), primaryTargets.single().boundsInScreen)
     }
 
     @Test
@@ -30,11 +31,11 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertEquals(listOf("🔥\"TLqkf 또 보여줘야 돼!\" : 식케이"), targets.map { it.commentText })
+        assertEquals(listOf("🔥\"TLqkf 또 보여줘야 돼!\" : 식케이"), targets.primaryTargets().map { it.commentText })
     }
 
     @Test
-    fun extractTargets_skipsCompositeSearchResultContentDescriptionsWithoutExactTextBounds() {
+    fun extractTargets_keepsOnlyExactRangesFromCompositeSearchResultContentDescriptions() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
                 contentDescriptionNode(
@@ -48,14 +49,14 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertEquals(
-            listOf("🔥\"TLqkf 또 보여줘야 돼!\" : 식케이"),
-            targets.map { it.commentText }
-        )
+        val primaryTargets = targets.primaryTargets()
+        assertEquals(1, primaryTargets.size)
+        assertEquals("🔥\"TLqkf 또 보여줘야 돼!\" : 식케이", primaryTargets.single().commentText)
+        assertTrue(targets.visualRangeTargets().any { it.commentText == "tlqkf" })
     }
 
     @Test
-    fun extractTargets_skipsLargeVideoCardDescriptionWithoutExactTextBounds() {
+    fun extractTargets_extractsLikelyOffensiveTitleFromLargeVideoCardDescription() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
                 contentDescriptionNode(
@@ -68,11 +69,12 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertTrue(targets.isEmpty())
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("tlqkf"), targets.visualRangeTargets().map { it.commentText })
     }
 
     @Test
-    fun extractTargets_skipsKoreanMobileContentDescriptionMetadataWithoutExactTextBounds() {
+    fun extractTargets_extractsLikelyOffensiveKoreanTitleFromLargeCardDescription() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
                 contentDescriptionNode(
@@ -85,11 +87,12 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertTrue(targets.isEmpty())
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("개새끼"), targets.visualRangeTargets().map { it.commentText })
     }
 
     @Test
-    fun extractTargets_skipsEnglishViewMetadataWithoutExactTextBounds() {
+    fun extractTargets_extractsEnglishRomanizedTitleFromViewMetadataDescription() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
                 contentDescriptionNode(
@@ -102,11 +105,50 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertTrue(targets.isEmpty())
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("ssibal"), targets.visualRangeTargets().map { it.commentText })
     }
 
     @Test
-    fun extractTargets_skipsShortsGridContentDescriptionWhenExactTextBoundsAreUnavailable() {
+    fun extractTargets_extractsTitleFromCompactKViewMetadataDescription() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                contentDescriptionNode(
+                    "What is 'Tlqkf'?, Contemporary Korean Slang, 40K views, 5 years ago - play video",
+                    0,
+                    260,
+                    807,
+                    620
+                )
+            )
+        )
+
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("tlqkf"), targets.visualRangeTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().single().boundsInScreen.bottom - targets.visualRangeTargets().single().boundsInScreen.top <= 56)
+    }
+
+    @Test
+    fun extractTargets_estimatesTitleBoundsForLargeAnalyzableDescriptionWithoutMetadataSuffix() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                contentDescriptionNode(
+                    "What is 'Tlqkf'?_Contemporary Korean Slang",
+                    0,
+                    246,
+                    807,
+                    708
+                )
+            )
+        )
+
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("tlqkf"), targets.visualRangeTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().single().boundsInScreen.bottom - targets.visualRangeTargets().single().boundsInScreen.top <= 56)
+    }
+
+    @Test
+    fun extractTargets_extractsLikelyOffensiveShortsGridTitleFromContentDescription() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
                 contentDescriptionNode(
@@ -119,7 +161,84 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertTrue(targets.isEmpty())
+        assertTrue(targets.primaryTargets().isEmpty())
+        assertEquals(listOf("tlqkf"), targets.visualRangeTargets().map { it.commentText })
+    }
+
+    @Test
+    fun extractTargets_keepsRomanizedQwertyTitleAsPrimaryAccessibilityTarget() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node("What is 'Tlqkf'? Contemporary Korean Slang", 20, 420, 780, 500)
+            )
+        )
+
+        assertEquals(listOf("What is 'Tlqkf'? Contemporary Korean Slang"), targets.primaryTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().isEmpty())
+    }
+
+    @Test
+    fun extractTargets_keepsKoreanOffensiveTextAsSinglePrimaryAccessibilityTarget() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node("개새끼 뭐하는 거야 / 병신아 꺼져", 20, 420, 980, 500)
+            )
+        )
+
+        assertEquals(listOf("개새끼 뭐하는 거야 / 병신아 꺼져"), targets.primaryTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().isEmpty())
+    }
+
+    @Test
+    fun extractTargets_keepsShortStandaloneOffensiveHeadingsForBackend() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node("개새끼", 60, 350, 1020, 430),
+                node("씨발", 60, 460, 1020, 540),
+                node("정상 제목", 60, 570, 1020, 650)
+            )
+        )
+
+        assertEquals(listOf("개새끼", "씨발", "정상 제목"), targets.primaryTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().isEmpty())
+    }
+
+    @Test
+    fun extractTargets_keepsAdditionalKeyboardVariantsAsPrimaryAccessibilityTarget() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node("wlfkf / whssk / alcls / rjwu 비교 카드", 20, 420, 980, 500)
+            )
+        )
+
+        assertEquals(listOf("wlfkf / whssk / alcls / rjwu 비교 카드"), targets.primaryTargets().map { it.commentText })
+        assertTrue(targets.visualRangeTargets().isEmpty())
+    }
+
+    @Test
+    fun extractTargets_keepsExactRomanizedCandidateWhenSafeNodesExceedLimit() {
+        val safeNodes = (0 until 48).map { index ->
+            node("정상 제목 $index", 20, 120 + index * 24, 320, 142 + index * 24)
+        }
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            safeNodes + node("What is 'Tlqkf'? Contemporary Korean Slang", 20, 1520, 780, 1600)
+        )
+
+        assertTrue(targets.any { it.commentText == "What is 'Tlqkf'? Contemporary Korean Slang" })
+    }
+
+    @Test
+    fun extractTargets_limitsLowPrioritySafeTargetsForFasterForegroundAnalysis() {
+        val safeNodes = (0 until 24).map { index ->
+            node("정상 제목 $index", 20, 120 + index * 36, 520, 150 + index * 36)
+        }
+        val offensiveNode = node("개새끼 뭐하는 거야 / 병신아 꺼져", 20, 1040, 620, 1100)
+
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(safeNodes + offensiveNode)
+
+        assertTrue(targets.size <= 12)
+        assertTrue(targets.any { it.commentText == "개새끼 뭐하는 거야 / 병신아 꺼져" })
+        assertTrue(targets.visualRangeTargets().isEmpty())
     }
 
     @Test
@@ -164,6 +283,7 @@ class YoutubeAnalysisTargetExtractorTest {
 
         assertEquals(1, targets.size)
         assertTrue(targets.all { it.commentText == "시발 뭐하는 거야" })
+        assertTrue(targets.visualRangeTargets().isEmpty())
     }
 
     private fun node(
@@ -212,5 +332,13 @@ class YoutubeAnalysisTargetExtractorTest {
             approxTop = top,
             isVisibleToUser = true
         )
+    }
+
+    private fun List<ParsedComment>.primaryTargets(): List<ParsedComment> {
+        return filterNot { it.authorId.orEmpty().startsWith("youtube-visual-range:") }
+    }
+
+    private fun List<ParsedComment>.visualRangeTargets(): List<ParsedComment> {
+        return filter { it.authorId.orEmpty().startsWith("youtube-visual-range:") }
     }
 }

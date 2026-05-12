@@ -15,6 +15,7 @@ object VisualTextCaptureSupport {
     const val REASON_API_BELOW_30 = "api_below_30"
     const val REASON_SERVICE_NOT_CONNECTED = "service_not_connected"
     const val REASON_SCREENSHOT_CAPABILITY_MISSING = "screenshot_capability_missing"
+    private const val CAPABILITY_CAN_TAKE_SCREENSHOT_API_30 = 1 shl 7
 
     fun inspect(
         serviceInfo: AccessibilityServiceInfo?,
@@ -58,7 +59,7 @@ object VisualTextCaptureSupport {
         }
 
         val hasScreenshotCapability =
-            capabilities and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
+            capabilities and CAPABILITY_CAN_TAKE_SCREENSHOT_API_30 != 0
 
         return VisualTextCaptureState(
             supported = hasScreenshotCapability,

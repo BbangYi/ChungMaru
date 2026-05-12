@@ -26,8 +26,8 @@ private data class AndroidAnalysisRequest(
 object AndroidAnalysisClient {
 
     private const val TAG = "AndroidAnalysisClient"
-    private const val CONNECT_TIMEOUT_MS = 900
-    private const val READ_TIMEOUT_MS = 2200
+    private const val CONNECT_TIMEOUT_MS = 500
+    private const val READ_TIMEOUT_MS = 1200
     private const val RESPONSE_CACHE_LIMIT = 256
     private const val RESPONSE_CACHE_TTL_MS = 30_000L
 
@@ -54,10 +54,11 @@ object AndroidAnalysisClient {
         val startedAt = System.currentTimeMillis()
         val commentCount = snapshot.comments.size
 
-        if (commentCount == 0) {
+        if (commentCount == 0 || sensitivity <= 0) {
             return AndroidAnalysisAttempt(
                 ok = true,
                 url = url,
+                sensitivity = sensitivity,
                 latencyMs = 0L,
                 commentCount = 0,
                 offensiveCount = 0,
@@ -91,6 +92,7 @@ object AndroidAnalysisClient {
             return AndroidAnalysisAttempt(
                 ok = true,
                 url = url,
+                sensitivity = sensitivity,
                 latencyMs = System.currentTimeMillis() - startedAt,
                 commentCount = commentCount,
                 offensiveCount = countActionableOffensiveResults(response),
@@ -100,10 +102,13 @@ object AndroidAnalysisClient {
             )
         }
 
+        val requestEntries = pendingEntries.distinctBy { entry ->
+            cacheKey(entry.comment, sensitivity)
+        }
         val requestSnapshot = AndroidAnalysisRequest(
             timestamp = snapshot.timestamp,
             sensitivity = sensitivity,
-            comments = pendingEntries.map { it.comment }
+            comments = requestEntries.map { it.comment }
         )
 
         var connection: HttpURLConnection? = null
@@ -135,9 +140,18 @@ object AndroidAnalysisClient {
             val latencyMs = System.currentTimeMillis() - startedAt
             if (responseCode !in 200..299) {
                 Log.w(TAG, "analysis failed url=$url responseCode=$responseCode body=$responseText")
-                AndroidAnalysisAttempt(
+                buildCachedFallbackAttempt(
+                    url = url,
+                    sensitivity = sensitivity,
+                    startedAt = startedAt,
+                    commentCount = commentCount,
+                    timestamp = snapshot.timestamp,
+                    cachedResults = cachedResults,
+                    error = "HTTP_$responseCode"
+                ) ?: AndroidAnalysisAttempt(
                     ok = false,
                     url = url,
+                    sensitivity = sensitivity,
                     latencyMs = latencyMs,
                     commentCount = commentCount,
                     offensiveCount = 0,
@@ -145,25 +159,27 @@ object AndroidAnalysisClient {
                     error = "HTTP_$responseCode"
                 )
             } else {
-                val response = parseAndroidAnalysisResponse(responseText, pendingEntries.size)
+                val response = parseAndroidAnalysisResponse(responseText, requestEntries.size)
                 val mergedResponse = mergeCachedAndFreshResults(
                     timestamp = snapshot.timestamp,
                     cachedResults = cachedResults,
                     pendingEntries = pendingEntries,
+                    requestEntries = requestEntries,
                     freshResponse = response
                 )
-                cacheFreshResults(response.results, sensitivity)
+                cacheFreshResults(requestEntries, response.results, sensitivity)
                 val offensiveCount = countActionableOffensiveResults(mergedResponse)
                 val actionableSamples = buildActionableSamples(mergedResponse)
                 Log.d(
                     TAG,
                     "analysis ok url=$url comments=$commentCount pending=${pendingEntries.size} " +
-                        "cacheHits=${commentCount - pendingEntries.size} actionableOffensive=$offensiveCount " +
+                        "requested=${requestEntries.size} cacheHits=${commentCount - pendingEntries.size} actionableOffensive=$offensiveCount " +
                         "latencyMs=$latencyMs"
                 )
                 AndroidAnalysisAttempt(
                     ok = true,
                     url = url,
+                    sensitivity = sensitivity,
                     latencyMs = latencyMs,
                     commentCount = commentCount,
                     offensiveCount = offensiveCount,
@@ -174,38 +190,97 @@ object AndroidAnalysisClient {
             }
         } catch (error: Exception) {
             val latencyMs = System.currentTimeMillis() - startedAt
+            val errorCode = error.message?.takeIf { it.isNotBlank() }
+                ?: error.javaClass.simpleName
+                ?: "REQUEST_FAILED"
             Log.e(TAG, "analysis request failed url=$url", error)
-            AndroidAnalysisAttempt(
+            buildCachedFallbackAttempt(
+                url = url,
+                sensitivity = sensitivity,
+                startedAt = startedAt,
+                commentCount = commentCount,
+                timestamp = snapshot.timestamp,
+                cachedResults = cachedResults,
+                error = errorCode
+            ) ?: AndroidAnalysisAttempt(
                 ok = false,
                 url = url,
+                sensitivity = sensitivity,
                 latencyMs = latencyMs,
                 commentCount = commentCount,
                 offensiveCount = 0,
                 filteredCount = 0,
-                error = error.message?.takeIf { it.isNotBlank() }
-                    ?: error.javaClass.simpleName
-                    ?: "REQUEST_FAILED"
+                error = errorCode
             )
         } finally {
             connection?.disconnect()
         }
     }
 
+    private fun buildCachedFallbackAttempt(
+        url: String,
+        sensitivity: Int,
+        startedAt: Long,
+        commentCount: Int,
+        timestamp: Long,
+        cachedResults: Array<AndroidAnalysisResultItem?>,
+        error: String
+    ): AndroidAnalysisAttempt? {
+        val cached = cachedResults.filterNotNull()
+        if (cached.isEmpty()) return null
+
+        val response = AndroidAnalysisResponse(
+            timestamp = timestamp,
+            filteredCount = 0,
+            results = cached
+        )
+        val offensiveCount = countActionableOffensiveResults(response)
+        Log.w(
+            TAG,
+            "analysis degraded; using cached fallback url=$url comments=$commentCount " +
+                "cached=${cached.size} actionableOffensive=$offensiveCount error=$error"
+        )
+
+        return AndroidAnalysisAttempt(
+            ok = true,
+            url = url,
+            sensitivity = sensitivity,
+            latencyMs = System.currentTimeMillis() - startedAt,
+            commentCount = commentCount,
+            offensiveCount = offensiveCount,
+            filteredCount = 0,
+            response = response,
+            actionableSamples = buildActionableSamples(response),
+            error = "CACHE_FALLBACK:$error"
+        )
+    }
+
     private fun mergeCachedAndFreshResults(
         timestamp: Long,
         cachedResults: Array<AndroidAnalysisResultItem?>,
         pendingEntries: List<PendingComment>,
+        requestEntries: List<PendingComment>,
         freshResponse: AndroidAnalysisResponse
     ): AndroidAnalysisResponse {
-        val freshResultQueues = freshResponse.results
-            .groupBy { cacheKey(it.original) }
-            .mapValues { (_, items) -> ArrayDeque(items) }
+        val matchedFreshResults = matchFreshResultsToComments(
+            comments = requestEntries.map { it.comment },
+            results = freshResponse.results
+        )
+        val freshResultsByKey = requestEntries
+            .mapIndexedNotNull { index, entry ->
+                val result = matchedFreshResults.getOrNull(index) ?: return@mapIndexedNotNull null
+                cacheKey(entry.comment) to result.copy(
+                    original = entry.comment.commentText,
+                    boundsInScreen = entry.comment.boundsInScreen,
+                    authorId = entry.comment.authorId
+                )
+            }
+            .toMap()
         val merged = cachedResults.copyOf()
 
         pendingEntries.forEach { pending ->
             val comment = pending.comment
-            val queue = freshResultQueues[cacheKey(comment.commentText)]
-            val result = queue?.removeFirstOrNull()
+            val result = freshResultsByKey[cacheKey(comment)]
             if (result != null) {
                 merged[pending.originalIndex] = result
             }
@@ -219,7 +294,7 @@ object AndroidAnalysisClient {
     }
 
     private fun getCachedResult(comment: ParsedComment, now: Long, sensitivity: Int): AndroidAnalysisResultItem? {
-        val key = cacheKey(comment.commentText, sensitivity)
+        val key = cacheKey(comment, sensitivity)
         if (key.isBlank()) return null
 
         return synchronized(responseCache) {
@@ -228,29 +303,96 @@ object AndroidAnalysisClient {
                 responseCache.remove(key)
                 return@synchronized null
             }
-            cached.result.copy(boundsInScreen = comment.boundsInScreen)
+            cached.result.copy(
+                boundsInScreen = comment.boundsInScreen,
+                authorId = comment.authorId
+            )
         }
     }
 
-    private fun cacheFreshResults(results: List<AndroidAnalysisResultItem>, sensitivity: Int) {
+    private fun cacheFreshResults(
+        requestEntries: List<PendingComment>,
+        results: List<AndroidAnalysisResultItem>,
+        sensitivity: Int
+    ) {
         val expiresAt = System.currentTimeMillis() + RESPONSE_CACHE_TTL_MS
+        val matchedFreshResults = matchFreshResultsToComments(
+            comments = requestEntries.map { it.comment },
+            results = results
+        )
         synchronized(responseCache) {
-            results.forEach { result ->
-                val key = cacheKey(result.original, sensitivity)
+            requestEntries.forEachIndexed { index, entry ->
+                val result = matchedFreshResults.getOrNull(index) ?: return@forEachIndexed
+                val comment = entry.comment
+                val key = cacheKey(comment, sensitivity)
                 if (key.isNotBlank()) {
-                    responseCache[key] = CachedAnalysisResult(result, expiresAt)
+                    responseCache[key] = CachedAnalysisResult(
+                        result.copy(
+                            original = comment.commentText,
+                            boundsInScreen = comment.boundsInScreen,
+                            authorId = comment.authorId
+                        ),
+                        expiresAt
+                    )
                 }
             }
         }
     }
 
+    internal fun matchFreshResultsToComments(
+        comments: List<ParsedComment>,
+        results: List<AndroidAnalysisResultItem>
+    ): List<AndroidAnalysisResultItem?> {
+        if (comments.isEmpty()) return emptyList()
+        if (results.isEmpty()) return List(comments.size) { null }
+
+        val exactSourceResults = results.groupBy { result ->
+            cacheKey(
+                text = result.original,
+                sourceKey = normalizeSourceCacheKey(result.authorId)
+            )
+        }
+        val textOnlyResults = results.groupBy { result ->
+            cacheKey(text = result.original)
+        }
+
+        return comments.map { comment ->
+            exactSourceResults[cacheKey(comment)]?.firstOrNull()
+                ?: textOnlyResults[cacheKey(comment.commentText)]?.firstOrNull()
+        }
+    }
+
+    private fun cacheKey(comment: ParsedComment, sensitivity: Int? = null): String {
+        return cacheKey(
+            text = comment.commentText,
+            sensitivity = sensitivity,
+            sourceKey = normalizeSourceCacheKey(comment.authorId)
+        )
+    }
+
     private fun cacheKey(text: String, sensitivity: Int? = null): String {
+        return cacheKey(text = text, sensitivity = sensitivity, sourceKey = "")
+    }
+
+    private fun cacheKey(text: String, sensitivity: Int? = null, sourceKey: String): String {
         val normalizedText = text.replace(Regex("\\s+"), " ").trim().lowercase()
-        return if (sensitivity == null) {
+        val normalizedSource = sourceKey.replace(Regex("\\s+"), " ").trim().lowercase()
+        val body = if (normalizedSource.isBlank()) {
             normalizedText
         } else {
-            "$sensitivity::$normalizedText"
+            "$normalizedSource::$normalizedText"
         }
+        return if (sensitivity == null) {
+            body
+        } else {
+            "$sensitivity::$body"
+        }
+    }
+
+    private fun normalizeSourceCacheKey(authorId: String?): String {
+        val value = authorId?.trim().orEmpty()
+        if (value.isBlank()) return ""
+        return value
     }
 
     internal fun parseAndroidAnalysisResponse(

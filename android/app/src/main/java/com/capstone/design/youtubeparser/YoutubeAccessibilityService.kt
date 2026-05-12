@@ -1,6 +1,8 @@
 package com.capstone.design.youtubeparser
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
@@ -12,8 +14,11 @@ import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.annotation.RequiresApi
 import java.util.concurrent.Executors
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 class YoutubeAccessibilityService : AccessibilityService() {
 
@@ -23,11 +28,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val INSTAGRAM_PACKAGE = "com.instagram.android"
         private const val TIKTOK_PACKAGE = "com.zhiliaoapp.musically"
         private const val TIKTOK_ALT_PACKAGE = "com.ss.android.ugc.trill"
-        private const val MIN_UPLOAD_INTERVAL_MS = 1500L
-        private const val PARSE_DELAY_SCROLL_MS = 32L
-        private const val PARSE_DELAY_CONTENT_MS = 80L
-        private const val PARSE_DELAY_WINDOW_MS = 120L
+        private const val MIN_UPLOAD_INTERVAL_MS = 1000L
+        private const val PARSE_DELAY_TEXT_MS = 12L
+        private const val PARSE_DELAY_SCROLL_MS = 80L
+        private const val SCROLL_OVERLAY_STABILIZATION_MS = 120L
+        private const val CONTENT_OVERLAY_STABILIZATION_MS = 80L
+        private const val OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS = 250L
+        private const val PARSE_DELAY_CONTENT_MS = 40L
+        private const val PARSE_DELAY_WINDOW_MS = 60L
         private const val RETRY_AFTER_IN_FLIGHT_MS = 16L
+        private const val VISUAL_SUPPLEMENT_CACHE_TTL_MS = 1800L
+        private const val VISUAL_ANALYSIS_TIMEOUT_MS = 1800L
+        private const val MAX_VISUAL_ANALYSIS_CANDIDATES = 4
+        private const val MAX_FALLBACK_VISUAL_CANDIDATES = 0
+        private const val VISUAL_DUPLICATE_OVERLAP_RATIO = 0.45f
+        private const val VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO = 0.72f
+        private const val VISUAL_CONTAINED_DUPLICATE_OVERLAP_RATIO = 0.28f
+        private const val VISUAL_COARSE_BASE_AREA_MULTIPLIER = 3.0f
+        private const val TOP_CONTROL_OCR_EXCLUSION_MAX_PX = 220
+        private const val TOP_CONTROL_OCR_EXCLUSION_RATIO = 0.12f
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -39,86 +58,190 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var pendingParseAfterAnalysis = false
     @Volatile private var followUpParseRequested = false
     @Volatile private var overlayRevision = 0L
+    @Volatile private var visualSceneRevision = 0L
     private var parseScheduled = false
     private var scheduledParseAtMs = 0L
+    private var scheduledParseEventType: Int? = null
+    private var lastScrollEventAtMs = 0L
+    private var lastPointerInteractionAtMs = 0L
+    private var lastOverlayContentChangeAtMs = 0L
     private var lastAppliedSensitivity: Int? = null
     private var visualCaptureState: VisualTextCaptureState =
         VisualTextCaptureSupport.inspect(serviceInfo = null)
     private val visualExecutor = Executors.newSingleThreadExecutor()
     private val visualTextOcrProcessor by lazy { VisualTextOcrProcessor() }
     @Volatile private var visualAnalysisInFlight = false
+    @Volatile private var visualAnalysisRunId = 0L
+    @Volatile private var lastVisualSupplement: VisualSupplementCache? = null
+    private val sensitivityPreferenceListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key != AnalysisSensitivityStore.KEY_ANALYSIS_SENSITIVITY) return@OnSharedPreferenceChangeListener
+
+            handler.post {
+                syncSensitivityState()
+                if (lastObservedPackage != null) {
+                    scheduleParse(0L)
+                }
+            }
+        }
+
+    private data class VisualSupplementCache(
+        val packageName: String,
+        val sensitivity: Int,
+        val visualRoiSignature: String,
+        val response: AndroidAnalysisResponse,
+        val expiresAtUptimeMs: Long
+    )
+
+    private data class AnalysisTextLocation(
+        val keys: Set<String>,
+        val boundsInScreen: BoundsRect
+    )
 
     private val parseRunnable = Runnable {
+        val triggerEventType = scheduledParseEventType
         parseScheduled = false
         scheduledParseAtMs = 0L
-        parseAndUploadCurrentWindow()
+        scheduledParseEventType = null
+        parseAndUploadCurrentWindow(triggerEventType)
         if (followUpParseRequested && !analysisInFlight) {
             followUpParseRequested = false
-            scheduleParse(RETRY_AFTER_IN_FLIGHT_MS)
+            scheduleDeferredFollowUpParse()
         }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         visualCaptureState = VisualTextCaptureSupport.inspect(serviceInfo)
+        applicationContext
+            .getSharedPreferences(AnalysisSensitivityStore.PREFS_NAME, MODE_PRIVATE)
+            .registerOnSharedPreferenceChangeListener(sensitivityPreferenceListener)
+        syncSensitivityState()
         Log.d(TAG, "service connected")
         Log.d(
             TAG,
             "visual text capture supported=${visualCaptureState.supported} " +
                 "sdk=${visualCaptureState.sdkInt} reason=${visualCaptureState.reason}"
         )
+        if (visualCaptureState.supported) {
+            visualExecutor.execute {
+                visualTextOcrProcessor.warmUp()
+            }
+        }
     }
 
+    @SuppressLint("SwitchIntDef")
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         val packageName = event.packageName?.toString() ?: return
-        if (
-            packageName != YOUTUBE_PACKAGE &&
-            packageName != INSTAGRAM_PACKAGE &&
-            packageName != TIKTOK_PACKAGE &&
-            packageName != TIKTOK_ALT_PACKAGE
-        ) return
+        if (!shouldObservePackage(packageName)) return
 
         lastObservedPackage = packageName
 
         when (event.eventType) {
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
+            AccessibilityEvent.TYPE_TOUCH_INTERACTION_END -> {
+                lastPointerInteractionAtMs = SystemClock.uptimeMillis()
+                if (event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_END) {
+                    scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+                }
+            }
+
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
-                if (shouldClearOverlayImmediately(event.eventType)) {
+                val hasActiveMasks = maskOverlayController.hasActiveMasks()
+                val overlaySelfContentChange = MaskOverlayEventPolicy.isLikelySelfContentChange(
+                    eventType = event.eventType,
+                    hasActiveMasks = hasActiveMasks,
+                    overlayUpdatedRecently = maskOverlayController.wasUpdatedWithin(
+                        OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS
+                    )
+                )
+                val contentChangedWithActiveMask =
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+                        hasActiveMasks &&
+                        !overlaySelfContentChange
+                val visualSceneChanged = shouldInvalidateVisualScene(
+                    event.eventType,
+                    contentChangedWithActiveMask || overlaySelfContentChange
+                )
+                if (contentChangedWithActiveMask) {
+                    lastOverlayContentChangeAtMs = SystemClock.uptimeMillis()
+                }
+                if (visualSceneChanged) {
+                    markVisualSceneChanged(event.eventType)
+                }
+
+                if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                    lastScrollEventAtMs = SystemClock.uptimeMillis()
+                    val translatedOverlay = translateMaskOverlayForScroll(event)
+                    if (translatedOverlay) {
+                        markOverlayRevisionStale()
+                    } else {
+                        clearMaskOverlay()
+                    }
+                } else if (overlaySelfContentChange) {
+                    Log.d(TAG, "ignore overlay self content change")
+                } else if (
+                    event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+                    maskOverlayController.hasActiveMasks()
+                ) {
                     clearMaskOverlay()
+                } else if (contentChangedWithActiveMask) {
+                    clearMaskOverlay()
+                } else if (shouldClearOverlayImmediately(event.eventType)) {
+                    clearMaskOverlay()
+                } else if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                    markOverlayRevisionStale()
                 }
 
                 val delayMs = when (event.eventType) {
+                    AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> PARSE_DELAY_TEXT_MS
                     AccessibilityEvent.TYPE_VIEW_SCROLLED -> PARSE_DELAY_SCROLL_MS
                     AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED -> PARSE_DELAY_WINDOW_MS
                     else -> PARSE_DELAY_CONTENT_MS
                 }
 
-                scheduleParse(delayMs)
+                scheduleParse(
+                    delayMs = delayMs,
+                    eventType = event.eventType,
+                    replaceExisting = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                )
             }
         }
     }
 
     override fun onInterrupt() {
         cancelScheduledParse()
-        maskOverlayController.clear()
+        clearMaskOverlay()
         Log.d(TAG, "service interrupted")
     }
 
     override fun onDestroy() {
         cancelScheduledParse()
-        maskOverlayController.clear()
+        clearMaskOverlay()
+        applicationContext
+            .getSharedPreferences(AnalysisSensitivityStore.PREFS_NAME, MODE_PRIVATE)
+            .unregisterOnSharedPreferenceChangeListener(sensitivityPreferenceListener)
         visualExecutor.shutdownNow()
         super.onDestroy()
     }
 
-    private fun scheduleParse(delayMs: Long) {
+    private fun scheduleParse(
+        delayMs: Long,
+        eventType: Int? = null,
+        replaceExisting: Boolean = false
+    ) {
         val safeDelayMs = delayMs.coerceAtLeast(0L)
         val targetTimeMs = SystemClock.uptimeMillis() + safeDelayMs
+        if (eventType != null) {
+            scheduledParseEventType = eventType
+        }
 
         if (analysisInFlight) {
             followUpParseRequested = true
@@ -126,7 +249,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (parseScheduled) {
-            if (targetTimeMs < scheduledParseAtMs) {
+            if (replaceExisting || targetTimeMs < scheduledParseAtMs) {
                 handler.removeCallbacks(parseRunnable)
             } else {
                 followUpParseRequested = true
@@ -143,15 +266,28 @@ class YoutubeAccessibilityService : AccessibilityService() {
         handler.removeCallbacks(parseRunnable)
         parseScheduled = false
         scheduledParseAtMs = 0L
+        scheduledParseEventType = null
         followUpParseRequested = false
     }
 
-    private fun parseAndUploadCurrentWindow() {
+    private fun parseAndUploadCurrentWindow(triggerEventType: Int?) {
         val currentPackage = lastObservedPackage ?: run {
             Log.d(TAG, "lastObservedPackage is null")
             return
         }
         syncSensitivityState()
+        val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
+        if (currentSensitivity <= 0) {
+            clearMaskOverlay()
+            Log.d(TAG, "skip analysis: sensitivity disabled")
+            return
+        }
+
+        if (shouldDeferAnalysisDuringActiveScroll(triggerEventType)) {
+            Log.d(TAG, "defer analysis: scroll stabilization active")
+            scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+            return
+        }
 
         val nodes = when (currentPackage) {
             YOUTUBE_PACKAGE -> extractVisibleTextNodesFromYoutubeWindows()
@@ -166,16 +302,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         val visualRoiPlan = buildVisualTextRoiPlan(nodes)
-        val comments = when (currentPackage) {
-            YOUTUBE_PACKAGE -> YoutubeAnalysisTargetExtractor.extractTargets(nodes)
-            INSTAGRAM_PACKAGE -> InstagramCommentExtractor.extractComments(nodes)
-            TIKTOK_PACKAGE, TIKTOK_ALT_PACKAGE -> TiktokCommentExtractor.extractComments(nodes)
-            else -> emptyList()
-        }
+        val screenCandidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = currentPackage,
+            nodes = nodes,
+            sceneRevision = visualSceneRevision
+        )
+        val comments = screenCandidates.map { it.toParsedComment() }
 
         Log.d(
             TAG,
-            "package=$currentPackage parsed analysis target count=${comments.size} " +
+                "package=$currentPackage parsed analysis target count=${comments.size} " +
+                "screenCandidates=${screenCandidates.size} " +
                 "visualRoiCandidates=${visualRoiPlan.candidateCount} visualRois=${visualRoiPlan.rois.size}"
         )
 
@@ -208,7 +345,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (comments.isEmpty()) {
-            if (startVisualTextAnalysis(currentPackage, visualRoiPlan)) {
+            if (
+                startVisualTextAnalysis(
+                    packageName = currentPackage,
+                    visualRoiPlan = visualRoiPlan,
+                    clearExistingOverlay = true
+                )
+            ) {
                 return
             }
             saveVisualOnlyDiagnostics(currentPackage, visualRoiPlan)
@@ -218,12 +361,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         val signature = buildString {
             append(currentPackage)
+            append("||sensitivity=")
+            append(currentSensitivity)
             append("||")
             append(
                 comments.joinToString("||") {
                     "${it.commentText}|${it.boundsInScreen.top}|${it.boundsInScreen.left}|${it.authorId.orEmpty()}"
                 }
             )
+            append("||visual=")
+            append(visualRoiPlan.signature())
         }
         val now = System.currentTimeMillis()
 
@@ -268,19 +415,50 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     handler.post {
                         pendingParseAfterAnalysis = false
                         followUpParseRequested = false
-                        scheduleParse(RETRY_AFTER_IN_FLIGHT_MS)
+                        scheduleDeferredFollowUpParse()
                     }
                 }
             }
 
             try {
-                val analysis = AndroidAnalysisClient
+                val rawAnalysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
                     .copy(packageName = currentPackage)
+                val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
+                if (rawAnalysis.sensitivity != null && rawAnalysis.sensitivity != currentSensitivity) {
+                    Log.d(
+                        TAG,
+                        "drop analysis: stale sensitivity analysis=${rawAnalysis.sensitivity} current=$currentSensitivity"
+                    )
+                    return@Thread
+                }
+
+                val mergedResponse = mergeAnalysisResponses(
+                    baseResponse = rawAnalysis.response,
+                    visualResponse = if (visualRoiPlan.canReuseVisualSupplement()) {
+                        reusableVisualSupplement(
+                            packageName = currentPackage,
+                            visualRoiSignature = visualRoiPlan.signature()
+                        )
+                    } else {
+                        null
+                    }
+                )
+                val analysis = rawAnalysis
+                    .copy(
+                        response = mergedResponse,
+                        commentCount = mergedResponse?.results?.size ?: rawAnalysis.commentCount,
+                        offensiveCount = countActionableResults(mergedResponse),
+                        filteredCount = mergedResponse?.filteredCount ?: rawAnalysis.filteredCount
+                    )
                     .withOverlayDiagnostics(currentPackage, visualRoiPlan)
                 analysisForOverlay = analysis
                 handler.post {
-                    updateMaskOverlay(currentPackage, analysis, snapshotOverlayRevision)
+                    updateMaskOverlay(
+                        currentPackage = currentPackage,
+                        analysis = analysis,
+                        snapshotOverlayRevision = snapshotOverlayRevision
+                    )
                 }
                 AnalysisDiagnosticsStore.saveAttempt(applicationContext, analysis)
 
@@ -304,12 +482,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         "analysisError=${analysis.error.orEmpty()}"
                 )
 
-                if (shouldRunVisualTextSupplement(analysis, visualRoiPlan)) {
+                if (shouldRunVisualTextSupplement(currentPackage, analysis, visualRoiPlan)) {
                     handler.post {
                         startVisualTextAnalysis(
                             packageName = currentPackage,
                             visualRoiPlan = visualRoiPlan,
-                            clearExistingOverlay = false
+                            clearExistingOverlay = false,
+                            baseResponse = analysis.response
                         )
                     }
                 }
@@ -343,29 +522,100 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 TAG,
                 "skip mask overlay: stale overlay revision snapshot=$snapshotOverlayRevision current=$overlayRevision"
             )
-            maskOverlayController.clear()
+            return
+        }
+
+        val analysisSensitivity = analysis?.sensitivity
+        val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
+        if (currentSensitivity <= 0) {
+            Log.d(TAG, "clear mask overlay: sensitivity disabled")
+            clearMaskOverlay()
+            return
+        }
+        if (analysisSensitivity != null && analysisSensitivity != currentSensitivity) {
+            Log.d(
+                TAG,
+                "skip mask overlay: stale sensitivity analysis=$analysisSensitivity current=$currentSensitivity"
+            )
+            return
+        }
+
+        if (analysis?.ok == true && isInScrollStabilizationWindow()) {
+            Log.d(TAG, "defer mask overlay render: scroll stabilization active")
+            scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
             return
         }
 
         if (supportsMaskOverlay(currentPackage) && analysis?.ok == true) {
+            val preserveExistingIfEmpty = MaskOverlayEventPolicy.shouldPreserveExistingOnEmptyPlan(
+                hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                snapshotOverlayRevision = snapshotOverlayRevision,
+                currentOverlayRevision = overlayRevision,
+                isScrollStabilizing = isInScrollStabilizationWindow()
+            )
             Log.d(
                 TAG,
-                "render mask overlay package=$currentPackage results=${analysis.response?.results?.size ?: 0}"
+                "render mask overlay package=$currentPackage results=${analysis.response?.results?.size ?: 0} " +
+                    "preserveExistingIfEmpty=$preserveExistingIfEmpty"
             )
-            maskOverlayController.render(analysis.response)
+            maskOverlayController.render(
+                response = analysis.response,
+                preserveExistingIfEmpty = preserveExistingIfEmpty
+            )
         } else {
             Log.d(
                 TAG,
                 "clear mask overlay package=$currentPackage analysisOk=${analysis?.ok}"
             )
-            maskOverlayController.clear()
+            clearMaskOverlay()
         }
     }
 
     private fun clearMaskOverlay() {
         overlayRevision += 1
         lastSnapshotSignature = null
+        invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
+    }
+
+    private fun markOverlayRevisionStale() {
+        overlayRevision += 1
+        lastSnapshotSignature = null
+    }
+
+    private fun markVisualSceneChanged(eventType: Int) {
+        invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
+    }
+
+    private fun shouldInvalidateVisualScene(
+        eventType: Int,
+        contentChangedWithActiveMask: Boolean
+    ): Boolean {
+        return when (eventType) {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> !contentChangedWithActiveMask
+            else -> true
+        }
+    }
+
+    private fun invalidateVisualAnalysis(reason: String, requestFollowUp: Boolean) {
+        visualSceneRevision += 1
+        lastVisualSupplement = null
+        lastSnapshotSignature = null
+
+        if (!visualAnalysisInFlight) return
+
+        visualAnalysisRunId += 1L
+        visualAnalysisInFlight = false
+        if (requestFollowUp) {
+            followUpParseRequested = true
+        }
+        Log.d(
+            TAG,
+            "invalidate visual OCR reason=$reason sceneRevision=$visualSceneRevision"
+        )
+        if (requestFollowUp) {
+            scheduleFollowUpAfterVisualGate()
+        }
     }
 
     private fun syncSensitivityState() {
@@ -373,6 +623,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val previousSensitivity = lastAppliedSensitivity
         if (previousSensitivity == null) {
             lastAppliedSensitivity = currentSensitivity
+            if (currentSensitivity <= 0) {
+                AndroidAnalysisClient.clearCache()
+                clearMaskOverlay()
+            }
             return
         }
         if (previousSensitivity == currentSensitivity) return
@@ -384,20 +638,130 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun shouldClearOverlayImmediately(eventType: Int): Boolean {
-        return eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+        return eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
+
+    private fun isInScrollStabilizationWindow(): Boolean {
+        val lastMotionEventAtMs = max(lastScrollEventAtMs, lastPointerInteractionAtMs)
+        if (lastMotionEventAtMs <= 0L) return false
+
+        val elapsedMs = SystemClock.uptimeMillis() - lastMotionEventAtMs
+        return elapsedMs in 0..SCROLL_OVERLAY_STABILIZATION_MS
+    }
+
+    private fun shouldDeferAnalysisDuringActiveScroll(triggerEventType: Int?): Boolean {
+        if (isInScrollStabilizationWindow()) {
+            // Content-change bursts often arrive immediately after scroll. If we
+            // let them analyze while geometry is still moving, stale masks get
+            // reattached to old coordinates and appear to flicker or drift.
+            return triggerEventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+                triggerEventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                triggerEventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        }
+
+        if (!maskOverlayController.hasActiveMasks()) return false
+        if (!isInOverlayStabilizationWindow()) return false
+
+        return triggerEventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+            triggerEventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            triggerEventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
+
+    private fun scheduleDeferredFollowUpParse(waitForScrollStabilization: Boolean = false) {
+        val remainingScrollDelayMs = if (waitForScrollStabilization) {
+            remainingOverlayStabilizationMs()
+        } else {
+            remainingScrollDebounceMs()
+        }
+        if (remainingScrollDelayMs > RETRY_AFTER_IN_FLIGHT_MS) {
+            scheduleParse(
+                delayMs = remainingScrollDelayMs + RETRY_AFTER_IN_FLIGHT_MS,
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                replaceExisting = true
+            )
+        } else {
+            scheduleParse(RETRY_AFTER_IN_FLIGHT_MS)
+        }
+    }
+
+    private fun remainingScrollDebounceMs(): Long {
+        val lastMotionEventAtMs = max(lastScrollEventAtMs, lastPointerInteractionAtMs)
+        if (lastMotionEventAtMs <= 0L) return 0L
+
+        val elapsedMs = SystemClock.uptimeMillis() - lastMotionEventAtMs
+        if (elapsedMs < 0L) return PARSE_DELAY_SCROLL_MS
+
+        return (PARSE_DELAY_SCROLL_MS - elapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun remainingScrollStabilizationMs(): Long {
+        val lastMotionEventAtMs = max(lastScrollEventAtMs, lastPointerInteractionAtMs)
+        if (lastMotionEventAtMs <= 0L) return 0L
+
+        val elapsedMs = SystemClock.uptimeMillis() - lastMotionEventAtMs
+        if (elapsedMs < 0L) return SCROLL_OVERLAY_STABILIZATION_MS
+
+        return (SCROLL_OVERLAY_STABILIZATION_MS - elapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun isInOverlayStabilizationWindow(): Boolean {
+        return isInScrollStabilizationWindow() || remainingOverlayContentStabilizationMs() > 0L
+    }
+
+    private fun remainingOverlayStabilizationMs(): Long {
+        return max(remainingScrollStabilizationMs(), remainingOverlayContentStabilizationMs())
+    }
+
+    private fun remainingOverlayContentStabilizationMs(): Long {
+        if (lastOverlayContentChangeAtMs <= 0L) return 0L
+
+        val elapsedMs = SystemClock.uptimeMillis() - lastOverlayContentChangeAtMs
+        if (elapsedMs < 0L) return CONTENT_OVERLAY_STABILIZATION_MS
+
+        return (CONTENT_OVERLAY_STABILIZATION_MS - elapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun translateMaskOverlayForScroll(event: AccessibilityEvent): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+
+        val deltaX = -event.scrollDeltaX
+        val deltaY = -event.scrollDeltaY
+        if (
+            !MaskOverlayEventPolicy.shouldTranslateOnViewportScroll(
+                eventType = event.eventType,
+                hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                deltaX = deltaX,
+                deltaY = deltaY
+            )
+        ) {
+            return false
+        }
+
+        return maskOverlayController.translateBy(deltaX = deltaX, deltaY = deltaY)
     }
 
     private fun shouldLogRawNodes(): Boolean {
         return Log.isLoggable(TAG, Log.VERBOSE)
     }
 
+    private fun shouldObservePackage(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        if (packageName == applicationContext.packageName) return false
+
+        return packageName !in setOf(
+            "android",
+            "com.android.systemui",
+            "com.google.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.sec.android.inputmethod",
+            "com.android.launcher",
+            "com.google.android.apps.nexuslauncher"
+        )
+    }
+
     private fun supportsMaskOverlay(packageName: String): Boolean {
-        return packageName == YOUTUBE_PACKAGE ||
-            packageName == INSTAGRAM_PACKAGE ||
-            packageName == TIKTOK_PACKAGE ||
-            packageName == TIKTOK_ALT_PACKAGE
+        return shouldObservePackage(packageName)
     }
 
     private fun buildVisualTextRoiPlan(nodes: List<ParsedTextNode>): VisualTextRoiPlan {
@@ -441,31 +805,57 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun shouldRunVisualTextSupplement(
+        packageName: String,
         analysis: AndroidAnalysisAttempt,
         visualRoiPlan: VisualTextRoiPlan
     ): Boolean {
+        if (
+            visualRoiPlan.canReuseVisualSupplement() &&
+            reusableVisualSupplement(packageName, visualRoiPlan.signature()) != null
+        ) {
+            return false
+        }
+
         return analysis.ok &&
-            analysis.offensiveCount == 0 &&
             visualRoiPlan.rois.isNotEmpty() &&
-            !visualAnalysisInFlight
+            visualRoiPlan.hasRenderableVisualRois() &&
+            !visualAnalysisInFlight &&
+            (packageName == YOUTUBE_PACKAGE || analysis.offensiveCount == 0)
     }
 
     private fun startVisualTextAnalysis(
         packageName: String,
         visualRoiPlan: VisualTextRoiPlan,
-        clearExistingOverlay: Boolean = true
+        clearExistingOverlay: Boolean = true,
+        baseResponse: AndroidAnalysisResponse? = null
     ): Boolean {
         if (!supportsMaskOverlay(packageName)) return false
         if (!visualCaptureState.supported) return false
         if (visualRoiPlan.rois.isEmpty()) return false
-        if (visualAnalysisInFlight) return false
+        if (!visualRoiPlan.hasRenderableVisualRois()) return false
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return false
+        if (visualAnalysisInFlight) {
+            followUpParseRequested = true
+            return false
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
 
         if (clearExistingOverlay) {
             clearMaskOverlay()
         }
         val snapshotOverlayRevision = overlayRevision
+        val snapshotVisualSceneRevision = visualSceneRevision
+        val visualRunId = visualAnalysisRunId + 1L
+        visualAnalysisRunId = visualRunId
         visualAnalysisInFlight = true
+        Log.d(
+            TAG,
+            "start visual OCR rois=${visualRoiPlan.rois.size} signature=${visualRoiPlan.signature()}"
+        )
+        handler.postDelayed(
+            { timeoutVisualAnalysis(visualRunId, packageName, visualRoiPlan) },
+            VISUAL_ANALYSIS_TIMEOUT_MS
+        )
 
         try {
             takeScreenshot(
@@ -473,6 +863,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 visualExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) {
+                            finishVisualAnalysis(visualRunId)
+                            return
+                        }
+
                         val screenshot = screenshotResult.toSoftwareBitmap()
                         if (screenshot == null) {
                             saveVisualFailureDiagnostics(
@@ -480,18 +875,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 visualRoiPlan = visualRoiPlan,
                                 error = "SCREENSHOT_BITMAP_UNAVAILABLE"
                             )
-                            visualAnalysisInFlight = false
+                            finishVisualAnalysis(visualRunId)
                             return
                         }
 
+                        val screenshotWidth = screenshot.width
+                        val screenshotHeight = screenshot.height
                         visualTextOcrProcessor.recognize(screenshot, visualRoiPlan.rois) { ocrCandidates ->
                             if (!screenshot.isRecycled) {
                                 screenshot.recycle()
                             }
 
+                            if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) {
+                                finishVisualAnalysis(visualRunId)
+                                return@recognize
+                            }
+
                             if (ocrCandidates.isEmpty()) {
                                 saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
-                                visualAnalysisInFlight = false
+                                finishVisualAnalysis(visualRunId)
                                 return@recognize
                             }
 
@@ -499,7 +901,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 packageName = packageName,
                                 visualRoiPlan = visualRoiPlan,
                                 ocrCandidates = ocrCandidates,
-                                snapshotOverlayRevision = snapshotOverlayRevision
+                                screenWidth = screenshotWidth,
+                                screenHeight = screenshotHeight,
+                                snapshotOverlayRevision = snapshotOverlayRevision,
+                                snapshotVisualSceneRevision = snapshotVisualSceneRevision,
+                                baseResponse = baseResponse,
+                                visualRunId = visualRunId
                             )
                         }
                     }
@@ -510,7 +917,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             visualRoiPlan = visualRoiPlan,
                             error = "SCREENSHOT_FAILED_$errorCode"
                         )
-                        visualAnalysisInFlight = false
+                        finishVisualAnalysis(visualRunId)
                     }
                 }
             )
@@ -522,13 +929,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 error = error.javaClass.simpleName.takeIf { it.isNotBlank() }
                     ?: "SCREENSHOT_REQUEST_FAILED"
             )
-            visualAnalysisInFlight = false
+            finishVisualAnalysis(visualRunId)
             return false
         }
 
         return true
     }
 
+    @RequiresApi(Build.VERSION_CODES.R)
     private fun ScreenshotResult.toSoftwareBitmap(): Bitmap? {
         val hardwareBuffer = hardwareBuffer
         return try {
@@ -546,27 +954,389 @@ class YoutubeAccessibilityService : AccessibilityService() {
         packageName: String,
         visualRoiPlan: VisualTextRoiPlan,
         ocrCandidates: List<ParsedComment>,
-        snapshotOverlayRevision: Long
+        screenWidth: Int,
+        screenHeight: Int,
+        snapshotOverlayRevision: Long,
+        snapshotVisualSceneRevision: Long,
+        baseResponse: AndroidAnalysisResponse?,
+        visualRunId: Long
     ) {
         Thread {
             try {
+                if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@Thread
+
+                val selectedOcrCandidates = selectVisualTextCandidates(
+                    ocrCandidates = ocrCandidates,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight,
+                    baseResponse = baseResponse
+                )
+                if (selectedOcrCandidates.isEmpty()) {
+                    Log.d(
+                        TAG,
+                        "visual OCR candidates selected=0 raw=${ocrCandidates.size} " +
+                            "base=${baseResponse?.results?.size ?: 0}"
+                    )
+                    saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
+                    return@Thread
+                }
+                Log.d(
+                    TAG,
+                    "visual OCR candidates selected=${selectedOcrCandidates.size} raw=${ocrCandidates.size}"
+                )
+
                 val snapshot = ParseSnapshot(
                     timestamp = System.currentTimeMillis(),
-                    comments = ocrCandidates
+                    comments = selectedOcrCandidates
                 )
-                val analysis = AndroidAnalysisClient
+                val rawAnalysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
                     .copy(packageName = packageName)
+                if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@Thread
+
+                val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
+                if (rawAnalysis.sensitivity != null && rawAnalysis.sensitivity != currentSensitivity) {
+                    Log.d(
+                        TAG,
+                        "drop visual analysis: stale sensitivity analysis=${rawAnalysis.sensitivity} current=$currentSensitivity"
+                    )
+                    return@Thread
+                }
+
+                if (!rawAnalysis.ok) {
+                    AnalysisDiagnosticsStore.saveAttempt(
+                        applicationContext,
+                        rawAnalysis.withOverlayDiagnostics(packageName, visualRoiPlan)
+                    )
+                    return@Thread
+                }
+
+                val mergedBaseResponse = mergeAnalysisResponses(
+                    baseResponse = baseResponse,
+                    visualResponse = if (visualRoiPlan.canReuseVisualSupplement()) {
+                        reusableVisualSupplement(
+                            packageName = packageName,
+                            visualRoiSignature = visualRoiPlan.signature()
+                        )
+                    } else {
+                        null
+                    }
+                )
+                val mergedResponse = mergeAnalysisResponses(mergedBaseResponse, rawAnalysis.response)
+                storeVisualSupplement(
+                    packageName = packageName,
+                    visualRoiPlan = visualRoiPlan,
+                    response = mergedResponse
+                )
+                val analysis = rawAnalysis
+                    .copy(
+                        response = mergedResponse,
+                        commentCount = mergedResponse?.results?.size ?: rawAnalysis.commentCount,
+                        offensiveCount = countActionableResults(mergedResponse),
+                        filteredCount = mergedResponse?.filteredCount ?: rawAnalysis.filteredCount
+                    )
                     .withOverlayDiagnostics(packageName, visualRoiPlan)
 
                 AnalysisDiagnosticsStore.saveAttempt(applicationContext, analysis)
                 handler.post {
-                    updateMaskOverlay(packageName, analysis, snapshotOverlayRevision)
+                    if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@post
+                    updateMaskOverlay(
+                        currentPackage = packageName,
+                        analysis = analysis,
+                        snapshotOverlayRevision = snapshotOverlayRevision
+                    )
                 }
             } finally {
-                visualAnalysisInFlight = false
+                finishVisualAnalysis(visualRunId)
             }
         }.start()
+    }
+
+    private fun timeoutVisualAnalysis(
+        visualRunId: Long,
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan
+    ) {
+        if (visualRunId != visualAnalysisRunId || !visualAnalysisInFlight) return
+
+        Log.w(TAG, "visual OCR timed out runId=$visualRunId")
+        visualAnalysisRunId += 1L
+        visualAnalysisInFlight = false
+        saveVisualFailureDiagnostics(
+            packageName = packageName,
+            visualRoiPlan = visualRoiPlan,
+            error = "VISUAL_OCR_TIMEOUT"
+        )
+        scheduleFollowUpAfterVisualGate()
+    }
+
+    private fun finishVisualAnalysis(visualRunId: Long) {
+        if (visualRunId != visualAnalysisRunId) return
+        visualAnalysisInFlight = false
+        scheduleFollowUpAfterVisualGate()
+    }
+
+    private fun scheduleFollowUpAfterVisualGate() {
+        if (followUpParseRequested && !analysisInFlight) {
+            handler.post {
+                if (analysisInFlight) return@post
+                followUpParseRequested = false
+                scheduleDeferredFollowUpParse()
+            }
+        }
+    }
+
+    private fun isVisualAnalysisStale(
+        visualRunId: Long,
+        snapshotVisualSceneRevision: Long
+    ): Boolean {
+        return visualRunId != visualAnalysisRunId ||
+            snapshotVisualSceneRevision != visualSceneRevision
+    }
+
+    private fun selectVisualTextCandidates(
+        ocrCandidates: List<ParsedComment>,
+        screenWidth: Int,
+        screenHeight: Int,
+        baseResponse: AndroidAnalysisResponse?
+    ): List<ParsedComment> {
+        val baseLocations = baseResponse?.results
+            ?.mapNotNull { result ->
+                val keys = analysisTextKeys(result.original)
+                if (keys.isEmpty()) {
+                    null
+                } else {
+                    AnalysisTextLocation(keys = keys, boundsInScreen = result.boundsInScreen)
+                }
+            }
+            .orEmpty()
+
+        val sortedCandidates = ocrCandidates
+            .asSequence()
+            .filter { candidate ->
+                val key = normalizeAnalysisTextKey(candidate.commentText)
+                key.isNotBlank() &&
+                    !isTopControlOcrCandidate(candidate, screenWidth, screenHeight) &&
+                    !matchesBaseTextLocation(candidate, baseLocations)
+            }
+            .sortedWith(
+                compareBy<ParsedComment> { visualCandidateSourceRank(it) }
+                    .thenBy { it.boundsInScreen.top }
+                    .thenBy { it.boundsInScreen.left }
+            )
+            .toList()
+
+        val distinctCandidates = mutableListOf<ParsedComment>()
+        var fallbackCandidateCount = 0
+        for (candidate in sortedCandidates) {
+            if (candidate.visualOcrSource() == "youtube-visible-band") {
+                if (fallbackCandidateCount >= MAX_FALLBACK_VISUAL_CANDIDATES) continue
+                fallbackCandidateCount += 1
+            }
+
+            if (distinctCandidates.none { existing -> isSameVisualCandidate(existing, candidate) }) {
+                distinctCandidates += candidate
+            }
+            if (distinctCandidates.size >= MAX_VISUAL_ANALYSIS_CANDIDATES) break
+        }
+
+        return distinctCandidates
+    }
+
+    private fun visualCandidateSourceRank(candidate: ParsedComment): Int {
+        return when (candidate.visualOcrSource()) {
+            "youtube-visible-band" -> 9
+            "youtube-composite-card" -> 0
+            "generic-visual-region" -> 1
+            else -> 3
+        }
+    }
+
+    private fun normalizeAnalysisTextKey(text: String): String {
+        return text.replace(Regex("\\s+"), " ").trim().lowercase()
+    }
+
+    private fun analysisTextKeys(text: String): Set<String> {
+        val normalized = normalizeAnalysisTextKey(text)
+        val rangeKeys = VisualTextOcrCandidateFilter.findAnalysisRanges(text)
+            .map { range -> normalizeAnalysisTextKey(range.analysisText) }
+            .filter { key -> key.isNotBlank() }
+
+        return (listOf(normalized) + rangeKeys)
+            .filter { key -> key.isNotBlank() }
+            .toSet()
+    }
+
+    private fun ParsedComment.visualOcrMetadata(): VisualTextOcrMetadata? {
+        return VisualTextOcrMetadataCodec.decode(authorId)
+    }
+
+    private fun ParsedComment.visualOcrSource(): String? {
+        return visualOcrMetadata()?.source
+    }
+
+    private fun isTopControlOcrCandidate(
+        candidate: ParsedComment,
+        screenWidth: Int,
+        screenHeight: Int
+    ): Boolean {
+        if (candidate.visualOcrSource() == null) return false
+        if (VisualTextGeometryPolicy.isTopHeroYoutubeComposite(candidate.authorId, screenWidth)) {
+            return false
+        }
+        val cutoff = min(
+            TOP_CONTROL_OCR_EXCLUSION_MAX_PX,
+            (screenHeight * TOP_CONTROL_OCR_EXCLUSION_RATIO).toInt()
+        )
+        return candidate.boundsInScreen.top < cutoff
+    }
+
+    private fun matchesBaseTextLocation(
+        candidate: ParsedComment,
+        baseLocations: List<AnalysisTextLocation>
+    ): Boolean {
+        val candidateKeys = analysisTextKeys(candidate.commentText)
+        if (candidateKeys.isEmpty()) return true
+        val visualMetadata = candidate.visualOcrMetadata()
+
+        return baseLocations.any { baseLocation ->
+            val overlapRatio = boundsOverlapRatio(candidate.boundsInScreen, baseLocation.boundsInScreen)
+            val sameText = candidateKeys.any { key -> key in baseLocation.keys }
+
+            when {
+                !sameText -> false
+                visualMetadata != null &&
+                    isCoarseBaseLocation(candidate.boundsInScreen, baseLocation.boundsInScreen) -> false
+                overlapRatio >= VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO && visualMetadata != null -> true
+                overlapRatio >= VISUAL_DUPLICATE_OVERLAP_RATIO && sameText -> true
+                visualMetadata?.source == "youtube-composite-card" &&
+                    visualMetadata.roiBoundsInScreen?.contains(baseLocation.boundsInScreen) == true &&
+                    overlapRatio >= VISUAL_CONTAINED_DUPLICATE_OVERLAP_RATIO -> true
+                else -> false
+            }
+        }
+    }
+
+    private fun isCoarseBaseLocation(candidateBounds: BoundsRect, baseBounds: BoundsRect): Boolean {
+        val candidateArea = boundsArea(candidateBounds).coerceAtLeast(1)
+        val baseArea = boundsArea(baseBounds).coerceAtLeast(1)
+        return baseArea.toFloat() / candidateArea.toFloat() >= VISUAL_COARSE_BASE_AREA_MULTIPLIER
+    }
+
+    private fun boundsArea(bounds: BoundsRect): Int {
+        return max(0, bounds.right - bounds.left) * max(0, bounds.bottom - bounds.top)
+    }
+
+    private fun BoundsRect.contains(inner: BoundsRect): Boolean {
+        return inner.left >= left &&
+            inner.top >= top &&
+            inner.right <= right &&
+            inner.bottom <= bottom
+    }
+
+    private fun isSameVisualCandidate(left: ParsedComment, right: ParsedComment): Boolean {
+        val overlapRatio = boundsOverlapRatio(left.boundsInScreen, right.boundsInScreen)
+        return (
+            normalizeAnalysisTextKey(left.commentText) == normalizeAnalysisTextKey(right.commentText) &&
+                overlapRatio >= VISUAL_DUPLICATE_OVERLAP_RATIO
+            ) || overlapRatio >= VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO
+    }
+
+    private fun boundsOverlapRatio(left: BoundsRect, right: BoundsRect): Float {
+        val intersectionLeft = max(left.left, right.left)
+        val intersectionTop = max(left.top, right.top)
+        val intersectionRight = min(left.right, right.right)
+        val intersectionBottom = min(left.bottom, right.bottom)
+        val intersectionWidth = max(0, intersectionRight - intersectionLeft)
+        val intersectionHeight = max(0, intersectionBottom - intersectionTop)
+        val intersectionArea = intersectionWidth * intersectionHeight
+        if (intersectionArea <= 0) return 0f
+
+        val leftArea = max(0, left.right - left.left) * max(0, left.bottom - left.top)
+        val rightArea = max(0, right.right - right.left) * max(0, right.bottom - right.top)
+        val smallerArea = min(leftArea, rightArea)
+        if (smallerArea <= 0) return 0f
+
+        return intersectionArea.toFloat() / smallerArea.toFloat()
+    }
+
+    private fun VisualTextRoiPlan.signature(): String {
+        return rois.joinToString("|") { roi ->
+            val bounds = roi.boundsInScreen
+            "${roi.source}:${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+        }
+    }
+
+    private fun VisualTextRoiPlan.canReuseVisualSupplement(): Boolean {
+        return rois.isNotEmpty() && rois.none { roi ->
+            roi.source == "youtube-visible-band" ||
+                roi.source == "youtube-composite-card"
+        }
+    }
+
+    private fun VisualTextRoiPlan.hasRenderableVisualRois(): Boolean {
+        return rois.any { roi ->
+            roi.source == "youtube-composite-card"
+        }
+    }
+
+    private fun reusableVisualSupplement(
+        packageName: String,
+        visualRoiSignature: String? = null
+    ): AndroidAnalysisResponse? {
+        val cached = lastVisualSupplement ?: return null
+        if (cached.packageName != packageName) return null
+        val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
+        if (cached.sensitivity != currentSensitivity) return null
+        if (visualRoiSignature != null && cached.visualRoiSignature != visualRoiSignature) return null
+        if (cached.expiresAtUptimeMs <= SystemClock.uptimeMillis()) {
+            lastVisualSupplement = null
+            return null
+        }
+        Log.d(TAG, "reuse visual supplement signature=${cached.visualRoiSignature}")
+        return cached.response
+    }
+
+    private fun storeVisualSupplement(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        response: AndroidAnalysisResponse?
+    ) {
+        if (!visualRoiPlan.canReuseVisualSupplement()) return
+        if (response == null || countActionableResults(response) <= 0) return
+        lastVisualSupplement = VisualSupplementCache(
+            packageName = packageName,
+            sensitivity = AnalysisSensitivityStore.get(applicationContext),
+            visualRoiSignature = visualRoiPlan.signature(),
+            response = response,
+            expiresAtUptimeMs = SystemClock.uptimeMillis() + VISUAL_SUPPLEMENT_CACHE_TTL_MS
+        )
+    }
+
+    private fun mergeAnalysisResponses(
+        baseResponse: AndroidAnalysisResponse?,
+        visualResponse: AndroidAnalysisResponse?
+    ): AndroidAnalysisResponse? {
+        if (baseResponse == null) return visualResponse
+        if (visualResponse == null) return baseResponse
+
+        val merged = (baseResponse.results + visualResponse.results)
+            .distinctBy { result ->
+                val bounds = result.boundsInScreen
+                "${result.original}|${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+            }
+
+        return AndroidAnalysisResponse(
+            timestamp = maxOf(baseResponse.timestamp, visualResponse.timestamp),
+            filteredCount = baseResponse.filteredCount + visualResponse.filteredCount,
+            results = merged
+        )
+    }
+
+    private fun countActionableResults(response: AndroidAnalysisResponse?): Int {
+        return response?.results
+            ?.count { result -> result.isOffensive && result.evidenceSpans.isNotEmpty() }
+            ?: 0
     }
 
     private fun saveVisualFailureDiagnostics(
@@ -610,6 +1380,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             overlayCandidateCount = plan.candidateCount,
             overlayRenderedCount = plan.specs.size,
             overlaySkippedUnstableCount = plan.skippedUnstableCount,
+            overlayRenderedSamples = plan.renderedSamples,
             visualCaptureSupported = visualCaptureState.supported,
             visualCaptureReason = visualCaptureState.reason,
             visualRoiCandidateCount = visualRoiPlan.candidateCount,
@@ -795,6 +1566,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val trimmed = value.trim()
         val lower = trimmed.lowercase()
         val viewId = node.viewIdResourceName.orEmpty()
+        val isUserInputLike =
+            className.contains("EditText", ignoreCase = true) ||
+                viewId.contains("search", ignoreCase = true) ||
+                viewId.contains("query", ignoreCase = true) ||
+                viewId.contains("input", ignoreCase = true)
+        val looksActionable = VisualTextOcrCandidateFilter.shouldAnalyze(trimmed)
         val rootRect = Rect().also { root.getBoundsInScreen(it) }
         val screenHeight = if (rootRect.height() > 0) rootRect.height() else rect.bottom
         val upperCutoff = if (instagramMode) {
@@ -806,7 +1583,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         if (!node.isVisibleToUser) return false
-        if (rect.bottom <= upperCutoff) return false
+        if (rect.bottom <= upperCutoff && !isUserInputLike && !looksActionable) return false
         if (trimmed.length == 1 && !trimmed[0].isLetterOrDigit() && trimmed[0] !in listOf('@', '#')) return false
         if (Regex(""".+님의 프로필$""").matches(trimmed)) return false
         if (Regex("""^[\u200E\u200F\u202A-\u202E]*댓글\s*\d+개$""").matches(trimmed)) return false
