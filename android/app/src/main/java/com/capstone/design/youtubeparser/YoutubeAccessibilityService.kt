@@ -33,6 +33,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val PARSE_DELAY_SCROLL_MS = 32L
         private const val SCROLL_OVERLAY_STABILIZATION_MS = 64L
         private const val CONTENT_OVERLAY_STABILIZATION_MS = 48L
+        private const val SCROLL_CONTENT_CHANGE_PRESERVE_MS =
+            SCROLL_OVERLAY_STABILIZATION_MS + CONTENT_OVERLAY_STABILIZATION_MS
         private const val OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS = 250L
         private const val PARSE_DELAY_CONTENT_MS = 40L
         private const val PARSE_DELAY_WINDOW_MS = 60L
@@ -192,7 +194,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
                         eventType = event.eventType,
                         hasActiveMasks = hasActiveMasks,
-                        isScrollStabilizing = isInScrollStabilizationWindow(),
+                        isScrollStabilizing = isInScrollContentChangePreserveWindow(),
                         isLikelySelfContentChange = overlaySelfContentChange
                     )
                 ) {
@@ -656,11 +658,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun isInScrollStabilizationWindow(): Boolean {
+        return isInLastMotionWindow(SCROLL_OVERLAY_STABILIZATION_MS)
+    }
+
+    private fun isInScrollContentChangePreserveWindow(): Boolean {
+        return isInLastMotionWindow(SCROLL_CONTENT_CHANGE_PRESERVE_MS)
+    }
+
+    private fun isInLastMotionWindow(windowMs: Long): Boolean {
         val lastMotionEventAtMs = max(lastScrollEventAtMs, lastPointerInteractionAtMs)
         if (lastMotionEventAtMs <= 0L) return false
 
         val elapsedMs = SystemClock.uptimeMillis() - lastMotionEventAtMs
-        return elapsedMs in 0..SCROLL_OVERLAY_STABILIZATION_MS
+        return elapsedMs in 0..windowMs
     }
 
     private fun shouldDeferAnalysisDuringActiveScroll(triggerEventType: Int?): Boolean {
