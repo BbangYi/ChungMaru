@@ -87,6 +87,16 @@ internal object MaskOverlayEventPolicy {
             !hasResolvedScrollDelta
     }
 
+    fun shouldClearOnFailedScrollTranslation(
+        eventType: Int,
+        hasActiveMasks: Boolean,
+        hasResolvedScrollDelta: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            hasActiveMasks &&
+            hasResolvedScrollDelta
+    }
+
     fun isLikelySelfContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,

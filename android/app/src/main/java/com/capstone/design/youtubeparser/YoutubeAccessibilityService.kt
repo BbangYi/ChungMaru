@@ -199,8 +199,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     ) {
                         Log.d(TAG, "preserve mask overlay: unresolved scroll delta")
                         markOverlayRevisionStale()
-                    } else {
+                    } else if (
+                        MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
+                            eventType = event.eventType,
+                            hasActiveMasks = hasActiveMasks,
+                            hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta
+                        )
+                    ) {
                         clearMaskOverlay()
+                    } else {
+                        markOverlayRevisionStale()
                     }
                 } else if (overlaySelfContentChange) {
                     Log.d(TAG, "ignore overlay self content change")
