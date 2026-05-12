@@ -576,6 +576,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     currentOverlayRevision = overlayRevision
                 )
             ) {
+                lastSnapshotSignature = null
                 scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
             }
             return
