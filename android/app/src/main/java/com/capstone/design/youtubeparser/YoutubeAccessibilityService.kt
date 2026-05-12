@@ -965,7 +965,15 @@ class YoutubeAccessibilityService : AccessibilityService() {
             "start visual OCR rois=${visualRoiPlan.rois.size} signature=${visualRoiPlan.signature()}"
         )
         handler.postDelayed(
-            { timeoutVisualAnalysis(visualRunId, packageName, visualRoiPlan) },
+            {
+                timeoutVisualAnalysis(
+                    visualRunId = visualRunId,
+                    packageName = packageName,
+                    visualRoiPlan = visualRoiPlan,
+                    snapshotVisualSceneRevision = snapshotVisualSceneRevision,
+                    clearExistingOverlayOnMiss = clearExistingOverlayOnMiss
+                )
+            },
             VISUAL_ANALYSIS_TIMEOUT_MS
         )
 
@@ -987,6 +995,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 visualRoiPlan = visualRoiPlan,
                                 error = "SCREENSHOT_BITMAP_UNAVAILABLE"
                             )
+                            if (clearExistingOverlayOnMiss) {
+                                clearMaskOverlayAfterVisualMiss(
+                                    packageName = packageName,
+                                    visualRoiPlan = visualRoiPlan,
+                                    visualRunId = visualRunId,
+                                    snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                                )
+                            }
                             finishVisualAnalysis(visualRunId)
                             return
                         }
@@ -1038,6 +1054,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             visualRoiPlan = visualRoiPlan,
                             error = "SCREENSHOT_FAILED_$errorCode"
                         )
+                        if (clearExistingOverlayOnMiss) {
+                            clearMaskOverlayAfterVisualMiss(
+                                packageName = packageName,
+                                visualRoiPlan = visualRoiPlan,
+                                visualRunId = visualRunId,
+                                snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                            )
+                        }
                         finishVisualAnalysis(visualRunId)
                     }
                 }
@@ -1050,6 +1074,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 error = error.javaClass.simpleName.takeIf { it.isNotBlank() }
                     ?: "SCREENSHOT_REQUEST_FAILED"
             )
+            if (clearExistingOverlayOnMiss) {
+                clearMaskOverlayAfterVisualMiss(
+                    packageName = packageName,
+                    visualRoiPlan = visualRoiPlan,
+                    visualRunId = visualRunId,
+                    snapshotVisualSceneRevision = snapshotVisualSceneRevision
+                )
+            }
             finishVisualAnalysis(visualRunId)
             return false
         }
@@ -1205,7 +1237,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun timeoutVisualAnalysis(
         visualRunId: Long,
         packageName: String,
-        visualRoiPlan: VisualTextRoiPlan
+        visualRoiPlan: VisualTextRoiPlan,
+        snapshotVisualSceneRevision: Long,
+        clearExistingOverlayOnMiss: Boolean
     ) {
         if (visualRunId != visualAnalysisRunId || !visualAnalysisInFlight) return
 
@@ -1217,6 +1251,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
             visualRoiPlan = visualRoiPlan,
             error = "VISUAL_OCR_TIMEOUT"
         )
+        if (
+            clearExistingOverlayOnMiss &&
+            packageName == lastObservedPackage &&
+            snapshotVisualSceneRevision == visualSceneRevision
+        ) {
+            handleVisualAnalysisMissOnMain(visualRoiPlan)
+        }
         scheduleFollowUpAfterVisualGate()
     }
 
@@ -1235,20 +1276,24 @@ class YoutubeAccessibilityService : AccessibilityService() {
         handler.post {
             if (packageName != lastObservedPackage) return@post
             if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@post
-            if (
-                !MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
-                    hasActiveMasks = maskOverlayController.hasActiveMasks(),
-                    hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois(),
-                    isOverlayStabilizing = isInOverlayStabilizationWindow()
-                )
-            ) {
-                Log.d(TAG, "preserve mask overlay after visual OCR miss during stabilization")
-                markOverlayRevisionStale()
-                scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
-                return@post
-            }
-            clearMaskOverlay()
+            handleVisualAnalysisMissOnMain(visualRoiPlan)
         }
+    }
+
+    private fun handleVisualAnalysisMissOnMain(visualRoiPlan: VisualTextRoiPlan) {
+        if (
+            !MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois(),
+                isOverlayStabilizing = isInOverlayStabilizationWindow()
+            )
+        ) {
+            Log.d(TAG, "preserve mask overlay after visual OCR miss during stabilization")
+            markOverlayRevisionStale()
+            scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+            return
+        }
+        clearMaskOverlay()
     }
 
     private fun scheduleFollowUpAfterVisualGate() {
