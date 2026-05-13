@@ -647,6 +647,7 @@ class MaskOverlayPlannerTest {
         assertEquals(1, specs.size)
         assertTrue(specs.single().allowScrollTranslation)
         assertTrue(specs.single().top in 940..980)
+        assertTrue("spec=${specs.single()}", specs.single().left in 280..380)
         assertTrue(specs.single().width in 64..140)
     }
 

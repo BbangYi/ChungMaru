@@ -136,6 +136,8 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_TEXT_LENGTH = 180
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT = 4
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_WIDTH_RATIO = 0.90f
+    private const val YOUTUBE_TITLE_LATIN_CHAR_WIDTH_PX = 18
+    private const val YOUTUBE_TITLE_KOREAN_CHAR_WIDTH_PX = 28
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -458,6 +460,11 @@ object AndroidMaskOverlayPlanner {
         return estimatedLineCount <= MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT
     }
 
+    private fun isYoutubeTitleAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
+            authorId == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID
+    }
+
     private fun isPreciseVisualAuthor(authorId: String?): Boolean {
         val value = authorId ?: return false
         return value.startsWith("ocr:youtube-composite-card:") ||
@@ -596,6 +603,19 @@ object AndroidMaskOverlayPlanner {
         val start = resolvedRange.first
         val end = resolvedRange.second
         if (end <= start) return null
+
+        if (isYoutubeTitleAccessibilityAuthor(authorId)) {
+            return toYoutubeTitleAccessibilitySpanSpec(
+                fullSpec = fullSpec,
+                spanText = span.text,
+                start = start,
+                end = end,
+                original = original,
+                originalLength = originalLength,
+                allowScrollTranslation = allowScrollTranslation,
+                debugSource = debugSource
+            )
+        }
 
         val lineCount = estimateLineCount(fullSpec.height, originalLength)
         val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
@@ -838,6 +858,102 @@ object AndroidMaskOverlayPlanner {
 
         return (codePointLength * charWidth + YOUTUBE_INPUT_WIDTH_PADDING_PX)
             .coerceIn(YOUTUBE_INPUT_MIN_MASK_WIDTH_PX, maxOf(YOUTUBE_INPUT_MIN_MASK_WIDTH_PX, maxWidth))
+    }
+
+    private fun toYoutubeTitleAccessibilitySpanSpec(
+        fullSpec: MaskOverlaySpec,
+        spanText: String,
+        start: Int,
+        end: Int,
+        original: String,
+        originalLength: Int,
+        allowScrollTranslation: Boolean,
+        debugSource: String
+    ): MaskOverlaySpec? {
+        if (originalLength <= 0 || end <= start) return null
+
+        val charsPerLine = estimateYoutubeTitleCharsPerLine(
+            text = original,
+            width = fullSpec.width
+        )
+        val lineCount = ((originalLength + charsPerLine - 1) / charsPerLine)
+            .coerceAtLeast(1)
+            .coerceAtMost(MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT)
+        val lineIndex = (start / charsPerLine).coerceIn(0, lineCount - 1)
+        val lineStart = lineIndex * charsPerLine
+        val localStart = (start - lineStart).coerceIn(0, charsPerLine)
+        val localEnd = (end - lineStart).coerceIn(localStart + 1, charsPerLine)
+
+        val rawLeft = fullSpec.left +
+            (fullSpec.width * (localStart.toFloat() / charsPerLine.toFloat())).roundToInt()
+        val rawRight = fullSpec.left +
+            (fullSpec.width * (localEnd.toFloat() / charsPerLine.toFloat())).roundToInt()
+        val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
+        val minWidth = minOf(
+            fullSpec.width,
+            maxOf(MIN_SPAN_MASK_WIDTH_PX, spanText.ifBlank { MASK_LABEL }.length * 18)
+        )
+        val center = (rawLeft + rawRight) / 2
+        var left = rawLeft - SPAN_HORIZONTAL_PADDING_PX
+        var right = rawRight + SPAN_HORIZONTAL_PADDING_PX
+
+        if (right - left < minWidth) {
+            left = center - minWidth / 2
+            right = left + minWidth
+        }
+        if (left < fullSpec.left) {
+            right += fullSpec.left - left
+            left = fullSpec.left
+        }
+        if (right > fullSpec.left + fullSpec.width) {
+            left -= right - (fullSpec.left + fullSpec.width)
+            right = fullSpec.left + fullSpec.width
+        }
+
+        val maxSpanWidth = estimateMaxSpanMaskWidth(
+            spanText = spanText,
+            fullSpecWidth = fullSpec.width,
+            lineHeight = lineHeight
+        )
+        if (right - left > maxSpanWidth) {
+            val anchored = anchorCompactSpanBounds(
+                fullSpec = fullSpec,
+                rawLeft = rawLeft,
+                rawRight = rawRight,
+                start = start,
+                end = end,
+                originalLength = originalLength,
+                maxSpanWidth = maxSpanWidth
+            )
+            left = anchored.first
+            right = anchored.second
+        }
+
+        val width = right - left
+        if (width < MIN_WIDTH_PX) return null
+
+        val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val top = fullSpec.top + (lineIndex * lineHeight) + ((lineHeight - height) / 2).coerceAtLeast(0)
+
+        return MaskOverlaySpec(
+            left = left,
+            top = top,
+            width = width,
+            height = height,
+            label = MASK_LABEL,
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
+        )
+    }
+
+    private fun estimateYoutubeTitleCharsPerLine(text: String, width: Int): Int {
+        val hasKorean = text.any { it.code in 0xAC00..0xD7A3 }
+        val charWidth = if (hasKorean) {
+            YOUTUBE_TITLE_KOREAN_CHAR_WIDTH_PX
+        } else {
+            YOUTUBE_TITLE_LATIN_CHAR_WIDTH_PX
+        }
+        return (width / charWidth).coerceAtLeast(1)
     }
 
     private fun shouldUseTopHeroDisplayGeometry(

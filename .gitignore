@@ -57,6 +57,12 @@ __pycache__/
 venv/
 pip-wheel-metadata/
 
+# Generated reports / presentation exports
+docs/Backend model/
+docs/presentation/*.pdf
+docs/presentation/*.pptx
+outputs/
+
 # Temporary
 tmp/
 temp/
