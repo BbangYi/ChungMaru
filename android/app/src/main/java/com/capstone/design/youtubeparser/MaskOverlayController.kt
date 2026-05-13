@@ -54,6 +54,7 @@ object AndroidMaskOverlayPlanner {
     private const val MIN_SPAN_MASK_WIDTH_PX = 24
     private const val SPAN_HORIZONTAL_PADDING_PX = 4
     private const val MAX_SPAN_MASK_HEIGHT_PX = 32
+    private const val MAX_PRECISE_VISUAL_SPAN_MASK_HEIGHT_PX = 56
     private const val KOREAN_SPAN_CHAR_WIDTH_PX = 28
     private const val LATIN_SPAN_CHAR_WIDTH_PX = 14
     private const val KOREAN_SPAN_MAX_CHAR_WIDTH_PX = 28
@@ -685,7 +686,7 @@ object AndroidMaskOverlayPlanner {
         } else {
             fullSpec.left + ((fullSpec.width - width) / 2).coerceAtLeast(0)
         }
-        val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val height = minOf(lineHeight, MAX_PRECISE_VISUAL_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
         val top = fullSpec.top + ((fullSpec.height - height) / 2).coerceAtLeast(0)
 
         return MaskOverlaySpec(

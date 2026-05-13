@@ -25,6 +25,17 @@ class VisualTextOcrProcessor {
         val recognizer: TextRecognizer
     )
 
+    private enum class OcrImageVariant {
+        RAW,
+        HIGH_CONTRAST
+    }
+
+    private data class OcrWorkItem(
+        val roi: VisualTextRoi,
+        val recognizer: RecognizerSpec,
+        val variant: OcrImageVariant
+    )
+
     private val recognizers = listOf(
         RecognizerSpec(
             name = "korean",
@@ -70,7 +81,15 @@ class VisualTextOcrProcessor {
         }
 
         val workItems = selectedRois.flatMap { roi ->
-            recognizers.map { recognizer -> roi to recognizer }
+            recognizers.flatMap { recognizer ->
+                imageVariantsFor(roi).map { variant ->
+                    OcrWorkItem(
+                        roi = roi,
+                        recognizer = recognizer,
+                        variant = variant
+                    )
+                }
+            }
         }
         val pendingCount = AtomicInteger(workItems.size)
         val candidates = Collections.synchronizedList(mutableListOf<ParsedComment>())
@@ -81,15 +100,17 @@ class VisualTextOcrProcessor {
             }
         }
 
-        workItems.forEach { (roi, recognizerSpec) ->
+        workItems.forEach { workItem ->
+            val roi = workItem.roi
             val crop = cropBitmap(screenshot, roi.boundsInScreen)
             if (crop == null) {
                 finishOne()
                 return@forEach
             }
+            val processBitmap = bitmapForVariant(crop, workItem.variant)
 
-            val image = InputImage.fromBitmap(crop, 0)
-            recognizerSpec.recognizer
+            val image = InputImage.fromBitmap(processBitmap, 0)
+            workItem.recognizer.recognizer
                 .process(image)
                 .addOnSuccessListener { text ->
                     candidates += text.toParsedComments(
@@ -101,12 +122,54 @@ class VisualTextOcrProcessor {
                     // OCR is a best-effort visual supplement; accessibility text analysis remains primary.
                 }
                 .addOnCompleteListener {
+                    if (processBitmap !== crop && !processBitmap.isRecycled) {
+                        processBitmap.recycle()
+                    }
                     if (!crop.isRecycled) {
                         crop.recycle()
                     }
                     finishOne()
                 }
         }
+    }
+
+    private fun imageVariantsFor(roi: VisualTextRoi): List<OcrImageVariant> {
+        return if (roi.source == "youtube-composite-card" || roi.source == "youtube-visible-band") {
+            listOf(OcrImageVariant.RAW, OcrImageVariant.HIGH_CONTRAST)
+        } else {
+            listOf(OcrImageVariant.RAW)
+        }
+    }
+
+    private fun bitmapForVariant(crop: Bitmap, variant: OcrImageVariant): Bitmap {
+        return when (variant) {
+            OcrImageVariant.RAW -> crop
+            OcrImageVariant.HIGH_CONTRAST -> crop.toHighContrastOcrBitmap() ?: crop
+        }
+    }
+
+    private fun Bitmap.toHighContrastOcrBitmap(): Bitmap? {
+        if (isRecycled || width <= 0 || height <= 0) return null
+
+        return runCatching {
+            val output = createBitmap(width, height)
+            val pixels = IntArray(width * height)
+            getPixels(pixels, 0, width, 0, 0, width, height)
+            for (index in pixels.indices) {
+                val pixel = pixels[index]
+                val luminance = (
+                    Color.red(pixel) * 30 +
+                        Color.green(pixel) * 59 +
+                        Color.blue(pixel) * 11
+                    ) / 100
+                val boosted = ((luminance - OCR_CONTRAST_BLACK_POINT) * 255 /
+                    (OCR_CONTRAST_WHITE_POINT - OCR_CONTRAST_BLACK_POINT))
+                    .coerceIn(0, 255)
+                pixels[index] = Color.argb(Color.alpha(pixel), boosted, boosted, boosted)
+            }
+            output.setPixels(pixels, 0, width, 0, 0, width, height)
+            output
+        }.getOrNull()
     }
 
     private fun cropBitmap(
@@ -508,6 +571,8 @@ class VisualTextOcrProcessor {
         private const val COMPACT_TEXT_HORIZONTAL_PADDING_PX = 4
         private const val OCR_TEXT_HORIZONTAL_PADDING_PX = 8
         private const val OCR_TEXT_HORIZONTAL_PADDING_HEIGHT_RATIO = 0.18f
+        private const val OCR_CONTRAST_BLACK_POINT = 36
+        private const val OCR_CONTRAST_WHITE_POINT = 210
         private const val MAX_COMPACT_KOREAN_TEXT_WIDTH_PX = 112
         private const val MAX_COMPACT_LATIN_TEXT_WIDTH_PX = 84
         private const val MAX_LINE_FALLBACK_CODEPOINTS = 8

@@ -508,7 +508,8 @@ class MaskOverlayPlannerTest {
         assertEquals(1, specs.size)
         assertEquals(66, specs.single().left)
         assertTrue("spec=${specs.single()}", specs.single().width >= 132)
-        assertTrue(specs.single().height <= 36)
+        assertTrue("spec=${specs.single()}", specs.single().height >= 48)
+        assertTrue("spec=${specs.single()}", specs.single().height <= 56)
     }
 
     @Test
@@ -584,7 +585,8 @@ class MaskOverlayPlannerTest {
         assertEquals(1, specs.size)
         assertEquals(90, specs.single().left)
         assertTrue(specs.single().width in 90..120)
-        assertTrue(specs.single().height <= 32)
+        assertTrue(specs.single().height >= 44)
+        assertTrue(specs.single().height <= 56)
         assertTrue(specs.single().allowScrollTranslation)
     }
 
