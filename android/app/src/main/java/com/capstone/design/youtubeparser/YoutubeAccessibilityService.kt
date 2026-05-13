@@ -42,7 +42,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val VISUAL_SUPPLEMENT_CACHE_TTL_MS = 1800L
         private const val VISUAL_ANALYSIS_TIMEOUT_MS = 1800L
         private const val MAX_VISUAL_ANALYSIS_CANDIDATES = 4
-        private const val MAX_FALLBACK_VISUAL_CANDIDATES = 3
+        private const val MAX_FALLBACK_VISUAL_CANDIDATES = MAX_VISUAL_ANALYSIS_CANDIDATES
         private const val VISUAL_DUPLICATE_OVERLAP_RATIO = 0.45f
         private const val VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO = 0.72f
         private const val VISUAL_CONTAINED_DUPLICATE_OVERLAP_RATIO = 0.28f
