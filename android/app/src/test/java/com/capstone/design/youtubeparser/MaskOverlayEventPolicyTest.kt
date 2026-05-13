@@ -121,6 +121,30 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldPreserveExistingOnEmptyPlan_rejectsProvisionalVisualMasks() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveExistingOnEmptyPlan(
+                hasActiveMasks = true,
+                snapshotOverlayRevision = 7L,
+                currentOverlayRevision = 7L,
+                isScrollStabilizing = false,
+                hasProvisionalMasks = true,
+                isProvisionalPlan = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveExistingOnEmptyPlan(
+                hasActiveMasks = true,
+                snapshotOverlayRevision = 7L,
+                currentOverlayRevision = 7L,
+                isScrollStabilizing = false,
+                hasProvisionalMasks = false,
+                isProvisionalPlan = true
+            )
+        )
+    }
+
+    @Test
     fun shouldRetryAfterStaleOverlayResult_retriesOnlyForOkStaleAnalysis() {
         assertTrue(
             MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(

@@ -79,6 +79,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var lastVisualSupplement: VisualSupplementCache? = null
     private var preservedRecentVisualMiss = false
     private var preservedRecentAnalysisFailure = false
+    private var provisionalVisualMaskActive = false
     private val sensitivityPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key != AnalysisSensitivityStore.KEY_ANALYSIS_SENSITIVITY) return@OnSharedPreferenceChangeListener
@@ -240,7 +241,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     clearMaskOverlay()
                 } else if (contentChangedWithActiveMask) {
-                    Log.d(TAG, "preserve mask overlay during active content change")
+                    Log.d(TAG, "hide mask overlay until content recapture")
+                    maskOverlayController.clear()
                     markOverlayRevisionStale()
                     markVisualSceneChanged(event.eventType)
                     scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
@@ -576,7 +578,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         currentPackage: String,
         analysis: AndroidAnalysisAttempt?,
         snapshotOverlayRevision: Long,
-        visualRoiPlan: VisualTextRoiPlan? = null
+        visualRoiPlan: VisualTextRoiPlan? = null,
+        isProvisionalVisualMask: Boolean = false
     ) {
         if (currentPackage != lastObservedPackage) {
             Log.d(
@@ -631,12 +634,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 hasActiveMasks = maskOverlayController.hasActiveMasks(),
                 snapshotOverlayRevision = snapshotOverlayRevision,
                 currentOverlayRevision = overlayRevision,
-                isScrollStabilizing = isInScrollStabilizationWindow()
+                isScrollStabilizing = isInScrollStabilizationWindow(),
+                hasProvisionalMasks = provisionalVisualMaskActive,
+                isProvisionalPlan = isProvisionalVisualMask
             )
             Log.d(
                 TAG,
                 "render mask overlay package=$currentPackage results=${analysis.response?.results?.size ?: 0} " +
-                    "preserveExistingIfEmpty=$preserveExistingIfEmpty"
+                    "preserveExistingIfEmpty=$preserveExistingIfEmpty provisional=$isProvisionalVisualMask"
             )
             maskOverlayController.render(
                 response = analysis.response,
@@ -644,6 +649,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             )
             preservedRecentVisualMiss = false
             preservedRecentAnalysisFailure = false
+            provisionalVisualMaskActive = isProvisionalVisualMask && maskOverlayController.hasActiveMasks()
         } else {
             if (
                 supportsMaskOverlay(currentPackage) &&
@@ -672,6 +678,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         lastSnapshotSignature = null
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
+        provisionalVisualMaskActive = false
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
         resetAbsoluteScrollPosition()
@@ -685,6 +692,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun markVisualSceneChanged(eventType: Int) {
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
+        provisionalVisualMaskActive = false
         invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
     }
 
@@ -1315,7 +1323,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 currentPackage = packageName,
                 analysis = analysis,
                 snapshotOverlayRevision = snapshotOverlayRevision,
-                visualRoiPlan = visualRoiPlan
+                visualRoiPlan = visualRoiPlan,
+                isProvisionalVisualMask = true
             )
         }
     }
