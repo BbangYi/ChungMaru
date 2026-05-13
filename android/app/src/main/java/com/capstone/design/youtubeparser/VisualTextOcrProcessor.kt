@@ -592,7 +592,8 @@ internal object VisualTextOcrMetadataCodec {
     private val supportedSources = setOf(
         "youtube-composite-card",
         "generic-visual-region",
-        "youtube-visible-band"
+        "youtube-visible-band",
+        "youtube-semantic-card"
     )
 
     fun encode(

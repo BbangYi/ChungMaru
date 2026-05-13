@@ -1025,7 +1025,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
             baseResponse = baseResponse
         )
         val earlyRenderableSemanticFallbackCandidates = semanticFallbackCandidates
-            .filterNot { candidate -> candidate.visualOcrSource() == "youtube-visible-band" }
+            .filterNot { candidate ->
+                candidate.visualOcrSource() in setOf(
+                    "youtube-visible-band",
+                    "youtube-semantic-card"
+                )
+            }
         if (earlyRenderableSemanticFallbackCandidates.isNotEmpty()) {
             renderProvisionalVisualMaskOverlay(
                 packageName = packageName,

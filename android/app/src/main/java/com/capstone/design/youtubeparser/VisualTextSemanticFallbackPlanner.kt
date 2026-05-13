@@ -28,6 +28,7 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX = 48
     private const val VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX = 72
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
+    private const val SEMANTIC_FALLBACK_SOURCE = "youtube-semantic-card"
 
     private data class HeroMaskBand(
         val topRatio: Float,
@@ -116,7 +117,7 @@ internal object VisualTextSemanticFallbackPlanner {
                 commentText = range.analysisText,
                 boundsInScreen = bounds,
                 authorId = VisualTextOcrMetadataCodec.encode(
-                    source = roi.source,
+                    source = SEMANTIC_FALLBACK_SOURCE,
                     roiBoundsInScreen = roi.boundsInScreen,
                     visualText = range.visualText
                 )
@@ -144,7 +145,7 @@ internal object VisualTextSemanticFallbackPlanner {
                 commentText = range.analysisText,
                 boundsInScreen = bounds,
                 authorId = VisualTextOcrMetadataCodec.encode(
-                    source = roi.source,
+                    source = SEMANTIC_FALLBACK_SOURCE,
                     roiBoundsInScreen = roi.boundsInScreen,
                     visualText = range.visualText
                 )
@@ -172,7 +173,7 @@ internal object VisualTextSemanticFallbackPlanner {
                 commentText = range.analysisText,
                 boundsInScreen = bounds,
                 authorId = VisualTextOcrMetadataCodec.encode(
-                    source = roi.source,
+                    source = SEMANTIC_FALLBACK_SOURCE,
                     roiBoundsInScreen = roi.boundsInScreen,
                     visualText = range.visualText
                 )

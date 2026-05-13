@@ -689,6 +689,23 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_rejectsSemanticFallbackOcrMasks() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(54, 588, 287, 644),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-semantic-card:0,506,1080,1190:Tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertTrue(specs.isEmpty())
+    }
+
+    @Test
     fun translateSpecs_keepsPreciseOcrMasksDuringNormalViewportScroll() {
         val response = responseOf(
             resultOf(

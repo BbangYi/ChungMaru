@@ -26,7 +26,7 @@ class VisualTextSemanticFallbackPlannerTest {
         assertTrue(candidates[0].boundsInScreen.top in 205..220)
         assertTrue(candidates[1].boundsInScreen.top in 305..325)
         assertTrue(candidates.all { it.boundsInScreen.left in 24..40 })
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
     }
 
     @Test
@@ -77,7 +77,7 @@ class VisualTextSemanticFallbackPlannerTest {
         assertEquals(2, candidates.size)
         assertTrue(candidates[0].boundsInScreen.top in 385..400)
         assertTrue(candidates[1].boundsInScreen.top in 570..585)
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
     }
 
     @Test
@@ -115,7 +115,7 @@ class VisualTextSemanticFallbackPlannerTest {
         assertTrue(candidates[0].boundsInScreen.bottom - candidates[0].boundsInScreen.top <= 44)
         assertTrue(candidates[1].boundsInScreen.bottom - candidates[1].boundsInScreen.top <= 72)
         assertTrue(candidates.all { it.boundsInScreen.right - it.boundsInScreen.left <= 230 })
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-visible-band:") })
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
     }
 
     @Test
