@@ -18,20 +18,25 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val VISIBLE_BAND_MIN_WIDTH_RATIO = 0.70f
     private const val VISIBLE_BAND_MIN_HEIGHT_PX = 220
     private const val VISIBLE_BAND_BANNER_MASK_TOP_RATIO = 0.12f
-    private const val VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO = 0.14f
-    private const val VISIBLE_BAND_TITLE_MASK_TOP_RATIO = 0.43f
-    private const val VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO = 0.18f
+    private const val VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO = 0.08f
+    private const val VISIBLE_BAND_TITLE_MASK_TOP_RATIO = 0.40f
+    private const val VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO = 0.11f
+    private const val VISIBLE_BAND_MASK_MAX_WIDTH_RATIO = 0.34f
     private const val DEFAULT_MASK_MIN_HEIGHT_PX = 34
     private const val DEFAULT_MASK_MAX_HEIGHT_PX = 56
-    private const val VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX = 72
-    private const val VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX = 112
+    private const val VISIBLE_BAND_BANNER_MASK_MAX_HEIGHT_PX = 44
+    private const val VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX = 48
+    private const val VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX = 72
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     private data class HeroMaskBand(
         val topRatio: Float,
         val heightRatio: Float,
         val minHeightPx: Int = DEFAULT_MASK_MIN_HEIGHT_PX,
-        val maxHeightPx: Int = DEFAULT_MASK_MAX_HEIGHT_PX
+        val maxHeightPx: Int = DEFAULT_MASK_MAX_HEIGHT_PX,
+        val leftRatio: Float = HERO_MASK_LEFT_RATIO,
+        val minLeftPx: Int = 24,
+        val maxWidthRatio: Float? = null
     )
 
     private val heroMaskBands = listOf(
@@ -48,13 +53,16 @@ internal object VisualTextSemanticFallbackPlanner {
     private val visibleBandHeroMaskBands = listOf(
         HeroMaskBand(
             topRatio = VISIBLE_BAND_BANNER_MASK_TOP_RATIO,
-            heightRatio = VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO
+            heightRatio = VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO,
+            maxHeightPx = VISIBLE_BAND_BANNER_MASK_MAX_HEIGHT_PX,
+            maxWidthRatio = VISIBLE_BAND_MASK_MAX_WIDTH_RATIO
         ),
         HeroMaskBand(
             topRatio = VISIBLE_BAND_TITLE_MASK_TOP_RATIO,
             heightRatio = VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO,
             minHeightPx = VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX,
-            maxHeightPx = VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX
+            maxHeightPx = VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX,
+            maxWidthRatio = VISIBLE_BAND_MASK_MAX_WIDTH_RATIO
         )
     )
 
@@ -65,7 +73,7 @@ internal object VisualTextSemanticFallbackPlanner {
         baseResponse: AndroidAnalysisResponse? = null
     ): List<ParsedComment> {
         val baseHeroRange = topHeroBaseRange(baseResponse)
-        val visibleBandRange = baseHeroRange ?: youtubeSearchInputRange(baseResponse)
+        val visibleBandRange = baseHeroRange
         return visualRoiPlan.rois.flatMap { roi ->
             semanticTopHeroCandidates(
                 roi = roi,
@@ -220,24 +228,6 @@ internal object VisualTextSemanticFallbackPlanner {
             .firstOrNull()
     }
 
-    private fun youtubeSearchInputRange(
-        baseResponse: AndroidAnalysisResponse?
-    ): VisualTextOcrCandidateFilter.CandidateRange? {
-        return baseResponse
-            ?.results
-            .orEmpty()
-            .asSequence()
-            .filter { item ->
-                item.authorId == YOUTUBE_USER_INPUT_AUTHOR_ID &&
-                    item.isOffensive &&
-                    item.evidenceSpans.isNotEmpty()
-            }
-            .mapNotNull { item ->
-                VisualTextOcrCandidateFilter.findAnalysisRanges(item.original).firstOrNull()
-            }
-            .firstOrNull()
-    }
-
     private fun isLikelyHeroTitleTextHit(
         sourceText: String,
         range: VisualTextOcrCandidateFilter.CandidateRange
@@ -280,12 +270,16 @@ internal object VisualTextSemanticFallbackPlanner {
         val height = (roiHeight * band.heightRatio)
             .roundToInt()
             .coerceIn(band.minHeightPx, band.maxHeightPx)
-        val left = roiBounds.left + max(24, (roiWidth * HERO_MASK_LEFT_RATIO).roundToInt())
+        val left = roiBounds.left + max(band.minLeftPx, (roiWidth * band.leftRatio).roundToInt())
         val top = roiBounds.top + (roiHeight * band.topRatio).roundToInt()
+        val maxWidth = band.maxWidthRatio
+            ?.let { ratio -> (roiWidth * ratio).roundToInt() }
+            ?.coerceAtLeast(96)
+            ?: (roiWidth - (left - roiBounds.left))
         val width = estimateSemanticVisualMaskWidth(
             visualText = visualText,
             textHeight = height,
-            maxWidth = roiWidth - (left - roiBounds.left)
+            maxWidth = min(maxWidth, roiWidth - (left - roiBounds.left))
         )
         val right = min(roiBounds.right, left + width)
         val bottom = min(roiBounds.bottom, top + height)

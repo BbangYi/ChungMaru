@@ -111,12 +111,15 @@ class VisualTextSemanticFallbackPlannerTest {
         assertEquals(2, candidates.size)
         assertTrue(candidates.all { it.commentText == "tlqkf" })
         assertTrue(candidates[0].boundsInScreen.top in 240..255)
-        assertTrue(candidates[1].boundsInScreen.top in 360..375)
+        assertTrue(candidates[1].boundsInScreen.top in 350..365)
+        assertTrue(candidates[0].boundsInScreen.bottom - candidates[0].boundsInScreen.top <= 44)
+        assertTrue(candidates[1].boundsInScreen.bottom - candidates[1].boundsInScreen.top <= 72)
+        assertTrue(candidates.all { it.boundsInScreen.right - it.boundsInScreen.left <= 230 })
         assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-visible-band:") })
     }
 
     @Test
-    fun selectCandidates_addsFirstVisibleBandHeroMasksFromSearchInputWhenOnlyQueryIsAvailable() {
+    fun selectCandidates_doesNotInventVisibleBandHeroMasksFromSearchInputOnly() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 321, 1080, 945),
             source = "youtube-visible-band",
@@ -138,12 +141,7 @@ class VisualTextSemanticFallbackPlannerTest {
             baseResponse = baseResponse
         )
 
-        assertEquals(2, candidates.size)
-        assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates[0].boundsInScreen.top in 390..405)
-        assertTrue(candidates[1].boundsInScreen.top in 585..595)
-        assertTrue(candidates[1].boundsInScreen.bottom - candidates[1].boundsInScreen.top >= 100)
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-visible-band:") })
+        assertTrue(candidates.isEmpty())
     }
 
     @Test

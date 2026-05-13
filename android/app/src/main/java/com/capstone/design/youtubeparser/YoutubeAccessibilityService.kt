@@ -1024,11 +1024,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
             screenHeight = metrics.heightPixels,
             baseResponse = baseResponse
         )
-        if (semanticFallbackCandidates.isNotEmpty()) {
+        val earlyRenderableSemanticFallbackCandidates = semanticFallbackCandidates
+            .filterNot { candidate -> candidate.visualOcrSource() == "youtube-visible-band" }
+        if (earlyRenderableSemanticFallbackCandidates.isNotEmpty()) {
             renderProvisionalVisualMaskOverlay(
                 packageName = packageName,
                 visualRoiPlan = visualRoiPlan,
-                selectedOcrCandidates = semanticFallbackCandidates,
+                selectedOcrCandidates = earlyRenderableSemanticFallbackCandidates,
+                baseResponse = baseResponse,
                 snapshotOverlayRevision = snapshotOverlayRevision,
                 snapshotVisualSceneRevision = snapshotVisualSceneRevision,
                 visualRunId = visualRunId
@@ -1189,7 +1192,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     baseResponse = baseResponse
                 )
                 val selectedVisualCandidates = mergeVisualCandidateSelections(
-                    selectedOcrCandidates + semanticFallbackCandidates
+                    selectedOcrCandidates = selectedOcrCandidates,
+                    semanticFallbackCandidates = semanticFallbackCandidates
                 )
                 if (selectedVisualCandidates.isEmpty()) {
                     Log.d(
@@ -1223,6 +1227,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     packageName = packageName,
                     visualRoiPlan = visualRoiPlan,
                     selectedOcrCandidates = selectedVisualCandidates,
+                    baseResponse = baseResponse,
                     snapshotOverlayRevision = snapshotOverlayRevision,
                     snapshotVisualSceneRevision = snapshotVisualSceneRevision,
                     visualRunId = visualRunId
@@ -1317,11 +1322,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
         packageName: String,
         visualRoiPlan: VisualTextRoiPlan,
         selectedOcrCandidates: List<ParsedComment>,
+        baseResponse: AndroidAnalysisResponse? = null,
         snapshotOverlayRevision: Long,
         snapshotVisualSceneRevision: Long,
         visualRunId: Long
     ) {
-        val response = buildProvisionalVisualResponse(selectedOcrCandidates)
+        val visualResponse = buildProvisionalVisualResponse(selectedOcrCandidates)
+        val response = mergeAnalysisResponses(baseResponse, visualResponse) ?: visualResponse
         val analysis = AndroidAnalysisAttempt(
             ok = true,
             packageName = packageName,
@@ -1464,21 +1471,28 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun mergeVisualCandidateSelections(
-        candidates: List<ParsedComment>
+        selectedOcrCandidates: List<ParsedComment>,
+        semanticFallbackCandidates: List<ParsedComment> = emptyList()
     ): List<ParsedComment> {
         val selected = mutableListOf<ParsedComment>()
-        candidates
-            .sortedWith(
-                compareBy<ParsedComment> { visualCandidateSourceRank(it) }
-                    .thenBy { it.boundsInScreen.top }
-                    .thenBy { it.boundsInScreen.left }
-            )
-            .forEach { candidate ->
-                if (selected.size >= MAX_VISUAL_ANALYSIS_CANDIDATES) return@forEach
-                if (selected.none { existing -> isSameVisualCandidate(existing, candidate) }) {
-                    selected += candidate
+
+        fun appendCandidates(candidates: List<ParsedComment>) {
+            candidates
+                .sortedWith(
+                    compareBy<ParsedComment> { visualCandidateSourceRank(it) }
+                        .thenBy { it.boundsInScreen.top }
+                        .thenBy { it.boundsInScreen.left }
+                )
+                .forEach { candidate ->
+                    if (selected.size >= MAX_VISUAL_ANALYSIS_CANDIDATES) return@forEach
+                    if (selected.none { existing -> isSameVisualCandidate(existing, candidate) }) {
+                        selected += candidate
+                    }
                 }
-            }
+        }
+
+        appendCandidates(selectedOcrCandidates)
+        appendCandidates(semanticFallbackCandidates)
         return selected
     }
 
