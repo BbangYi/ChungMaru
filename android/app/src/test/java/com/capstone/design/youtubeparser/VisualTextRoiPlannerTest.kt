@@ -227,10 +227,12 @@ class VisualTextRoiPlannerTest {
             screenHeight = 1792
         )
 
-        assertEquals(1, rois.size)
+        assertEquals(3, rois.size)
         assertTrue(rois.all { it.source == "youtube-visible-band" })
         assertEquals("fallback-first-viewport-band", rois[0].reason)
         assertTrue(rois[0].boundsInScreen.top > 230)
+        assertTrue(rois[1].boundsInScreen.top > rois[0].boundsInScreen.top)
+        assertTrue(rois[2].boundsInScreen.top > rois[1].boundsInScreen.top)
         assertTrue(rois.all { roi ->
             roi.boundsInScreen.bottom - roi.boundsInScreen.top <= (1792 * 0.27f).toInt()
         })
@@ -248,11 +250,12 @@ class VisualTextRoiPlannerTest {
             screenHeight = 2400
         )
 
-        assertEquals(1, rois.size)
-        assertEquals("youtube-visible-band", rois.single().source)
-        assertEquals(9, rois.single().priority)
-        assertEquals(174, rois.single().boundsInScreen.top)
-        assertTrue(rois.single().boundsInScreen.bottom >= 790)
+        assertEquals(3, rois.size)
+        assertTrue(rois.all { it.source == "youtube-visible-band" })
+        assertEquals(9, rois.first().priority)
+        assertEquals(174, rois.first().boundsInScreen.top)
+        assertTrue(rois.first().boundsInScreen.bottom >= 790)
+        assertTrue(rois.last().boundsInScreen.bottom > 1800)
     }
 
     @Test
@@ -294,8 +297,8 @@ class VisualTextRoiPlannerTest {
             screenHeight = 1280
         )
 
-        assertEquals(1, rois.size)
-        assertEquals("youtube-visible-band", rois.single().source)
+        assertEquals(3, rois.size)
+        assertTrue(rois.all { it.source == "youtube-visible-band" })
     }
 
     @Test

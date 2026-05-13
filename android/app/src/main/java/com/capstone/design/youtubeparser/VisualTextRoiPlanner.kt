@@ -26,6 +26,8 @@ object VisualTextRoiPlanner {
     private const val MAX_VISIBLE_TOP_RATIO = 0.9f
     private const val OVERLAP_SUPPRESSION_RATIO = 0.72f
     private const val FALLBACK_BAND_HEIGHT_RATIO = 0.26f
+    private const val FALLBACK_BAND_OVERLAP_PX = 32
+    private const val MAX_FALLBACK_BAND_COUNT = 3
     private const val TOP_CONTROL_REGION_RATIO = 0.14f
     private const val TOP_CONTROL_REGION_MAX_PX = 230
     private const val TOP_HERO_MEDIA_MIN_HEIGHT_PX = 180
@@ -300,24 +302,29 @@ object VisualTextRoiPlanner {
 
         val firstTop = filterBottom + SCREEN_EDGE_PADDING_PX
         val bandHeight = (screenHeight * FALLBACK_BAND_HEIGHT_RATIO).toInt().coerceAtLeast(MIN_HEIGHT_PX)
-        val firstBottom = min(screenHeight, firstTop + bandHeight)
-        if (firstBottom - firstTop < MIN_HEIGHT_PX) return emptyList()
+        val maxVisibleTop = (screenHeight * MAX_VISIBLE_TOP_RATIO).toInt()
+        val bandStep = (bandHeight - FALLBACK_BAND_OVERLAP_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val fallbackRois = mutableListOf<VisualTextRoi>()
+        var top = firstTop
 
-        return listOf(
-            VisualTextRoi(
+        while (fallbackRois.size < MAX_FALLBACK_BAND_COUNT && top < maxVisibleTop) {
+            val bottom = min(screenHeight, top + bandHeight)
+            if (bottom - top < MIN_HEIGHT_PX) break
+            fallbackRois += VisualTextRoi(
                 boundsInScreen = BoundsRect(
                     left = 0,
-                    top = firstTop,
+                    top = top,
                     right = screenWidth,
-                    bottom = firstBottom
+                    bottom = bottom
                 ),
                 source = "youtube-visible-band",
                 priority = 9,
                 reason = "fallback-first-viewport-band"
             )
-        ).filter { roi ->
-            roi.boundsInScreen.bottom - roi.boundsInScreen.top >= MIN_HEIGHT_PX
+            top += bandStep
         }
+
+        return fallbackRois
     }
 
     private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
