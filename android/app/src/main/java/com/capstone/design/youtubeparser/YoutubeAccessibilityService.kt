@@ -35,7 +35,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val CONTENT_OVERLAY_STABILIZATION_MS = 48L
         private const val SCROLL_CONTENT_CHANGE_PRESERVE_MS =
             SCROLL_OVERLAY_STABILIZATION_MS + CONTENT_OVERLAY_STABILIZATION_MS
-        private const val OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS = 250L
+        private const val OVERLAY_SELF_CONTENT_CHANGE_GRACE_MS = 64L
         private const val PARSE_DELAY_CONTENT_MS = 40L
         private const val PARSE_DELAY_WINDOW_MS = 60L
         private const val RETRY_AFTER_IN_FLIGHT_MS = 16L
