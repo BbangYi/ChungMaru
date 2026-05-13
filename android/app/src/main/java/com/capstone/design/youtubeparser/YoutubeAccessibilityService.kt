@@ -1278,7 +1278,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         null
                     }
                 )
-                val mergedResponse = mergeAnalysisResponses(mergedBaseResponse, rawAnalysis.response)
+                val visualMaskResponse = buildProvisionalVisualResponse(selectedVisualCandidates)
+                val mergedVisualResponse = mergeAnalysisResponses(rawAnalysis.response, visualMaskResponse)
+                val mergedResponse = mergeAnalysisResponses(mergedBaseResponse, mergedVisualResponse)
                 storeVisualSupplement(
                     packageName = packageName,
                     visualRoiPlan = visualRoiPlan,

@@ -513,6 +513,68 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_expandsTopHeroDisplayOcrMaskForLargeThumbnailText() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(54, 388, 287, 444),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:0,309,1080,971:Tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue("spec=${specs.single()}", specs.single().left <= 30)
+        assertTrue("spec=${specs.single()}", specs.single().width >= 320)
+        assertTrue("spec=${specs.single()}", specs.single().height in 110..132)
+        assertTrue("spec=${specs.single()}", specs.single().top <= 360)
+    }
+
+    @Test
+    fun buildSpecs_expandsTopHeroDisplayOcrMaskWhenMlKitBoxIsShorter() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(54, 349, 252, 396),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:0,309,1080,644:Tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue("spec=${specs.single()}", specs.single().left <= 30)
+        assertTrue("spec=${specs.single()}", specs.single().width >= 280)
+        assertTrue("spec=${specs.single()}", specs.single().height in 96..112)
+        assertTrue("spec=${specs.single()}", specs.single().top in 318..330)
+    }
+
+    @Test
+    fun buildSpecs_expandsLargeCardDisplayOcrMaskWithLeftPadding() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(104, 705, 281, 777),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:26,559,535,1456:Tlgkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue("spec=${specs.single()}", specs.single().left <= 80)
+        assertTrue("spec=${specs.single()}", specs.single().width >= 210)
+        assertTrue("spec=${specs.single()}", specs.single().height in 120..132)
+    }
+
+    @Test
     fun buildSpecs_usesVisualOcrTextWidthForSpacedGlyphMasks() {
         val response = responseOf(
             resultOf(

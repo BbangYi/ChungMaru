@@ -17,7 +17,7 @@ data class VisualTextRoiPlan(
 )
 
 object VisualTextRoiPlanner {
-    private const val MAX_ROI_COUNT = 4
+    private const val MAX_ROI_COUNT = 6
     private const val MIN_WIDTH_PX = 120
     private const val MIN_HEIGHT_PX = 60
     private const val SCREEN_EDGE_PADDING_PX = 6

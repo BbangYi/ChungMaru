@@ -23,8 +23,8 @@ class VisualTextSemanticFallbackPlannerTest {
 
         assertEquals(2, candidates.size)
         assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates[0].boundsInScreen.top in 225..245)
-        assertTrue(candidates[1].boundsInScreen.top in 355..375)
+        assertTrue(candidates[0].boundsInScreen.top in 205..220)
+        assertTrue(candidates[1].boundsInScreen.top in 305..325)
         assertTrue(candidates.all { it.boundsInScreen.left in 24..40 })
         assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
     }
@@ -47,7 +47,37 @@ class VisualTextSemanticFallbackPlannerTest {
 
         assertEquals(2, candidates.size)
         assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates.any { it.boundsInScreen.top in 370..390 })
+        assertTrue(candidates.any { it.boundsInScreen.top in 325..340 })
+    }
+
+    @Test
+    fun selectCandidates_addsCompositeHeroMasksFromBaseTitleWhenSourceTextIsNotTitleLike() {
+        val roi = VisualTextRoi(
+            boundsInScreen = BoundsRect(0, 309, 1080, 993),
+            source = "youtube-composite-card",
+            priority = 0,
+            reason = "content-description-only",
+            sourceText = "semo playlist 917K views 7 months ago"
+        )
+        val baseResponse = responseOf(
+            resultOf(
+                original = "🔥\"Tlqkf 또 보여줘야 돼!\" : 식케이 (Sik-K), Lil Moshpit",
+                bounds = BoundsRect(96, 596, 608, 664),
+                authorId = "android-accessibility:title"
+            )
+        )
+
+        val candidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+            visualRoiPlan = VisualTextRoiPlan(rois = listOf(roi), candidateCount = 1),
+            screenWidth = 1080,
+            screenHeight = 2400,
+            baseResponse = baseResponse
+        )
+
+        assertEquals(2, candidates.size)
+        assertTrue(candidates[0].boundsInScreen.top in 385..400)
+        assertTrue(candidates[1].boundsInScreen.top in 570..585)
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
     }
 
     @Test

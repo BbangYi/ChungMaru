@@ -9,9 +9,9 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val HERO_MIN_WIDTH_RATIO = 0.48f
     private const val HERO_MIN_HEIGHT_PX = 180
     private const val HERO_MASK_LEFT_RATIO = 0.05f
-    private const val HERO_BANNER_MASK_TOP_RATIO = 0.18f
+    private const val HERO_BANNER_MASK_TOP_RATIO = 0.12f
     private const val HERO_BANNER_MASK_HEIGHT_RATIO = 0.14f
-    private const val HERO_TITLE_MASK_TOP_RATIO = 0.52f
+    private const val HERO_TITLE_MASK_TOP_RATIO = 0.39f
     private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
     private const val HERO_TITLE_PREFIX_MAX_CHARS = 110
     private const val VISIBLE_BAND_TOP_REGION_RATIO = 0.36f
@@ -67,6 +67,11 @@ internal object VisualTextSemanticFallbackPlanner {
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
                 range = baseHeroRange
+            ) + semanticCompositeHeroCandidatesFromBaseTitle(
+                roi = roi,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight,
+                range = baseHeroRange
             )
         }
     }
@@ -82,6 +87,34 @@ internal object VisualTextSemanticFallbackPlanner {
                 isLikelyHeroTitleTextHit(roi.sourceText, candidateRange)
             }
             ?: return emptyList()
+
+        return heroMaskBands.mapNotNull { band ->
+            val bounds = semanticTopHeroMaskBounds(
+                roi = roi,
+                visualText = range.visualText,
+                band = band
+            ) ?: return@mapNotNull null
+
+            ParsedComment(
+                commentText = range.analysisText,
+                boundsInScreen = bounds,
+                authorId = VisualTextOcrMetadataCodec.encode(
+                    source = roi.source,
+                    roiBoundsInScreen = roi.boundsInScreen,
+                    visualText = range.visualText
+                )
+            )
+        }
+    }
+
+    private fun semanticCompositeHeroCandidatesFromBaseTitle(
+        roi: VisualTextRoi,
+        screenWidth: Int,
+        screenHeight: Int,
+        range: VisualTextOcrCandidateFilter.CandidateRange?
+    ): List<ParsedComment> {
+        if (range == null) return emptyList()
+        if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
 
         return heroMaskBands.mapNotNull { band ->
             val bounds = semanticTopHeroMaskBounds(
@@ -136,7 +169,6 @@ internal object VisualTextSemanticFallbackPlanner {
         screenHeight: Int
     ): Boolean {
         if (roi.source != "youtube-composite-card") return false
-        if (roi.sourceText.isBlank()) return false
 
         val bounds = roi.boundsInScreen
         val width = bounds.right - bounds.left

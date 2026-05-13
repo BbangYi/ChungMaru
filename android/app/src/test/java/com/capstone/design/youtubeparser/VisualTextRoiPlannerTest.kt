@@ -24,9 +24,9 @@ class VisualTextRoiPlannerTest {
             screenHeight = 1280
         )
 
-        assertEquals(4, rois.size)
+        assertEquals(6, rois.size)
         assertTrue(rois.all { it.source == "youtube-composite-card" })
-        assertEquals(listOf(174, 324, 474, 624), rois.map { it.boundsInScreen.top })
+        assertEquals(listOf(174, 324, 474, 624, 774, 924), rois.map { it.boundsInScreen.top })
     }
 
     @Test
@@ -46,7 +46,7 @@ class VisualTextRoiPlannerTest {
         )
 
         assertEquals(6, plan.candidateCount)
-        assertEquals(4, plan.rois.size)
+        assertEquals(6, plan.rois.size)
     }
 
     @Test
