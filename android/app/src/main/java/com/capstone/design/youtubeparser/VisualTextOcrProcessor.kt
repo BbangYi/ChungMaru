@@ -146,7 +146,7 @@ class VisualTextOcrProcessor {
         roiSource: String
     ): List<ParsedComment> {
         val lineText = text.replace(Regex("\\s+"), " ").trim()
-        if (!isUsefulOcrText(lineText)) return emptyList()
+        if (!VisualTextOcrCandidateFilter.isUsefulOcrLineText(lineText)) return emptyList()
         val candidateRanges = VisualTextOcrCandidateFilter.findAnalysisRanges(lineText)
         if (candidateRanges.isEmpty()) {
             if (VisualTextOcrCandidateFilter.looksDebugRelevant(lineText)) {
@@ -452,15 +452,6 @@ class VisualTextOcrProcessor {
         )
     }
 
-    private fun isUsefulOcrText(text: String): Boolean {
-        if (text.length !in MIN_TEXT_LENGTH..MAX_TEXT_LENGTH) return false
-        val lower = text.lowercase()
-        if (lower.startsWith("http://") || lower.startsWith("https://")) return false
-        if (lower in COMMON_UI_LABELS) return false
-        if (Regex("""^[\d.,]+\s*[kmb]?$""", RegexOption.IGNORE_CASE).matches(text)) return false
-        return text.any { it.isLetterOrDigit() || it.code in 0xAC00..0xD7A3 }
-    }
-
     private fun deduplicate(items: List<ParsedComment>): List<ParsedComment> {
         return items
             .distinctBy { item ->
@@ -483,8 +474,6 @@ class VisualTextOcrProcessor {
         private const val MIN_CROP_HEIGHT_PX = 40
         private const val MIN_TEXT_WIDTH_PX = 20
         private const val MIN_TEXT_HEIGHT_PX = 12
-        private const val MIN_TEXT_LENGTH = 2
-        private const val MAX_TEXT_LENGTH = 120
         private const val KOREAN_TEXT_CHAR_WIDTH_PX = 28
         private const val LATIN_TEXT_CHAR_WIDTH_PX = 14
         private const val KOREAN_TEXT_HEIGHT_WIDTH_RATIO = 0.72f
@@ -496,22 +485,6 @@ class VisualTextOcrProcessor {
         private const val MAX_LINE_FALLBACK_WIDTH_PX = 180
         private const val MAX_LINE_FALLBACK_HEIGHT_PX = 72
 
-        private val COMMON_UI_LABELS = setOf(
-            "all",
-            "shorts",
-            "videos",
-            "watched",
-            "unwatched",
-            "home",
-            "subscriptions",
-            "share",
-            "save",
-            "download",
-            "전체",
-            "동영상",
-            "홈",
-            "구독"
-        )
     }
 }
 
@@ -686,6 +659,15 @@ internal object VisualTextOcrCandidateFilter {
         return findAnalysisRanges(text).isNotEmpty()
     }
 
+    fun isUsefulOcrLineText(text: String): Boolean {
+        if (text.length !in MIN_ANALYSIS_TEXT_LENGTH..MAX_OCR_LINE_TEXT_LENGTH) return false
+        val lower = text.lowercase()
+        if (lower.startsWith("http://") || lower.startsWith("https://")) return false
+        if (lower in COMMON_UI_LABELS) return false
+        if (Regex("""^[\d.,]+\s*[kmb]?$""", RegexOption.IGNORE_CASE).matches(text)) return false
+        return text.any { it.isLetterOrDigit() || it.code in 0xAC00..0xD7A3 }
+    }
+
     fun findAnalysisRanges(text: String): List<CandidateRange> {
         val normalized = normalizeForMatching(text)
         if (normalized.value.trim().length < MIN_ANALYSIS_TEXT_LENGTH) return emptyList()
@@ -722,6 +704,24 @@ internal object VisualTextOcrCandidateFilter {
     }
 
     private const val MIN_ANALYSIS_TEXT_LENGTH = 2
+    private const val MAX_OCR_LINE_TEXT_LENGTH = 260
+
+    private val COMMON_UI_LABELS = setOf(
+        "all",
+        "shorts",
+        "videos",
+        "watched",
+        "unwatched",
+        "home",
+        "subscriptions",
+        "share",
+        "save",
+        "download",
+        "전체",
+        "동영상",
+        "홈",
+        "구독"
+    )
 
     private fun normalizeForMatching(text: String): NormalizedText {
         val value = StringBuilder(text.length)

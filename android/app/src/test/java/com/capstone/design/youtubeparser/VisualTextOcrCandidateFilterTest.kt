@@ -30,6 +30,24 @@ class VisualTextOcrCandidateFilterTest {
     }
 
     @Test
+    fun isUsefulOcrLineText_keepsLongYoutubeTitleForCandidateExtraction() {
+        val title = "🔥\"Tlqkf 또 보여줘야 돼!\" : 식케이 (Sik-K), Lil Moshpit - LOV3 " +
+            "(Feat. Bryan Chase, Okasian) 공식 라이브 무대 다시 보기와 한국 힙합 밈 설명 모음 " +
+            "검색 결과 제목 전체가 길게 이어지는 OCR 라인"
+
+        assertTrue(title.length > 120)
+        assertTrue(VisualTextOcrCandidateFilter.isUsefulOcrLineText(title))
+        assertEquals(listOf("tlqkf"), VisualTextOcrCandidateFilter.findAnalysisRanges(title).map { it.analysisText })
+    }
+
+    @Test
+    fun isUsefulOcrLineText_dropsCommonUiAndNumericLines() {
+        assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("Shorts"))
+        assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("2.1M"))
+        assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("https://youtube.com/watch?v=test"))
+    }
+
+    @Test
     fun findAnalysisRanges_returnsOnlyLikelyHarmfulSubstrings() {
         val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("What is 'Tlakf'? Contemporary Korean")
 
