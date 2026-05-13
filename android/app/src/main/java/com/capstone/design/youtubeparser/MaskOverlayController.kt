@@ -106,6 +106,12 @@ object AndroidMaskOverlayPlanner {
     private const val YOUTUBE_INPUT_MAX_MASK_WIDTH_RATIO = 0.62f
     private const val YOUTUBE_INPUT_LATIN_CHAR_WIDTH_PX = 24
     private const val YOUTUBE_INPUT_KOREAN_CHAR_WIDTH_PX = 34
+    private const val TOP_SEARCH_FALLBACK_MAX_TOP_PX = 150
+    private const val TOP_SEARCH_FALLBACK_MIN_WIDTH_PX = 180
+    private const val TOP_SEARCH_FALLBACK_MAX_WIDTH_PX = 480
+    private const val TOP_SEARCH_FALLBACK_MIN_HEIGHT_PX = 36
+    private const val TOP_SEARCH_FALLBACK_MAX_HEIGHT_PX = 96
+    private const val TOP_SEARCH_FALLBACK_MAX_TEXT_LENGTH = 14
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -544,7 +550,15 @@ object AndroidMaskOverlayPlanner {
         val lineCount = estimateLineCount(fullSpec.height, originalLength)
         val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
 
-        if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID && isWholeTextSpan(start, end, originalLength)) {
+        if (shouldUseYoutubeInputGeometryFallback(
+                fullSpec = fullSpec,
+                original = original,
+                start = start,
+                end = end,
+                originalLength = originalLength,
+                authorId = authorId
+            )
+        ) {
             return toYoutubeInputSpanSpec(
                 fullSpec = fullSpec,
                 spanText = span.text,
@@ -690,6 +704,27 @@ object AndroidMaskOverlayPlanner {
     private fun isWholeTextSpan(start: Int, end: Int, originalLength: Int): Boolean {
         return start <= LEADING_SPAN_PREFIX_TOLERANCE &&
             end >= originalLength - LEADING_SPAN_PREFIX_TOLERANCE
+    }
+
+    private fun shouldUseYoutubeInputGeometryFallback(
+        fullSpec: MaskOverlaySpec,
+        original: String,
+        start: Int,
+        end: Int,
+        originalLength: Int,
+        authorId: String?
+    ): Boolean {
+        if (!isWholeTextSpan(start, end, originalLength)) return false
+        if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID) return true
+        if (!authorId.isNullOrBlank()) return false
+
+        val normalized = original.replace(Regex("\\s+"), " ").trim()
+        if (normalized.length !in 2..TOP_SEARCH_FALLBACK_MAX_TEXT_LENGTH) return false
+        if (!VisualTextOcrCandidateFilter.shouldAnalyze(normalized)) return false
+
+        return fullSpec.top <= TOP_SEARCH_FALLBACK_MAX_TOP_PX &&
+            fullSpec.width in TOP_SEARCH_FALLBACK_MIN_WIDTH_PX..TOP_SEARCH_FALLBACK_MAX_WIDTH_PX &&
+            fullSpec.height in TOP_SEARCH_FALLBACK_MIN_HEIGHT_PX..TOP_SEARCH_FALLBACK_MAX_HEIGHT_PX
     }
 
     private fun toYoutubeInputSpanSpec(

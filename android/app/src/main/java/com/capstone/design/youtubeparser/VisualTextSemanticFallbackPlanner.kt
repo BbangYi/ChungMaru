@@ -14,6 +14,14 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val HERO_TITLE_MASK_TOP_RATIO = 0.52f
     private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
     private const val HERO_TITLE_PREFIX_MAX_CHARS = 110
+    private const val VISIBLE_BAND_TOP_REGION_RATIO = 0.36f
+    private const val VISIBLE_BAND_MIN_WIDTH_RATIO = 0.70f
+    private const val VISIBLE_BAND_MIN_HEIGHT_PX = 220
+    private const val VISIBLE_BAND_BANNER_MASK_TOP_RATIO = 0.12f
+    private const val VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO = 0.14f
+    private const val VISIBLE_BAND_TITLE_MASK_TOP_RATIO = 0.43f
+    private const val VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO = 0.18f
+    private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     private data class HeroMaskBand(
         val topRatio: Float,
@@ -31,16 +39,34 @@ internal object VisualTextSemanticFallbackPlanner {
         )
     )
 
+    private val visibleBandHeroMaskBands = listOf(
+        HeroMaskBand(
+            topRatio = VISIBLE_BAND_BANNER_MASK_TOP_RATIO,
+            heightRatio = VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO
+        ),
+        HeroMaskBand(
+            topRatio = VISIBLE_BAND_TITLE_MASK_TOP_RATIO,
+            heightRatio = VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO
+        )
+    )
+
     fun selectCandidates(
         visualRoiPlan: VisualTextRoiPlan,
         screenWidth: Int,
-        screenHeight: Int
+        screenHeight: Int,
+        baseResponse: AndroidAnalysisResponse? = null
     ): List<ParsedComment> {
+        val baseHeroRange = topHeroBaseRange(baseResponse)
         return visualRoiPlan.rois.flatMap { roi ->
             semanticTopHeroCandidates(
                 roi = roi,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
+            ) + semanticVisibleBandHeroCandidates(
+                roi = roi,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight,
+                range = baseHeroRange
             )
         }
     }
@@ -76,6 +102,34 @@ internal object VisualTextSemanticFallbackPlanner {
         }
     }
 
+    private fun semanticVisibleBandHeroCandidates(
+        roi: VisualTextRoi,
+        screenWidth: Int,
+        screenHeight: Int,
+        range: VisualTextOcrCandidateFilter.CandidateRange?
+    ): List<ParsedComment> {
+        if (range == null) return emptyList()
+        if (!isTopHeroVisibleBandRoi(roi, screenWidth, screenHeight)) return emptyList()
+
+        return visibleBandHeroMaskBands.mapNotNull { band ->
+            val bounds = semanticTopHeroMaskBounds(
+                roi = roi,
+                visualText = range.visualText,
+                band = band
+            ) ?: return@mapNotNull null
+
+            ParsedComment(
+                commentText = range.analysisText,
+                boundsInScreen = bounds,
+                authorId = VisualTextOcrMetadataCodec.encode(
+                    source = roi.source,
+                    roiBoundsInScreen = roi.boundsInScreen,
+                    visualText = range.visualText
+                )
+            )
+        }
+    }
+
     private fun isTopHeroSemanticRoi(
         roi: VisualTextRoi,
         screenWidth: Int,
@@ -90,6 +144,39 @@ internal object VisualTextSemanticFallbackPlanner {
         return bounds.top < (screenHeight * HERO_TOP_REGION_RATIO).roundToInt() &&
             width >= (screenWidth * HERO_MIN_WIDTH_RATIO).roundToInt() &&
             height >= HERO_MIN_HEIGHT_PX
+    }
+
+    private fun isTopHeroVisibleBandRoi(
+        roi: VisualTextRoi,
+        screenWidth: Int,
+        screenHeight: Int
+    ): Boolean {
+        if (roi.source != "youtube-visible-band") return false
+
+        val bounds = roi.boundsInScreen
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        return bounds.top < (screenHeight * VISIBLE_BAND_TOP_REGION_RATIO).roundToInt() &&
+            width >= (screenWidth * VISIBLE_BAND_MIN_WIDTH_RATIO).roundToInt() &&
+            height >= VISIBLE_BAND_MIN_HEIGHT_PX
+    }
+
+    private fun topHeroBaseRange(
+        baseResponse: AndroidAnalysisResponse?
+    ): VisualTextOcrCandidateFilter.CandidateRange? {
+        return baseResponse
+            ?.results
+            .orEmpty()
+            .asSequence()
+            .filter { item -> item.isOffensive && item.evidenceSpans.isNotEmpty() }
+            .filterNot { item -> item.authorId == YOUTUBE_USER_INPUT_AUTHOR_ID }
+            .mapNotNull { item ->
+                VisualTextOcrCandidateFilter.findAnalysisRanges(item.original)
+                    .firstOrNull { range ->
+                        isLikelyHeroTitleTextHit(item.original, range)
+                    }
+            }
+            .firstOrNull()
     }
 
     private fun isLikelyHeroTitleTextHit(

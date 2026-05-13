@@ -1185,7 +1185,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 val semanticFallbackCandidates = VisualTextSemanticFallbackPlanner.selectCandidates(
                     visualRoiPlan = visualRoiPlan,
                     screenWidth = screenWidth,
-                    screenHeight = screenHeight
+                    screenHeight = screenHeight,
+                    baseResponse = baseResponse
                 )
                 val selectedVisualCandidates = mergeVisualCandidateSelections(
                     selectedOcrCandidates + semanticFallbackCandidates

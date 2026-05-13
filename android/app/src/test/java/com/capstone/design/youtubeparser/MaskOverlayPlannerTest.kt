@@ -819,6 +819,24 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_usesWideTopSearchGeometryWhenSourceIsMissing() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(105, 60, 452, 112),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 675, screenHeight = 1478)
+
+        assertEquals(1, specs.size)
+        assertEquals(123, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
+    }
+
+    @Test
     fun buildSpecs_rejectsChromeSearchInputMaskBelowToolbarControls() {
         val response = responseOf(
             resultOf(
