@@ -203,14 +203,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     if (scrollTranslation.translated) {
                         markOverlayRevisionStale()
                     } else if (
-                        MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                        MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                             eventType = event.eventType,
                             hasActiveMasks = hasActiveMasks,
                             hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta
                         )
                     ) {
-                        Log.d(TAG, "preserve mask overlay: unresolved scroll delta")
+                        Log.d(TAG, "hide mask overlay until scroll recapture: unresolved delta")
+                        hideMaskOverlayViewsUntilRecapture()
                         markOverlayRevisionStale()
+                        scheduleDeferredFollowUpParse()
                     } else if (scrollTranslation.shouldHideUntilRecapture && hasActiveMasks) {
                         Log.d(
                             TAG,

@@ -89,7 +89,7 @@ internal object MaskOverlayEventPolicy {
             !isLikelySelfContentChange
     }
 
-    fun shouldPreserveOnUnresolvedScrollDelta(
+    fun shouldHideOnUnresolvedScrollDelta(
         eventType: Int,
         hasActiveMasks: Boolean,
         hasResolvedScrollDelta: Boolean

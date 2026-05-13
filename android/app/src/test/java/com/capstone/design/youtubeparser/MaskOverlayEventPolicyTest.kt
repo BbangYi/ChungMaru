@@ -206,30 +206,30 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
-    fun shouldPreserveOnUnresolvedScrollDelta_keepsMasksUntilScrollPositionIsKnown() {
+    fun shouldHideOnUnresolvedScrollDelta_recapturesWhenScrollPositionIsUnknown() {
         assertTrue(
-            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+            MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
                 hasResolvedScrollDelta = false
             )
         )
         assertFalse(
-            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+            MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
                 hasResolvedScrollDelta = true
             )
         )
         assertFalse(
-            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+            MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                 eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 hasActiveMasks = true,
                 hasResolvedScrollDelta = false
             )
         )
         assertFalse(
-            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+            MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = false,
                 hasResolvedScrollDelta = false
