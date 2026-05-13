@@ -201,6 +201,7 @@ class VisualTextOcrProcessor {
 
         return narrowBoundsToTextRange(
             bounds = lineBounds,
+            clipBounds = roiBounds,
             textLength = lineText.length,
             start = range.start,
             end = range.end,
@@ -245,6 +246,7 @@ class VisualTextOcrProcessor {
             if (range.start >= mapped.start && range.end <= mapped.end) {
                 narrowBoundsToTextRange(
                     bounds = translated,
+                    clipBounds = roiBounds,
                     textLength = (mapped.end - mapped.start).coerceAtLeast(1),
                     start = range.start - mapped.start,
                     end = range.end - mapped.start,
@@ -302,6 +304,7 @@ class VisualTextOcrProcessor {
 
     private fun narrowBoundsToTextRange(
         bounds: BoundsRect,
+        clipBounds: BoundsRect,
         textLength: Int,
         start: Int,
         end: Int,
@@ -357,6 +360,30 @@ class VisualTextOcrProcessor {
             left = compactBounds.first
             right = compactBounds.second
         }
+
+        return expandOcrCandidateBounds(
+            bounds = BoundsRect(
+                left = left,
+                top = bounds.top,
+                right = right,
+                bottom = bounds.bottom
+            ),
+            clipBounds = clipBounds
+        )
+    }
+
+    private fun expandOcrCandidateBounds(
+        bounds: BoundsRect,
+        clipBounds: BoundsRect
+    ): BoundsRect? {
+        val height = bounds.bottom - bounds.top
+        val horizontalPadding = max(
+            OCR_TEXT_HORIZONTAL_PADDING_PX,
+            (height * OCR_TEXT_HORIZONTAL_PADDING_HEIGHT_RATIO).roundToInt()
+        )
+        val left = max(clipBounds.left, bounds.left - horizontalPadding)
+        val right = min(clipBounds.right, bounds.right + horizontalPadding)
+        if (right - left < MIN_TEXT_WIDTH_PX) return null
 
         return BoundsRect(
             left = left,
@@ -479,6 +506,8 @@ class VisualTextOcrProcessor {
         private const val KOREAN_TEXT_HEIGHT_WIDTH_RATIO = 0.72f
         private const val LATIN_TEXT_HEIGHT_WIDTH_RATIO = 0.58f
         private const val COMPACT_TEXT_HORIZONTAL_PADDING_PX = 4
+        private const val OCR_TEXT_HORIZONTAL_PADDING_PX = 8
+        private const val OCR_TEXT_HORIZONTAL_PADDING_HEIGHT_RATIO = 0.18f
         private const val MAX_COMPACT_KOREAN_TEXT_WIDTH_PX = 112
         private const val MAX_COMPACT_LATIN_TEXT_WIDTH_PX = 84
         private const val MAX_LINE_FALLBACK_CODEPOINTS = 8

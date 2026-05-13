@@ -101,7 +101,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private data class AnalysisTextLocation(
         val keys: Set<String>,
-        val boundsInScreen: BoundsRect
+        val boundsInScreen: BoundsRect,
+        val authorId: String?
     )
 
     private data class ScrollTranslationResult(
@@ -1361,7 +1362,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 if (keys.isEmpty()) {
                     null
                 } else {
-                    AnalysisTextLocation(keys = keys, boundsInScreen = result.boundsInScreen)
+                    AnalysisTextLocation(
+                        keys = keys,
+                        boundsInScreen = result.boundsInScreen,
+                        authorId = result.authorId
+                    )
                 }
             }
             .orEmpty()
@@ -1476,6 +1481,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
             when {
                 !sameText -> false
+                visualMetadata != null && !baseLocation.isRenderableForOverlay() -> false
                 visualMetadata != null &&
                     isCoarseBaseLocation(candidate.boundsInScreen, baseLocation.boundsInScreen) -> false
                 overlapRatio >= VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO && visualMetadata != null -> true
@@ -1486,6 +1492,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 else -> false
             }
         }
+    }
+
+    private fun AnalysisTextLocation.isRenderableForOverlay(): Boolean {
+        val source = authorId ?: return false
+        return source == "android-accessibility:user_input" ||
+            source.startsWith("android-accessibility-range:") ||
+            source.startsWith("ocr:youtube-composite-card:") ||
+            source.startsWith("ocr:youtube-visible-band:")
     }
 
     private fun isCoarseBaseLocation(candidateBounds: BoundsRect, baseBounds: BoundsRect): Boolean {
