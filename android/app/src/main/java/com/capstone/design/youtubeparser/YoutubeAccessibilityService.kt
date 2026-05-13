@@ -77,6 +77,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var visualAnalysisInFlight = false
     @Volatile private var visualAnalysisRunId = 0L
     @Volatile private var lastVisualSupplement: VisualSupplementCache? = null
+    private var lastScreenshotRequestAtMs = 0L
     private var preservedRecentVisualMiss = false
     private var preservedRecentAnalysisFailure = false
     private var provisionalVisualMaskActive = false
@@ -1009,6 +1010,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
 
+        val screenshotThrottleDelayMs = remainingScreenshotThrottleDelayMs()
+        if (screenshotThrottleDelayMs > 0L) {
+            Log.d(TAG, "defer visual OCR screenshot: throttleDelayMs=$screenshotThrottleDelayMs")
+            scheduleParse(
+                delayMs = screenshotThrottleDelayMs,
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                replaceExisting = true
+            )
+            return true
+        }
+
         if (clearExistingOverlay) {
             clearMaskOverlay()
         }
@@ -1061,6 +1073,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         )
 
         try {
+            lastScreenshotRequestAtMs = SystemClock.uptimeMillis()
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
                 visualExecutor,
@@ -1119,6 +1132,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        val retryDelayMs = screenshotFailureRetryDelayMs(errorCode)
                         saveVisualFailureDiagnostics(
                             packageName = packageName,
                             visualRoiPlan = visualRoiPlan,
@@ -1132,7 +1146,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 snapshotVisualSceneRevision = snapshotVisualSceneRevision
                             )
                         }
-                        finishVisualAnalysis(visualRunId)
+                        finishVisualAnalysis(visualRunId, retryDelayMs = retryDelayMs)
                     }
                 }
             )
@@ -1419,10 +1433,44 @@ class YoutubeAccessibilityService : AccessibilityService() {
         scheduleFollowUpAfterVisualGate()
     }
 
-    private fun finishVisualAnalysis(visualRunId: Long) {
+    private fun finishVisualAnalysis(
+        visualRunId: Long,
+        retryDelayMs: Long? = null
+    ) {
         if (visualRunId != visualAnalysisRunId) return
         visualAnalysisInFlight = false
+        if (retryDelayMs != null) {
+            followUpParseRequested = false
+            Log.d(TAG, "retry visual OCR after screenshot throttle delayMs=$retryDelayMs")
+            handler.post {
+                scheduleParse(
+                    delayMs = retryDelayMs,
+                    eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                    replaceExisting = true
+                )
+            }
+            return
+        }
         scheduleFollowUpAfterVisualGate()
+    }
+
+    private fun remainingScreenshotThrottleDelayMs(): Long {
+        val lastRequestAtMs = lastScreenshotRequestAtMs
+        if (lastRequestAtMs <= 0L) return 0L
+
+        return MaskOverlayEventPolicy.screenshotRequestThrottleDelay(
+            elapsedSinceLastRequestMs = SystemClock.uptimeMillis() - lastRequestAtMs
+        )
+    }
+
+    private fun screenshotFailureRetryDelayMs(errorCode: Int): Long? {
+        val lastRequestAtMs = lastScreenshotRequestAtMs
+        if (lastRequestAtMs <= 0L) return null
+
+        return MaskOverlayEventPolicy.screenshotFailureRetryDelay(
+            errorCode = errorCode,
+            elapsedSinceLastRequestMs = SystemClock.uptimeMillis() - lastRequestAtMs
+        )
     }
 
     private fun clearMaskOverlayAfterVisualMiss(

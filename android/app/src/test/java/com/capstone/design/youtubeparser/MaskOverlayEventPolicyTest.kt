@@ -375,4 +375,19 @@ class MaskOverlayEventPolicyTest {
             )
         )
     }
+
+    @Test
+    fun screenshotRequestThrottleDelay_waitsUntilScreenshotCooldownPasses() {
+        assertEquals(380L, MaskOverlayEventPolicy.screenshotRequestThrottleDelay(0L))
+        assertEquals(180L, MaskOverlayEventPolicy.screenshotRequestThrottleDelay(200L))
+        assertEquals(0L, MaskOverlayEventPolicy.screenshotRequestThrottleDelay(380L))
+        assertEquals(0L, MaskOverlayEventPolicy.screenshotRequestThrottleDelay(500L))
+    }
+
+    @Test
+    fun screenshotFailureRetryDelay_retriesOnlyIntervalTooShortFailures() {
+        assertEquals(444L, MaskOverlayEventPolicy.screenshotFailureRetryDelay(3, 0L))
+        assertEquals(144L, MaskOverlayEventPolicy.screenshotFailureRetryDelay(3, 300L))
+        assertEquals(null, MaskOverlayEventPolicy.screenshotFailureRetryDelay(1, 0L))
+    }
 }

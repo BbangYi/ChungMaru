@@ -14,6 +14,10 @@ internal enum class MaskOverlayScrollDeltaSource {
 }
 
 internal object MaskOverlayEventPolicy {
+    private const val TAKE_SCREENSHOT_INTERVAL_TOO_SHORT_ERROR_CODE = 3
+    private const val MIN_SCREENSHOT_REQUEST_INTERVAL_MS = 380L
+    private const val SCREENSHOT_RETRY_GRACE_MS = 64L
+
     fun resolveScrollTranslationDelta(
         eventType: Int,
         hasActiveMasks: Boolean,
@@ -135,6 +139,19 @@ internal object MaskOverlayEventPolicy {
         return eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             hasActiveMasks &&
             overlayUpdatedRecently
+    }
+
+    fun screenshotRequestThrottleDelay(elapsedSinceLastRequestMs: Long): Long {
+        if (elapsedSinceLastRequestMs < 0L) return MIN_SCREENSHOT_REQUEST_INTERVAL_MS
+        return (MIN_SCREENSHOT_REQUEST_INTERVAL_MS - elapsedSinceLastRequestMs).coerceAtLeast(0L)
+    }
+
+    fun screenshotFailureRetryDelay(
+        errorCode: Int,
+        elapsedSinceLastRequestMs: Long
+    ): Long? {
+        if (errorCode != TAKE_SCREENSHOT_INTERVAL_TOO_SHORT_ERROR_CODE) return null
+        return screenshotRequestThrottleDelay(elapsedSinceLastRequestMs) + SCREENSHOT_RETRY_GRACE_MS
     }
 
     private fun absoluteOverlayDelta(currentAbsoluteScroll: Int, lastAbsoluteScroll: Int?): Int {
