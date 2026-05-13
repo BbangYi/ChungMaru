@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewTextChanged|typeViewScrolled|typeWindowsChanged|typeTouchInteractionStart|typeTouchInteractionEnd"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="40"
+    android:notificationTimeout="0"
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
     android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
