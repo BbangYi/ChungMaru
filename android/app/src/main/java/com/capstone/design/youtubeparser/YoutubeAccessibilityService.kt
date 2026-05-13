@@ -1384,13 +1384,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val distinctCandidates = mutableListOf<ParsedComment>()
         var fallbackCandidateCount = 0
         for (candidate in sortedCandidates) {
-            if (candidate.visualOcrSource() == "youtube-visible-band") {
-                if (fallbackCandidateCount >= MAX_FALLBACK_VISUAL_CANDIDATES) continue
-                fallbackCandidateCount += 1
+            if (distinctCandidates.any { existing -> isSameVisualCandidate(existing, candidate) }) {
+                continue
             }
 
-            if (distinctCandidates.none { existing -> isSameVisualCandidate(existing, candidate) }) {
-                distinctCandidates += candidate
+            val isFallbackCandidate = candidate.visualOcrSource() == "youtube-visible-band"
+            if (isFallbackCandidate) {
+                if (fallbackCandidateCount >= MAX_FALLBACK_VISUAL_CANDIDATES) continue
+            }
+
+            distinctCandidates += candidate
+            if (isFallbackCandidate) {
+                fallbackCandidateCount += 1
             }
             if (distinctCandidates.size >= MAX_VISUAL_ANALYSIS_CANDIDATES) break
         }
