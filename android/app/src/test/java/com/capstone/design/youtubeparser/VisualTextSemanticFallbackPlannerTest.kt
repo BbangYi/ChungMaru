@@ -23,8 +23,8 @@ class VisualTextSemanticFallbackPlannerTest {
 
         assertEquals(2, candidates.size)
         assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates[0].boundsInScreen.top in 195..215)
-        assertTrue(candidates[1].boundsInScreen.top in 320..340)
+        assertTrue(candidates[0].boundsInScreen.top in 225..245)
+        assertTrue(candidates[1].boundsInScreen.top in 355..375)
         assertTrue(candidates.all { it.boundsInScreen.left in 24..40 })
         assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
     }
@@ -47,7 +47,7 @@ class VisualTextSemanticFallbackPlannerTest {
 
         assertEquals(2, candidates.size)
         assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates.any { it.boundsInScreen.top in 335..360 })
+        assertTrue(candidates.any { it.boundsInScreen.top in 370..390 })
     }
 
     @Test

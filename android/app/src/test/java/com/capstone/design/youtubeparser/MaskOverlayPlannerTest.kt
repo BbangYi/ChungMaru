@@ -813,8 +813,8 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 656, screenHeight = 1454)
 
         assertEquals(1, specs.size)
-        assertEquals(92, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 64..92)
+        assertEquals(110, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
         assertTrue(specs.single().allowScrollTranslation)
     }
 

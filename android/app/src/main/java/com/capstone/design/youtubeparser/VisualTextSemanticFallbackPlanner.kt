@@ -9,9 +9,9 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val HERO_MIN_WIDTH_RATIO = 0.48f
     private const val HERO_MIN_HEIGHT_PX = 180
     private const val HERO_MASK_LEFT_RATIO = 0.05f
-    private const val HERO_BANNER_MASK_TOP_RATIO = 0.10f
+    private const val HERO_BANNER_MASK_TOP_RATIO = 0.18f
     private const val HERO_BANNER_MASK_HEIGHT_RATIO = 0.14f
-    private const val HERO_TITLE_MASK_TOP_RATIO = 0.43f
+    private const val HERO_TITLE_MASK_TOP_RATIO = 0.52f
     private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
     private const val HERO_TITLE_PREFIX_MAX_CHARS = 110
 

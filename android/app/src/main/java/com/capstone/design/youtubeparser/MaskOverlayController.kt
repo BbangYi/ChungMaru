@@ -100,6 +100,12 @@ object AndroidMaskOverlayPlanner {
     private const val TOP_USER_INPUT_REGION_RATIO = 0.24f
     private const val TOP_USER_INPUT_REGION_MAX_PX = 360
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
+    private const val YOUTUBE_INPUT_TEXT_INSET_PX = 18
+    private const val YOUTUBE_INPUT_WIDTH_PADDING_PX = 24
+    private const val YOUTUBE_INPUT_MIN_MASK_WIDTH_PX = 112
+    private const val YOUTUBE_INPUT_MAX_MASK_WIDTH_RATIO = 0.62f
+    private const val YOUTUBE_INPUT_LATIN_CHAR_WIDTH_PX = 24
+    private const val YOUTUBE_INPUT_KOREAN_CHAR_WIDTH_PX = 34
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -272,6 +278,7 @@ object AndroidMaskOverlayPlanner {
                 span = span,
                 original = item.original,
                 originalLength = originalLength,
+                authorId = item.authorId,
                 allowScrollTranslation = allowScrollTranslation,
                 preciseVisualBounds = preciseVisualBounds,
                 visualTextForSizing = visualTextForSizing,
@@ -519,6 +526,7 @@ object AndroidMaskOverlayPlanner {
         span: EvidenceSpan,
         original: String,
         originalLength: Int,
+        authorId: String?,
         allowScrollTranslation: Boolean,
         preciseVisualBounds: Boolean,
         visualTextForSizing: String?,
@@ -535,6 +543,16 @@ object AndroidMaskOverlayPlanner {
 
         val lineCount = estimateLineCount(fullSpec.height, originalLength)
         val lineHeight = (fullSpec.height / lineCount).coerceAtLeast(MIN_HEIGHT_PX)
+
+        if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID && isWholeTextSpan(start, end, originalLength)) {
+            return toYoutubeInputSpanSpec(
+                fullSpec = fullSpec,
+                spanText = span.text,
+                lineHeight = lineHeight,
+                allowScrollTranslation = allowScrollTranslation,
+                debugSource = debugSource
+            )
+        }
 
         if (preciseVisualBounds && isWholeTextSpan(start, end, originalLength)) {
             return toPreciseVisualSpanSpec(
@@ -672,6 +690,55 @@ object AndroidMaskOverlayPlanner {
     private fun isWholeTextSpan(start: Int, end: Int, originalLength: Int): Boolean {
         return start <= LEADING_SPAN_PREFIX_TOLERANCE &&
             end >= originalLength - LEADING_SPAN_PREFIX_TOLERANCE
+    }
+
+    private fun toYoutubeInputSpanSpec(
+        fullSpec: MaskOverlaySpec,
+        spanText: String,
+        lineHeight: Int,
+        allowScrollTranslation: Boolean,
+        debugSource: String
+    ): MaskOverlaySpec? {
+        val maxWidth = maxOf(
+            MIN_WIDTH_PX,
+            (fullSpec.width * YOUTUBE_INPUT_MAX_MASK_WIDTH_RATIO).roundToInt()
+        )
+        val width = estimateYoutubeInputMaskWidth(spanText, maxWidth)
+        if (width < MIN_WIDTH_PX) return null
+
+        val left = min(
+            fullSpec.left + YOUTUBE_INPUT_TEXT_INSET_PX,
+            fullSpec.left + fullSpec.width - width
+        ).coerceAtLeast(fullSpec.left)
+        val height = minOf(lineHeight, MAX_SPAN_MASK_HEIGHT_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val top = fullSpec.top + ((fullSpec.height - height) / 2).coerceAtLeast(0)
+
+        return MaskOverlaySpec(
+            left = left,
+            top = top,
+            width = width,
+            height = height,
+            label = MASK_LABEL,
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
+        )
+    }
+
+    private fun estimateYoutubeInputMaskWidth(
+        spanText: String,
+        maxWidth: Int
+    ): Int {
+        val visibleText = spanText.ifBlank { MASK_LABEL }
+        val codePointLength = visibleText.codePointCount(0, visibleText.length).coerceAtLeast(1)
+        val hasKorean = visibleText.any { it.code in 0xAC00..0xD7A3 }
+        val charWidth = if (hasKorean) {
+            YOUTUBE_INPUT_KOREAN_CHAR_WIDTH_PX
+        } else {
+            YOUTUBE_INPUT_LATIN_CHAR_WIDTH_PX
+        }
+
+        return (codePointLength * charWidth + YOUTUBE_INPUT_WIDTH_PADDING_PX)
+            .coerceIn(YOUTUBE_INPUT_MIN_MASK_WIDTH_PX, maxOf(YOUTUBE_INPUT_MIN_MASK_WIDTH_PX, maxWidth))
     }
 
     private fun toPreciseVisualSpanSpec(
