@@ -7,7 +7,8 @@ data class VisualTextRoi(
     val boundsInScreen: BoundsRect,
     val source: String,
     val priority: Int,
-    val reason: String
+    val reason: String,
+    val sourceText: String = ""
 )
 
 data class VisualTextRoiPlan(
@@ -123,7 +124,8 @@ object VisualTextRoiPlanner {
             boundsInScreen = roiBounds,
             source = if (isYoutubeComposite) "youtube-composite-card" else "generic-visual-region",
             priority = if (isYoutubeComposite) 0 else 1,
-            reason = if (contentDescriptionOnly) "content-description-only" else "visual-node"
+            reason = if (contentDescriptionOnly) "content-description-only" else "visual-node",
+            sourceText = normalized
         )
     }
 

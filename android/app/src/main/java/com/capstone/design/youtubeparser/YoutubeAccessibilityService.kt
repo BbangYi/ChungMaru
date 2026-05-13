@@ -1182,10 +1182,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     screenHeight = screenHeight,
                     baseResponse = baseResponse
                 )
-                if (selectedOcrCandidates.isEmpty()) {
+                val semanticFallbackCandidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+                    visualRoiPlan = visualRoiPlan,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight
+                )
+                val selectedVisualCandidates = mergeVisualCandidateSelections(
+                    selectedOcrCandidates + semanticFallbackCandidates
+                )
+                if (selectedVisualCandidates.isEmpty()) {
                     Log.d(
                         TAG,
                         "visual OCR candidates selected=0 raw=${ocrCandidates.size} " +
+                            "semanticFallback=${semanticFallbackCandidates.size} " +
                             "base=${baseResponse?.results?.size ?: 0}"
                     )
                     saveVisualOnlyDiagnostics(
@@ -1206,12 +1215,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 }
                 Log.d(
                     TAG,
-                    "visual OCR candidates selected=${selectedOcrCandidates.size} raw=${ocrCandidates.size}"
+                    "visual OCR candidates selected=${selectedVisualCandidates.size} " +
+                        "raw=${ocrCandidates.size} semanticFallback=${semanticFallbackCandidates.size}"
                 )
                 renderProvisionalVisualMaskOverlay(
                     packageName = packageName,
                     visualRoiPlan = visualRoiPlan,
-                    selectedOcrCandidates = selectedOcrCandidates,
+                    selectedOcrCandidates = selectedVisualCandidates,
                     snapshotOverlayRevision = snapshotOverlayRevision,
                     snapshotVisualSceneRevision = snapshotVisualSceneRevision,
                     visualRunId = visualRunId
@@ -1219,7 +1229,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
                 val snapshot = ParseSnapshot(
                     timestamp = System.currentTimeMillis(),
-                    comments = selectedOcrCandidates
+                    comments = selectedVisualCandidates
                 )
                 val rawAnalysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
@@ -1241,7 +1251,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         rawAnalysis
                             .copy(
                                 visualOcrRawCount = ocrCandidates.size,
-                                visualOcrSelectedCount = selectedOcrCandidates.size
+                                visualOcrSelectedCount = selectedVisualCandidates.size
                             )
                             .withOverlayDiagnostics(packageName, visualRoiPlan)
                     )
@@ -1280,7 +1290,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         offensiveCount = countActionableResults(mergedResponse),
                         filteredCount = mergedResponse?.filteredCount ?: rawAnalysis.filteredCount,
                         visualOcrRawCount = ocrCandidates.size,
-                        visualOcrSelectedCount = selectedOcrCandidates.size
+                        visualOcrSelectedCount = selectedVisualCandidates.size
                     )
                     .withOverlayDiagnostics(packageName, visualRoiPlan)
 
@@ -1448,6 +1458,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
     ): Boolean {
         return visualRunId != visualAnalysisRunId ||
             snapshotVisualSceneRevision != visualSceneRevision
+    }
+
+    private fun mergeVisualCandidateSelections(
+        candidates: List<ParsedComment>
+    ): List<ParsedComment> {
+        val selected = mutableListOf<ParsedComment>()
+        candidates
+            .sortedWith(
+                compareBy<ParsedComment> { visualCandidateSourceRank(it) }
+                    .thenBy { it.boundsInScreen.top }
+                    .thenBy { it.boundsInScreen.left }
+            )
+            .forEach { candidate ->
+                if (selected.size >= MAX_VISUAL_ANALYSIS_CANDIDATES) return@forEach
+                if (selected.none { existing -> isSameVisualCandidate(existing, candidate) }) {
+                    selected += candidate
+                }
+            }
+        return selected
     }
 
     private fun selectVisualTextCandidates(
