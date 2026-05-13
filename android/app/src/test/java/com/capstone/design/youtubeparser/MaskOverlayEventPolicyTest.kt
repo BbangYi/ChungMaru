@@ -324,6 +324,38 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldClearAfterAnalysisFailure_preservesOneFailureForRenderableVisualRetry() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                hasPreservedRecentAnalysisFailure = false
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                hasPreservedRecentAnalysisFailure = true
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
+                hasActiveMasks = false,
+                hasRenderableVisualRois = true,
+                hasPreservedRecentAnalysisFailure = false
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = false,
+                hasPreservedRecentAnalysisFailure = false
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(

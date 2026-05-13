@@ -78,6 +78,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var visualAnalysisRunId = 0L
     @Volatile private var lastVisualSupplement: VisualSupplementCache? = null
     private var preservedRecentVisualMiss = false
+    private var preservedRecentAnalysisFailure = false
     private val sensitivityPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key != AnalysisSensitivityStore.KEY_ANALYSIS_SENSITIVITY) return@OnSharedPreferenceChangeListener
@@ -505,7 +506,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     updateMaskOverlay(
                         currentPackage = currentPackage,
                         analysis = analysis,
-                        snapshotOverlayRevision = snapshotOverlayRevision
+                        snapshotOverlayRevision = snapshotOverlayRevision,
+                        visualRoiPlan = visualRoiPlan
                     )
                 }
                 AnalysisDiagnosticsStore.saveAttempt(applicationContext, analysis)
@@ -545,7 +547,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
             } finally {
                 if (analysisForOverlay == null) {
                     handler.post {
-                        updateMaskOverlay(currentPackage, null, snapshotOverlayRevision)
+                        updateMaskOverlay(
+                            currentPackage = currentPackage,
+                            analysis = null,
+                            snapshotOverlayRevision = snapshotOverlayRevision,
+                            visualRoiPlan = visualRoiPlan
+                        )
                     }
                 }
                 releaseAnalysisGate()
@@ -556,7 +563,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun updateMaskOverlay(
         currentPackage: String,
         analysis: AndroidAnalysisAttempt?,
-        snapshotOverlayRevision: Long
+        snapshotOverlayRevision: Long,
+        visualRoiPlan: VisualTextRoiPlan? = null
     ) {
         if (currentPackage != lastObservedPackage) {
             Log.d(
@@ -623,8 +631,23 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 preserveExistingIfEmpty = preserveExistingIfEmpty
             )
             preservedRecentVisualMiss = false
+            preservedRecentAnalysisFailure = false
             resetAbsoluteScrollPosition()
         } else {
+            if (
+                supportsMaskOverlay(currentPackage) &&
+                !MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
+                    hasActiveMasks = maskOverlayController.hasActiveMasks(),
+                    hasRenderableVisualRois = visualRoiPlan?.hasRenderableVisualRois() == true,
+                    hasPreservedRecentAnalysisFailure = preservedRecentAnalysisFailure
+                )
+            ) {
+                Log.d(TAG, "preserve mask overlay after transient analysis failure")
+                preservedRecentAnalysisFailure = true
+                markOverlayRevisionStale()
+                scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+                return
+            }
             Log.d(
                 TAG,
                 "clear mask overlay package=$currentPackage analysisOk=${analysis?.ok}"
@@ -637,6 +660,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         overlayRevision += 1
         lastSnapshotSignature = null
         preservedRecentVisualMiss = false
+        preservedRecentAnalysisFailure = false
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
         resetAbsoluteScrollPosition()
@@ -649,6 +673,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun markVisualSceneChanged(eventType: Int) {
         preservedRecentVisualMiss = false
+        preservedRecentAnalysisFailure = false
         invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
     }
 
@@ -1232,7 +1257,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     updateMaskOverlay(
                         currentPackage = packageName,
                         analysis = analysis,
-                        snapshotOverlayRevision = snapshotOverlayRevision
+                        snapshotOverlayRevision = snapshotOverlayRevision,
+                        visualRoiPlan = visualRoiPlan
                     )
                 }
             } finally {

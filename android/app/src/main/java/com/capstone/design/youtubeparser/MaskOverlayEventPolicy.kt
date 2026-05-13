@@ -125,6 +125,14 @@ internal object MaskOverlayEventPolicy {
         )
     }
 
+    fun shouldClearAfterAnalysisFailure(
+        hasActiveMasks: Boolean,
+        hasRenderableVisualRois: Boolean,
+        hasPreservedRecentAnalysisFailure: Boolean
+    ): Boolean {
+        return !(hasActiveMasks && hasRenderableVisualRois && !hasPreservedRecentAnalysisFailure)
+    }
+
     fun isLikelySelfContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,
