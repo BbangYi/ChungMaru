@@ -799,6 +799,26 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_keepsTopYoutubeSearchInputMask() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(92, 42, 430, 100),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "android-accessibility:youtube_user_input"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 656, screenHeight = 1454)
+
+        assertEquals(1, specs.size)
+        assertEquals(92, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 64..92)
+        assertTrue(specs.single().allowScrollTranslation)
+    }
+
+    @Test
     fun buildSpecs_rejectsChromeSearchInputMaskBelowToolbarControls() {
         val response = responseOf(
             resultOf(

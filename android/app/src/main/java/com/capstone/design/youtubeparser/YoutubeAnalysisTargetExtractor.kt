@@ -3,20 +3,28 @@ package com.capstone.design.youtubeparser
 object YoutubeAnalysisTargetExtractor {
     private const val MAX_TARGET_COUNT = 28
     private const val MAX_LOW_PRIORITY_TARGET_COUNT = 8
+    private const val YOUTUBE_SEARCH_INPUT_TOP_MAX_PX = 260
+    private const val YOUTUBE_SEARCH_INPUT_MIN_WIDTH_PX = 96
+    private const val YOUTUBE_SEARCH_INPUT_MAX_HEIGHT_PX = 128
     private const val COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX = 56
     private const val VISUAL_RANGE_MIN_WIDTH_PX = 30
     private const val VISUAL_RANGE_HORIZONTAL_PADDING_PX = 6
     private const val VISUAL_RANGE_LINE_HEIGHT_PX = 34
     private const val SHORT_TEXT_VISUAL_RANGE_LIMIT = 14
+    private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     fun extractTargets(nodes: List<ParsedTextNode>): List<ParsedComment> {
         val commentTargets = YoutubeCommentExtractor.extractComments(nodes)
+        val searchInputTargets = nodes
+            .asSequence()
+            .mapNotNull { toYoutubeSearchInputTarget(it) }
+            .toList()
         val standaloneTargets = nodes
             .asSequence()
             .flatMap { toStandaloneTargets(it).asSequence() }
             .toList()
 
-        return selectTargetsForAnalysis(standaloneTargets + commentTargets)
+        return selectTargetsForAnalysis(searchInputTargets + standaloneTargets + commentTargets)
     }
 
     private fun selectTargetsForAnalysis(targets: List<ParsedComment>): List<ParsedComment> {
@@ -109,6 +117,31 @@ object YoutubeAnalysisTargetExtractor {
         )
     }
 
+    private fun toYoutubeSearchInputTarget(node: ParsedTextNode): ParsedComment? {
+        if (!node.isVisibleToUser) return null
+        if (!isLikelyYoutubeSearchInput(node)) return null
+
+        val text = node.displayText
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?: return null
+        val lower = text.lowercase()
+        if (text.length !in 2..120) return null
+        if (isYoutubeUiLabel(text, lower)) return null
+        if (lower.startsWith("http://") || lower.startsWith("https://")) return null
+
+        return ParsedComment(
+            commentText = text,
+            boundsInScreen = BoundsRect(
+                left = node.left,
+                top = node.top,
+                right = node.right,
+                bottom = node.bottom
+            ),
+            authorId = YOUTUBE_USER_INPUT_AUTHOR_ID
+        )
+    }
+
     private fun toVisualRangeTargets(
         primary: ParsedComment,
         allowShortText: Boolean = false
@@ -136,6 +169,9 @@ object YoutubeAnalysisTargetExtractor {
 
     private fun targetSelectionPriority(target: ParsedComment): Int {
         val authorId = target.authorId.orEmpty()
+        if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID) {
+            return 0
+        }
         if (authorId.startsWith("youtube-visual-range:") || authorId.startsWith("ocr:")) {
             return 0
         }
@@ -321,6 +357,21 @@ object YoutubeAnalysisTargetExtractor {
         if (text.length >= 12 && text.any { it.isWhitespace() }) return true
         if (Regex("""[!?！？:\"“”'’]""").containsMatchIn(text)) return true
         return text.any { it.code in 0xAC00..0xD7A3 } && text.length >= 6
+    }
+
+    private fun isLikelyYoutubeSearchInput(node: ParsedTextNode): Boolean {
+        val width = node.right - node.left
+        val height = node.bottom - node.top
+        if (node.top > YOUTUBE_SEARCH_INPUT_TOP_MAX_PX) return false
+        if (width < YOUTUBE_SEARCH_INPUT_MIN_WIDTH_PX) return false
+        if (height !in 24..YOUTUBE_SEARCH_INPUT_MAX_HEIGHT_PX) return false
+
+        val className = node.className.orEmpty()
+        val viewId = node.viewIdResourceName.orEmpty()
+        return className.contains("EditText", ignoreCase = true) ||
+            viewId.contains("search", ignoreCase = true) ||
+            viewId.contains("query", ignoreCase = true) ||
+            viewId.contains("input", ignoreCase = true)
     }
 
     private fun isCompositeYoutubeCardDescription(lower: String, width: Int, height: Int): Boolean {

@@ -13,6 +13,7 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val HERO_BANNER_MASK_HEIGHT_RATIO = 0.14f
     private const val HERO_TITLE_MASK_TOP_RATIO = 0.43f
     private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
+    private const val HERO_TITLE_PREFIX_MAX_CHARS = 110
 
     private data class HeroMaskBand(
         val topRatio: Float,
@@ -52,7 +53,7 @@ internal object VisualTextSemanticFallbackPlanner {
         if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
         val range = VisualTextOcrCandidateFilter.findAnalysisRanges(roi.sourceText)
             .firstOrNull { candidateRange ->
-                isLikelyLeadingHeroTextHit(roi.sourceText, candidateRange)
+                isLikelyHeroTitleTextHit(roi.sourceText, candidateRange)
             }
             ?: return emptyList()
 
@@ -91,7 +92,7 @@ internal object VisualTextSemanticFallbackPlanner {
             height >= HERO_MIN_HEIGHT_PX
     }
 
-    private fun isLikelyLeadingHeroTextHit(
+    private fun isLikelyHeroTitleTextHit(
         sourceText: String,
         range: VisualTextOcrCandidateFilter.CandidateRange
     ): Boolean {
@@ -102,7 +103,22 @@ internal object VisualTextSemanticFallbackPlanner {
 
         return compactPrefix.length <= 18 ||
             (compactPrefix.contains("playvideo") && compactPrefix.length <= 32) ||
-            (compactPrefix.contains("동영상재생") && compactPrefix.length <= 24)
+            (compactPrefix.contains("동영상재생") && compactPrefix.length <= 24) ||
+            (
+                before.codePointCount(0, before.length) <= HERO_TITLE_PREFIX_MAX_CHARS &&
+                    !looksLikeMetadataBeforeHeroTitle(before)
+                )
+    }
+
+    private fun looksLikeMetadataBeforeHeroTitle(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.contains(" views") ||
+            lower.contains(" view") ||
+            lower.contains("조회수") ||
+            lower.contains("go to channel") ||
+            Regex("""\b\d+(?:\.\d+)?\s*(?:k|m|b|thousand|million|billion)\s+views?\b""").containsMatchIn(lower) ||
+            Regex("""\b\d+\s+(?:second|seconds|minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b""").containsMatchIn(lower) ||
+            Regex("""\d+\s*(?:초|분|시간|일|주|개월|년)\s*전""").containsMatchIn(text)
     }
 
     private fun semanticTopHeroMaskBounds(

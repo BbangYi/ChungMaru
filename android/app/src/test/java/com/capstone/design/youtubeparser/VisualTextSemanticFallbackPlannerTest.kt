@@ -30,6 +30,27 @@ class VisualTextSemanticFallbackPlannerTest {
     }
 
     @Test
+    fun selectCandidates_addsTopHeroMasksWhenYoutubePrefixesTitleBeforeHit() {
+        val roi = VisualTextRoi(
+            boundsInScreen = BoundsRect(0, 184, 656, 562),
+            source = "youtube-composite-card",
+            priority = 0,
+            reason = "content-description-only",
+            sourceText = "Play video from semoplaylist \"Tlqkf 또 다시 보여줘야 돼!!!\""
+        )
+
+        val candidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+            visualRoiPlan = VisualTextRoiPlan(rois = listOf(roi), candidateCount = 1),
+            screenWidth = 656,
+            screenHeight = 1454
+        )
+
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.all { it.commentText == "tlqkf" })
+        assertTrue(candidates.any { it.boundsInScreen.top in 335..360 })
+    }
+
+    @Test
     fun selectCandidates_skipsSmallOrLateCompositeHits() {
         val smallCard = VisualTextRoi(
             boundsInScreen = BoundsRect(20, 790, 330, 1255),

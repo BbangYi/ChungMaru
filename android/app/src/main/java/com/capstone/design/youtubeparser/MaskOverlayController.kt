@@ -99,6 +99,7 @@ object AndroidMaskOverlayPlanner {
     private const val TOP_GENERIC_VISUAL_CONTROL_REGION_MAX_PX = 360
     private const val TOP_USER_INPUT_REGION_RATIO = 0.24f
     private const val TOP_USER_INPUT_REGION_MAX_PX = 360
+    private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -286,6 +287,7 @@ object AndroidMaskOverlayPlanner {
         // translate. Coarse accessibility rows still get dropped and reanalyzed.
         val value = authorId ?: return false
         return value == "android-accessibility:user_input" ||
+            value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
             isPreciseVisualAuthor(value)
     }
 
@@ -350,7 +352,9 @@ object AndroidMaskOverlayPlanner {
         screenWidth: Int,
         authorId: String?
     ): Boolean {
-        if (authorId == "android-accessibility:user_input") {
+        if (authorId == "android-accessibility:user_input" ||
+            authorId == YOUTUBE_USER_INPUT_AUTHOR_ID
+        ) {
             return true
         }
         if (isAccessibilityRangeAuthor(authorId)) {
@@ -456,6 +460,10 @@ object AndroidMaskOverlayPlanner {
             (VisualTextGeometryPolicy.isTopHeroYoutubeComposite(value, screenWidth) ||
                 trustedVisibleBandOcr)
         if (preciseVisualContentNearTop) {
+            return false
+        }
+
+        if (value == YOUTUBE_USER_INPUT_AUTHOR_ID) {
             return false
         }
 

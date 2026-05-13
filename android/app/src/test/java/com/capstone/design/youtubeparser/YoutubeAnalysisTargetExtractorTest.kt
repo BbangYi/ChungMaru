@@ -23,6 +23,29 @@ class YoutubeAnalysisTargetExtractorTest {
     }
 
     @Test
+    fun extractTargets_marksTopYoutubeSearchInputAsRenderableUserInput() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node(
+                    "tlqkf",
+                    92,
+                    42,
+                    430,
+                    100,
+                    className = "android.widget.EditText",
+                    viewIdResourceName = "com.google.android.youtube:id/search_edit_text"
+                ),
+                node("All", 22, 120, 88, 168, className = "android.widget.Button")
+            )
+        )
+
+        assertEquals(1, targets.size)
+        assertEquals("tlqkf", targets.single().commentText)
+        assertEquals(BoundsRect(92, 42, 430, 100), targets.single().boundsInScreen)
+        assertEquals("android-accessibility:youtube_user_input", targets.single().authorId)
+    }
+
+    @Test
     fun extractTargets_allowsLongContentTextEvenWhenYoutubeExposesItAsButton() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
@@ -293,7 +316,8 @@ class YoutubeAnalysisTargetExtractorTest {
         right: Int,
         bottom: Int,
         className: String = "android.widget.TextView",
-        contentDescription: String? = null
+        contentDescription: String? = null,
+        viewIdResourceName: String? = null
     ): ParsedTextNode {
         return ParsedTextNode(
             packageName = "com.google.android.youtube",
@@ -301,7 +325,7 @@ class YoutubeAnalysisTargetExtractorTest {
             contentDescription = contentDescription,
             displayText = text.ifBlank { contentDescription },
             className = className,
-            viewIdResourceName = null,
+            viewIdResourceName = viewIdResourceName,
             left = left,
             top = top,
             right = right,

@@ -1626,6 +1626,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun AnalysisTextLocation.isRenderableForOverlay(): Boolean {
         val source = authorId ?: return false
         return source == "android-accessibility:user_input" ||
+            source == "android-accessibility:youtube_user_input" ||
             source.startsWith("android-accessibility-range:") ||
             source.startsWith("ocr:youtube-composite-card:") ||
             source.startsWith("ocr:youtube-visible-band:")

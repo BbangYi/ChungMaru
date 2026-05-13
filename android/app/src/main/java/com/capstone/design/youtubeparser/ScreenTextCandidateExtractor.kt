@@ -41,6 +41,7 @@ object ScreenTextCandidateExtractor {
     private const val ROOT_LIKE_RANGE_SOURCE_WIDTH_PX = 1000
     private const val ROOT_LIKE_RANGE_SOURCE_HEIGHT_PX = 96
     private const val MAX_SUPPLEMENTAL_RANGE_SOURCE_TEXT_LENGTH = 96
+    private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     fun extractCandidates(
         packageName: String,
@@ -68,10 +69,13 @@ object ScreenTextCandidateExtractor {
             authorId == "youtube-composite-description" -> CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
             else -> CandidateSource.ACCESSIBILITY_TEXT
         }
-        val role = when (source) {
-            CandidateSource.VISUAL_OCR -> CandidateRole.THUMBNAIL_TEXT
-            CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY -> CandidateRole.TITLE
-            CandidateSource.ACCESSIBILITY_TEXT -> CandidateRole.CONTENT
+        val role = when {
+            authorId == YOUTUBE_USER_INPUT_AUTHOR_ID -> CandidateRole.USER_INPUT
+            else -> when (source) {
+                CandidateSource.VISUAL_OCR -> CandidateRole.THUMBNAIL_TEXT
+                CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY -> CandidateRole.TITLE
+                CandidateSource.ACCESSIBILITY_TEXT -> CandidateRole.CONTENT
+            }
         }
 
         return ScreenTextCandidate(
