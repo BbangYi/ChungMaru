@@ -106,9 +106,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
     )
 
     private data class ScrollTranslationResult(
-        val translated: Boolean,
+        val status: MaskOverlayTranslationStatus?,
         val hasResolvedScrollDelta: Boolean
-    )
+    ) {
+        val translated: Boolean
+            get() = status == MaskOverlayTranslationStatus.TRANSLATED
+
+        val shouldHideUntilRecapture: Boolean
+            get() = status == MaskOverlayTranslationStatus.REJECTED_DELTA ||
+                status == MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS ||
+                status == MaskOverlayTranslationStatus.ALL_OFFSCREEN
+    }
 
     private val parseRunnable = Runnable {
         val triggerEventType = scheduledParseEventType
@@ -202,14 +210,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     ) {
                         Log.d(TAG, "preserve mask overlay: unresolved scroll delta")
                         markOverlayRevisionStale()
-                    } else if (
-                        MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
-                            eventType = event.eventType,
-                            hasActiveMasks = hasActiveMasks,
-                            hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta
+                    } else if (scrollTranslation.shouldHideUntilRecapture && hasActiveMasks) {
+                        Log.d(
+                            TAG,
+                            "hide mask overlay until scroll recapture status=${scrollTranslation.status}"
                         )
-                    ) {
-                        clearMaskOverlay()
+                        maskOverlayController.clear()
+                        markOverlayRevisionStale()
+                        scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                     } else {
                         markOverlayRevisionStale()
                     }
@@ -232,7 +240,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     clearMaskOverlay()
                 } else if (contentChangedWithActiveMask) {
-                    clearMaskOverlay()
+                    Log.d(TAG, "preserve mask overlay during active content change")
+                    markOverlayRevisionStale()
+                    markVisualSceneChanged(event.eventType)
+                    scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                 } else if (shouldClearOverlayImmediately(event.eventType)) {
                     clearMaskOverlay()
                 } else if (event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
@@ -844,16 +855,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         if (scrollDelta == null) {
             return ScrollTranslationResult(
-                translated = false,
+                status = null,
                 hasResolvedScrollDelta = false
             )
         }
 
-        val translated = maskOverlayController.translateBy(
+        val translationStatus = maskOverlayController.translateBy(
             deltaX = scrollDelta.deltaX,
             deltaY = scrollDelta.deltaY
         )
-        if (translated) {
+        if (translationStatus == MaskOverlayTranslationStatus.TRANSLATED) {
             Log.d(
                 TAG,
                 "translate mask overlay scroll source=${scrollDelta.source} " +
@@ -861,7 +872,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             )
         }
         return ScrollTranslationResult(
-            translated = translated,
+            status = translationStatus,
             hasResolvedScrollDelta = true
         )
     }
@@ -1183,6 +1194,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     TAG,
                     "visual OCR candidates selected=${selectedOcrCandidates.size} raw=${ocrCandidates.size}"
                 )
+                renderProvisionalVisualMaskOverlay(
+                    packageName = packageName,
+                    visualRoiPlan = visualRoiPlan,
+                    selectedOcrCandidates = selectedOcrCandidates,
+                    snapshotOverlayRevision = snapshotOverlayRevision,
+                    snapshotVisualSceneRevision = snapshotVisualSceneRevision,
+                    visualRunId = visualRunId
+                )
 
                 val snapshot = ParseSnapshot(
                     timestamp = System.currentTimeMillis(),
@@ -1265,6 +1284,72 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 finishVisualAnalysis(visualRunId)
             }
         }.start()
+    }
+
+    private fun renderProvisionalVisualMaskOverlay(
+        packageName: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        selectedOcrCandidates: List<ParsedComment>,
+        snapshotOverlayRevision: Long,
+        snapshotVisualSceneRevision: Long,
+        visualRunId: Long
+    ) {
+        val response = buildProvisionalVisualResponse(selectedOcrCandidates)
+        val analysis = AndroidAnalysisAttempt(
+            ok = true,
+            packageName = packageName,
+            url = "visual-ocr-provisional",
+            sensitivity = AnalysisSensitivityStore.get(applicationContext),
+            latencyMs = 0L,
+            commentCount = response.results.size,
+            offensiveCount = response.results.size,
+            filteredCount = response.filteredCount,
+            response = response,
+            visualOcrSelectedCount = selectedOcrCandidates.size
+        ).withOverlayDiagnostics(packageName, visualRoiPlan)
+
+        handler.post {
+            if (isVisualAnalysisStale(visualRunId, snapshotVisualSceneRevision)) return@post
+            Log.d(TAG, "render provisional visual OCR masks count=${selectedOcrCandidates.size}")
+            updateMaskOverlay(
+                currentPackage = packageName,
+                analysis = analysis,
+                snapshotOverlayRevision = snapshotOverlayRevision,
+                visualRoiPlan = visualRoiPlan
+            )
+        }
+    }
+
+    private fun buildProvisionalVisualResponse(
+        selectedOcrCandidates: List<ParsedComment>
+    ): AndroidAnalysisResponse {
+        val results = selectedOcrCandidates.map { candidate ->
+            val text = candidate.commentText
+            val textLength = text.codePointCount(0, text.length).coerceAtLeast(1)
+            AndroidAnalysisResultItem(
+                original = text,
+                boundsInScreen = candidate.boundsInScreen,
+                authorId = candidate.authorId,
+                isOffensive = true,
+                isProfane = true,
+                isToxic = false,
+                isHate = false,
+                scores = HarmScores(profanity = 1.0, toxicity = 0.0, hate = 0.0),
+                evidenceSpans = listOf(
+                    EvidenceSpan(
+                        text = text,
+                        start = 0,
+                        end = textLength,
+                        score = 1.0
+                    )
+                )
+            )
+        }
+        return AndroidAnalysisResponse(
+            timestamp = System.currentTimeMillis(),
+            filteredCount = results.size,
+            results = results
+        )
     }
 
     private fun timeoutVisualAnalysis(

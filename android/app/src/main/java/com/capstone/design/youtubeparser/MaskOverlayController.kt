@@ -35,6 +35,19 @@ data class MaskOverlayPlan(
     val renderedSamples: List<String> = emptyList()
 )
 
+enum class MaskOverlayTranslationStatus {
+    TRANSLATED,
+    UNCHANGED,
+    REJECTED_DELTA,
+    NO_TRANSLATABLE_MASKS,
+    ALL_OFFSCREEN
+}
+
+data class MaskOverlayTranslationPlan(
+    val status: MaskOverlayTranslationStatus,
+    val specs: List<MaskOverlaySpec>
+)
+
 object AndroidMaskOverlayPlanner {
     private const val MIN_WIDTH_PX = 24
     private const val MIN_HEIGHT_PX = 16
@@ -152,19 +165,52 @@ object AndroidMaskOverlayPlanner {
         screenWidth: Int,
         screenHeight: Int
     ): List<MaskOverlaySpec> {
-        if (specs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) return emptyList()
-        if (deltaX == 0 && deltaY == 0) return specs
+        return translatePlan(
+            specs = specs,
+            deltaX = deltaX,
+            deltaY = deltaY,
+            screenWidth = screenWidth,
+            screenHeight = screenHeight
+        ).specs
+    }
+
+    fun translatePlan(
+        specs: List<MaskOverlaySpec>,
+        deltaX: Int,
+        deltaY: Int,
+        screenWidth: Int,
+        screenHeight: Int
+    ): MaskOverlayTranslationPlan {
+        if (specs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) {
+            return MaskOverlayTranslationPlan(
+                status = MaskOverlayTranslationStatus.ALL_OFFSCREEN,
+                specs = emptyList()
+            )
+        }
+        if (deltaX == 0 && deltaY == 0) {
+            return MaskOverlayTranslationPlan(
+                status = MaskOverlayTranslationStatus.UNCHANGED,
+                specs = specs
+            )
+        }
         val maxDeltaX = maxScrollTranslationDeltaPx(screenWidth)
         val maxDeltaY = maxScrollTranslationDeltaPx(screenHeight)
         if (abs(deltaX) > maxDeltaX || abs(deltaY) > maxDeltaY) {
-            return emptyList()
+            return MaskOverlayTranslationPlan(
+                status = MaskOverlayTranslationStatus.REJECTED_DELTA,
+                specs = emptyList()
+            )
         }
 
-        return specs.mapNotNull { spec ->
-            if (!spec.allowScrollTranslation) {
-                return@mapNotNull null
-            }
+        val translatableSpecs = specs.filter { spec -> spec.allowScrollTranslation }
+        if (translatableSpecs.isEmpty()) {
+            return MaskOverlayTranslationPlan(
+                status = MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS,
+                specs = emptyList()
+            )
+        }
 
+        val translatedSpecs = translatableSpecs.mapNotNull { spec ->
             val nextLeft = spec.left + deltaX
             val nextTop = spec.top + deltaY
             val nextRight = nextLeft + spec.width
@@ -181,6 +227,14 @@ object AndroidMaskOverlayPlanner {
                 spec.copy(left = nextLeft, top = nextTop)
             }
         }
+        return MaskOverlayTranslationPlan(
+            status = if (translatedSpecs.isEmpty()) {
+                MaskOverlayTranslationStatus.ALL_OFFSCREEN
+            } else {
+                MaskOverlayTranslationStatus.TRANSLATED
+            },
+            specs = translatedSpecs
+        )
     }
 
     private fun toSpecs(
@@ -946,22 +1000,24 @@ class MaskOverlayController(
         }
     }
 
-    fun translateBy(deltaX: Int = 0, deltaY: Int = 0): Boolean {
-        if (activeViews.isEmpty() || activeSpecs.isEmpty()) return false
-        if (deltaX == 0 && deltaY == 0) return false
+    fun translateBy(deltaX: Int = 0, deltaY: Int = 0): MaskOverlayTranslationStatus {
+        if (activeViews.isEmpty() || activeSpecs.isEmpty()) {
+            return MaskOverlayTranslationStatus.ALL_OFFSCREEN
+        }
+        if (deltaX == 0 && deltaY == 0) return MaskOverlayTranslationStatus.UNCHANGED
 
         val metrics = service.resources.displayMetrics
-        val translatedSpecs = AndroidMaskOverlayPlanner.translateSpecs(
+        val translationPlan = AndroidMaskOverlayPlanner.translatePlan(
             specs = activeSpecs,
             deltaX = deltaX,
             deltaY = deltaY,
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels
         )
+        val translatedSpecs = translationPlan.specs
 
         if (translatedSpecs.isEmpty()) {
-            clear()
-            return false
+            return translationPlan.status
         }
 
         return try {
@@ -989,11 +1045,11 @@ class MaskOverlayController(
             activeSpecs += translatedSpecs
             lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
             lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
-            true
+            translationPlan.status
         } catch (error: RuntimeException) {
             clearViews()
             Log.w(TAG, "translate mask overlay failed", error)
-            false
+            MaskOverlayTranslationStatus.ALL_OFFSCREEN
         }
     }
 

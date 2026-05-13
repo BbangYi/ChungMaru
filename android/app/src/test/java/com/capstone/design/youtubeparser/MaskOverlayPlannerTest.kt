@@ -1062,6 +1062,49 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun translatePlan_reportsRejectedDeltaWithoutMutatingSession() {
+        val specs = listOf(
+            MaskOverlaySpec(left = 80, top = 1200, width = 96, height = 34, label = "***")
+        )
+
+        val plan = AndroidMaskOverlayPlanner.translatePlan(
+            specs = specs,
+            deltaX = 0,
+            deltaY = -720,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(MaskOverlayTranslationStatus.REJECTED_DELTA, plan.status)
+        assertTrue(plan.specs.isEmpty())
+    }
+
+    @Test
+    fun translatePlan_reportsNonTranslatableMasksSeparately() {
+        val specs = listOf(
+            MaskOverlaySpec(
+                left = 80,
+                top = 420,
+                width = 96,
+                height = 34,
+                label = "***",
+                allowScrollTranslation = false
+            )
+        )
+
+        val plan = AndroidMaskOverlayPlanner.translatePlan(
+            specs = specs,
+            deltaX = 0,
+            deltaY = -64,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS, plan.status)
+        assertTrue(plan.specs.isEmpty())
+    }
+
+    @Test
     fun translateSpecs_dropsMasksThatScrolledFullyOffscreen() {
         val specs = listOf(
             MaskOverlaySpec(left = 80, top = 24, width = 96, height = 34, label = "***"),

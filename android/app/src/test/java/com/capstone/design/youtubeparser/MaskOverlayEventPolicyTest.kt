@@ -214,38 +214,6 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
-    fun shouldClearOnFailedScrollTranslation_onlyClearsResolvedActiveMaskFailures() {
-        assertTrue(
-            MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
-                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
-                hasActiveMasks = true,
-                hasResolvedScrollDelta = true
-            )
-        )
-        assertFalse(
-            MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
-                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
-                hasActiveMasks = true,
-                hasResolvedScrollDelta = false
-            )
-        )
-        assertFalse(
-            MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
-                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
-                hasActiveMasks = false,
-                hasResolvedScrollDelta = true
-            )
-        )
-        assertFalse(
-            MaskOverlayEventPolicy.shouldClearOnFailedScrollTranslation(
-                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-                hasActiveMasks = true,
-                hasResolvedScrollDelta = true
-            )
-        )
-    }
-
-    @Test
     fun shouldDeferClearForVisualOnlyAnalysis_keepsMasksWhileVisualOcrCanReplaceThem() {
         assertTrue(
             MaskOverlayEventPolicy.shouldDeferClearForVisualOnlyAnalysis(
