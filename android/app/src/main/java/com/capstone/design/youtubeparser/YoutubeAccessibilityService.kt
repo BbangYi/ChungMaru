@@ -216,7 +216,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             TAG,
                             "hide mask overlay until scroll recapture status=${scrollTranslation.status}"
                         )
-                        maskOverlayController.clear()
+                        hideMaskOverlayViewsUntilRecapture()
                         markOverlayRevisionStale()
                         scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                     } else {
@@ -242,7 +242,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     clearMaskOverlay()
                 } else if (contentChangedWithActiveMask) {
                     Log.d(TAG, "hide mask overlay until content recapture")
-                    maskOverlayController.clear()
+                    hideMaskOverlayViewsUntilRecapture()
                     markOverlayRevisionStale()
                     markVisualSceneChanged(event.eventType)
                     scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
@@ -684,6 +684,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         resetAbsoluteScrollPosition()
     }
 
+    private fun hideMaskOverlayViewsUntilRecapture() {
+        provisionalVisualMaskActive = false
+        maskOverlayController.clear()
+    }
+
     private fun markOverlayRevisionStale() {
         overlayRevision += 1
         lastSnapshotSignature = null
@@ -692,7 +697,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun markVisualSceneChanged(eventType: Int) {
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
-        provisionalVisualMaskActive = false
         invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
     }
 
