@@ -116,9 +116,9 @@ class VisualTextSemanticFallbackPlannerTest {
     }
 
     @Test
-    fun selectCandidates_doesNotAddVisibleBandHeroMasksFromSearchInputOnly() {
+    fun selectCandidates_addsFirstVisibleBandHeroMasksFromSearchInputWhenOnlyQueryIsAvailable() {
         val roi = VisualTextRoi(
-            boundsInScreen = BoundsRect(0, 203, 675, 582),
+            boundsInScreen = BoundsRect(0, 321, 1080, 945),
             source = "youtube-visible-band",
             priority = 9,
             reason = "fallback-first-viewport-band"
@@ -133,12 +133,17 @@ class VisualTextSemanticFallbackPlannerTest {
 
         val candidates = VisualTextSemanticFallbackPlanner.selectCandidates(
             visualRoiPlan = VisualTextRoiPlan(rois = listOf(roi), candidateCount = 1),
-            screenWidth = 675,
-            screenHeight = 1478,
+            screenWidth = 1080,
+            screenHeight = 2400,
             baseResponse = baseResponse
         )
 
-        assertTrue(candidates.isEmpty())
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.all { it.commentText == "tlqkf" })
+        assertTrue(candidates[0].boundsInScreen.top in 390..405)
+        assertTrue(candidates[1].boundsInScreen.top in 585..595)
+        assertTrue(candidates[1].boundsInScreen.bottom - candidates[1].boundsInScreen.top >= 100)
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-visible-band:") })
     }
 
     @Test

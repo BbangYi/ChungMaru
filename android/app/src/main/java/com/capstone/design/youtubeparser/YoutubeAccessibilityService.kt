@@ -1017,9 +1017,27 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val visualRunId = visualAnalysisRunId + 1L
         visualAnalysisRunId = visualRunId
         visualAnalysisInFlight = true
+        val metrics = resources.displayMetrics
+        val semanticFallbackCandidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+            visualRoiPlan = visualRoiPlan,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
+            baseResponse = baseResponse
+        )
+        if (semanticFallbackCandidates.isNotEmpty()) {
+            renderProvisionalVisualMaskOverlay(
+                packageName = packageName,
+                visualRoiPlan = visualRoiPlan,
+                selectedOcrCandidates = semanticFallbackCandidates,
+                snapshotOverlayRevision = snapshotOverlayRevision,
+                snapshotVisualSceneRevision = snapshotVisualSceneRevision,
+                visualRunId = visualRunId
+            )
+        }
         Log.d(
             TAG,
-            "start visual OCR rois=${visualRoiPlan.rois.size} signature=${visualRoiPlan.signature()}"
+            "start visual OCR rois=${visualRoiPlan.rois.size} " +
+                "semanticFallback=${semanticFallbackCandidates.size} signature=${visualRoiPlan.signature()}"
         )
         handler.postDelayed(
             {
@@ -1052,7 +1070,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 visualRoiPlan = visualRoiPlan,
                                 error = "SCREENSHOT_BITMAP_UNAVAILABLE"
                             )
-                            if (clearExistingOverlayOnMiss) {
+                            if (clearExistingOverlayOnMiss && semanticFallbackCandidates.isEmpty()) {
                                 clearMaskOverlayAfterVisualMiss(
                                     packageName = packageName,
                                     visualRoiPlan = visualRoiPlan,
@@ -1076,20 +1094,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 return@recognize
                             }
 
-                            if (ocrCandidates.isEmpty()) {
-                                saveVisualOnlyDiagnostics(packageName, visualRoiPlan)
-                                if (clearExistingOverlayOnMiss) {
-                                    clearMaskOverlayAfterVisualMiss(
-                                        packageName = packageName,
-                                        visualRoiPlan = visualRoiPlan,
-                                        visualRunId = visualRunId,
-                                        snapshotVisualSceneRevision = snapshotVisualSceneRevision
-                                    )
-                                }
-                                finishVisualAnalysis(visualRunId)
-                                return@recognize
-                            }
-
                             analyzeVisualTextCandidates(
                                 packageName = packageName,
                                 visualRoiPlan = visualRoiPlan,
@@ -1099,6 +1103,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                                 snapshotOverlayRevision = snapshotOverlayRevision,
                                 snapshotVisualSceneRevision = snapshotVisualSceneRevision,
                                 baseResponse = baseResponse,
+                                semanticFallbackCandidates = semanticFallbackCandidates,
                                 clearExistingOverlayOnMiss = clearExistingOverlayOnMiss,
                                 visualRunId = visualRunId
                             )
@@ -1111,7 +1116,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             visualRoiPlan = visualRoiPlan,
                             error = "SCREENSHOT_FAILED_$errorCode"
                         )
-                        if (clearExistingOverlayOnMiss) {
+                        if (clearExistingOverlayOnMiss && semanticFallbackCandidates.isEmpty()) {
                             clearMaskOverlayAfterVisualMiss(
                                 packageName = packageName,
                                 visualRoiPlan = visualRoiPlan,
@@ -1131,7 +1136,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 error = error.javaClass.simpleName.takeIf { it.isNotBlank() }
                     ?: "SCREENSHOT_REQUEST_FAILED"
             )
-            if (clearExistingOverlayOnMiss) {
+            if (clearExistingOverlayOnMiss && semanticFallbackCandidates.isEmpty()) {
                 clearMaskOverlayAfterVisualMiss(
                     packageName = packageName,
                     visualRoiPlan = visualRoiPlan,
@@ -1169,6 +1174,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         snapshotOverlayRevision: Long,
         snapshotVisualSceneRevision: Long,
         baseResponse: AndroidAnalysisResponse?,
+        semanticFallbackCandidates: List<ParsedComment> = emptyList(),
         clearExistingOverlayOnMiss: Boolean,
         visualRunId: Long
     ) {
@@ -1178,12 +1184,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
                 val selectedOcrCandidates = selectVisualTextCandidates(
                     ocrCandidates = ocrCandidates,
-                    screenWidth = screenWidth,
-                    screenHeight = screenHeight,
-                    baseResponse = baseResponse
-                )
-                val semanticFallbackCandidates = VisualTextSemanticFallbackPlanner.selectCandidates(
-                    visualRoiPlan = visualRoiPlan,
                     screenWidth = screenWidth,
                     screenHeight = screenHeight,
                     baseResponse = baseResponse

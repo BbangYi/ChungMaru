@@ -21,11 +21,17 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO = 0.14f
     private const val VISIBLE_BAND_TITLE_MASK_TOP_RATIO = 0.43f
     private const val VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO = 0.18f
+    private const val DEFAULT_MASK_MIN_HEIGHT_PX = 34
+    private const val DEFAULT_MASK_MAX_HEIGHT_PX = 56
+    private const val VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX = 72
+    private const val VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX = 112
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
 
     private data class HeroMaskBand(
         val topRatio: Float,
-        val heightRatio: Float
+        val heightRatio: Float,
+        val minHeightPx: Int = DEFAULT_MASK_MIN_HEIGHT_PX,
+        val maxHeightPx: Int = DEFAULT_MASK_MAX_HEIGHT_PX
     )
 
     private val heroMaskBands = listOf(
@@ -46,7 +52,9 @@ internal object VisualTextSemanticFallbackPlanner {
         ),
         HeroMaskBand(
             topRatio = VISIBLE_BAND_TITLE_MASK_TOP_RATIO,
-            heightRatio = VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO
+            heightRatio = VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO,
+            minHeightPx = VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX,
+            maxHeightPx = VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX
         )
     )
 
@@ -57,6 +65,7 @@ internal object VisualTextSemanticFallbackPlanner {
         baseResponse: AndroidAnalysisResponse? = null
     ): List<ParsedComment> {
         val baseHeroRange = topHeroBaseRange(baseResponse)
+        val visibleBandRange = baseHeroRange ?: youtubeSearchInputRange(baseResponse)
         return visualRoiPlan.rois.flatMap { roi ->
             semanticTopHeroCandidates(
                 roi = roi,
@@ -66,7 +75,7 @@ internal object VisualTextSemanticFallbackPlanner {
                 roi = roi,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight,
-                range = baseHeroRange
+                range = visibleBandRange
             ) + semanticCompositeHeroCandidatesFromBaseTitle(
                 roi = roi,
                 screenWidth = screenWidth,
@@ -211,6 +220,24 @@ internal object VisualTextSemanticFallbackPlanner {
             .firstOrNull()
     }
 
+    private fun youtubeSearchInputRange(
+        baseResponse: AndroidAnalysisResponse?
+    ): VisualTextOcrCandidateFilter.CandidateRange? {
+        return baseResponse
+            ?.results
+            .orEmpty()
+            .asSequence()
+            .filter { item ->
+                item.authorId == YOUTUBE_USER_INPUT_AUTHOR_ID &&
+                    item.isOffensive &&
+                    item.evidenceSpans.isNotEmpty()
+            }
+            .mapNotNull { item ->
+                VisualTextOcrCandidateFilter.findAnalysisRanges(item.original).firstOrNull()
+            }
+            .firstOrNull()
+    }
+
     private fun isLikelyHeroTitleTextHit(
         sourceText: String,
         range: VisualTextOcrCandidateFilter.CandidateRange
@@ -252,7 +279,7 @@ internal object VisualTextSemanticFallbackPlanner {
 
         val height = (roiHeight * band.heightRatio)
             .roundToInt()
-            .coerceIn(34, 56)
+            .coerceIn(band.minHeightPx, band.maxHeightPx)
         val left = roiBounds.left + max(24, (roiWidth * HERO_MASK_LEFT_RATIO).roundToInt())
         val top = roiBounds.top + (roiHeight * band.topRatio).roundToInt()
         val width = estimateSemanticVisualMaskWidth(
