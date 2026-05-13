@@ -65,6 +65,7 @@ object AndroidMaskOverlayPlanner {
     private const val PRECISE_VISUAL_LATIN_WIDTH_RATIO = 0.76f
     private const val PRECISE_VISUAL_WIDTH_PADDING_PX = 10
     private const val TOP_HERO_DISPLAY_MASK_MAX_VERTICAL_RATIO = 0.40f
+    private const val TOP_HERO_DISPLAY_MIN_ROI_WIDTH_PX = 640
     private const val TOP_HERO_DISPLAY_MASK_MIN_SOURCE_WIDTH_PX = 160
     private const val TOP_HERO_DISPLAY_MASK_MIN_SOURCE_HEIGHT_PX = 44
     private const val TOP_HERO_DISPLAY_TOP_ROI_MAX_RATIO = 0.16f
@@ -129,6 +130,12 @@ object AndroidMaskOverlayPlanner {
     private const val TOP_SEARCH_FALLBACK_MIN_HEIGHT_PX = 36
     private const val TOP_SEARCH_FALLBACK_MAX_HEIGHT_PX = 96
     private const val TOP_SEARCH_FALLBACK_MAX_TEXT_LENGTH = 14
+    private const val YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_title"
+    private const val YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_shorts_title"
+    private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_HEIGHT_PX = 148
+    private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_TEXT_LENGTH = 180
+    private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT = 4
+    private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_WIDTH_RATIO = 0.90f
 
     fun buildSpecs(
         response: AndroidAnalysisResponse?,
@@ -321,6 +328,8 @@ object AndroidMaskOverlayPlanner {
         val value = authorId ?: return false
         return value == "android-accessibility:user_input" ||
             value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
+            value == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
+            value == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             isPreciseVisualAuthor(value)
     }
 
@@ -390,6 +399,12 @@ object AndroidMaskOverlayPlanner {
         ) {
             return true
         }
+        if (authorId == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID) {
+            return hasStableYoutubeTitleGeometry(spec, originalLength, screenWidth)
+        }
+        if (authorId == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID) {
+            return hasStableYoutubeTitleGeometry(spec, originalLength, screenWidth)
+        }
         if (isAccessibilityRangeAuthor(authorId)) {
             return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
                 spec.height <= MAX_ACCESSIBILITY_RANGE_HEIGHT_PX
@@ -428,6 +443,19 @@ object AndroidMaskOverlayPlanner {
         }
 
         return true
+    }
+
+    private fun hasStableYoutubeTitleGeometry(
+        spec: MaskOverlaySpec,
+        originalLength: Int,
+        screenWidth: Int
+    ): Boolean {
+        if (originalLength > MAX_YOUTUBE_TITLE_ACCESSIBILITY_TEXT_LENGTH) return false
+        if (spec.height > MAX_YOUTUBE_TITLE_ACCESSIBILITY_HEIGHT_PX) return false
+        if (spec.width > (screenWidth * MAX_YOUTUBE_TITLE_ACCESSIBILITY_WIDTH_RATIO).roundToInt()) return false
+
+        val estimatedLineCount = estimateLineCount(spec.height, originalLength)
+        return estimatedLineCount <= MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT
     }
 
     private fun isPreciseVisualAuthor(authorId: String?): Boolean {
@@ -825,6 +853,7 @@ object AndroidMaskOverlayPlanner {
         val roiHeight = roiBounds.bottom - roiBounds.top
         val roiWidth = roiBounds.right - roiBounds.left
         if (roiHeight < 180 || roiWidth < 320) return false
+        if (roiWidth < TOP_HERO_DISPLAY_MIN_ROI_WIDTH_PX) return false
 
         val isNearTopHeroRoi = screenHeight > 0 &&
             roiBounds.top <= (screenHeight * TOP_HERO_DISPLAY_TOP_ROI_MAX_RATIO).roundToInt()

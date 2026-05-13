@@ -184,8 +184,12 @@ class YoutubeAnalysisTargetExtractorTest {
             )
         )
 
-        assertTrue(targets.primaryTargets().isEmpty())
-        assertEquals(listOf("tlqkf"), targets.visualRangeTargets().map { it.commentText })
+        val primaryTarget = targets.primaryTargets().single()
+        assertEquals("tlqkf비용 효과 있을까?", primaryTarget.commentText)
+        assertEquals("android-accessibility:youtube_shorts_title", primaryTarget.authorId)
+        assertTrue(primaryTarget.boundsInScreen.left <= 48)
+        assertTrue(primaryTarget.boundsInScreen.top in 1645..1665)
+        assertTrue(targets.visualRangeTargets().isEmpty())
     }
 
     @Test
@@ -198,6 +202,27 @@ class YoutubeAnalysisTargetExtractorTest {
 
         assertEquals(listOf("What is 'Tlqkf'? Contemporary Korean Slang"), targets.primaryTargets().map { it.commentText })
         assertTrue(targets.visualRangeTargets().isEmpty())
+    }
+
+    @Test
+    fun extractTargets_marksVisibleYoutubeTitleAsStableAccessibilityTitle() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            listOf(
+                node(
+                    "",
+                    159,
+                    940,
+                    943,
+                    1045,
+                    className = "android.view.ViewGroup",
+                    contentDescription = "What is 'Tlqkf'?_Contemporary Korean Slang"
+                )
+            )
+        )
+
+        val target = targets.primaryTargets().single()
+        assertEquals("What is 'Tlqkf'?_Contemporary Korean Slang", target.commentText)
+        assertEquals("android-accessibility:youtube_title", target.authorId)
     }
 
     @Test

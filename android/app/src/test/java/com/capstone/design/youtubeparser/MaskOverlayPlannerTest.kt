@@ -555,7 +555,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_expandsLargeCardDisplayOcrMaskWithLeftPadding() {
+    fun buildSpecs_doesNotExpandTwoColumnShortsCardOcrAsTopHeroText() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -569,9 +569,9 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
         assertEquals(1, specs.size)
-        assertTrue("spec=${specs.single()}", specs.single().left <= 80)
-        assertTrue("spec=${specs.single()}", specs.single().width >= 210)
-        assertTrue("spec=${specs.single()}", specs.single().height in 120..132)
+        assertTrue("spec=${specs.single()}", specs.single().left in 90..120)
+        assertTrue("spec=${specs.single()}", specs.single().width < 180)
+        assertTrue("spec=${specs.single()}", specs.single().height <= 56)
     }
 
     @Test
@@ -628,6 +628,46 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
         assertTrue(specs.isEmpty())
+    }
+
+    @Test
+    fun buildSpecs_keepsStableYoutubeAccessibilityTitleRowsDuringScrollRecaptureGap() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(159, 940, 943, 1045),
+                spans = listOf(EvidenceSpan("Tlqkf", 9, 14, 0.99)),
+                original = "What is 'Tlqkf'?_Contemporary Korean Slang",
+                authorId = "android-accessibility:youtube_title"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().allowScrollTranslation)
+        assertTrue(specs.single().top in 940..980)
+        assertTrue(specs.single().width in 64..140)
+    }
+
+    @Test
+    fun buildSpecs_keepsEstimatedYoutubeShortsTitleMasksTranslatable() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(41, 1553, 510, 1609),
+                spans = listOf(EvidenceSpan("Tlqkf", 0, 5, 0.99)),
+                original = "Tlqkf 공부법",
+                authorId = "android-accessibility:youtube_shorts_title"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().allowScrollTranslation)
+        assertTrue(specs.single().left in 32..56)
+        assertTrue(specs.single().width in 64..112)
     }
 
     @Test

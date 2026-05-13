@@ -12,6 +12,8 @@ object YoutubeAnalysisTargetExtractor {
     private const val VISUAL_RANGE_LINE_HEIGHT_PX = 34
     private const val SHORT_TEXT_VISUAL_RANGE_LIMIT = 14
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
+    private const val YOUTUBE_STABLE_TITLE_AUTHOR_ID = "android-accessibility:youtube_title"
+    private const val YOUTUBE_SHORTS_TITLE_AUTHOR_ID = "android-accessibility:youtube_shorts_title"
 
     fun extractTargets(nodes: List<ParsedTextNode>): List<ParsedComment> {
         val commentTargets = YoutubeCommentExtractor.extractComments(nodes)
@@ -61,12 +63,14 @@ object YoutubeAnalysisTargetExtractor {
 
     private fun toStandaloneTargets(node: ParsedTextNode): List<ParsedComment> {
         val primary = toStandaloneTarget(node) ?: return emptyList()
-        val isCompositeDescription = primary.authorId == COMPOSITE_DESCRIPTION_AUTHOR_ID
-        if (isCompositeDescription) {
-            return toVisualRangeTargets(
-                primary = primary,
-                allowShortText = true
-            )
+        when (primary.authorId) {
+            YOUTUBE_SHORTS_TITLE_AUTHOR_ID -> return listOf(primary)
+            COMPOSITE_DESCRIPTION_AUTHOR_ID -> {
+                return toVisualRangeTargets(
+                    primary = primary,
+                    allowShortText = true
+                )
+            }
         }
 
         return listOf(primary)
@@ -113,7 +117,8 @@ object YoutubeAnalysisTargetExtractor {
                 top = node.top,
                 right = node.right,
                 bottom = node.bottom
-            )
+            ),
+            authorId = stableYoutubeAccessibilityAuthor(node, text, width, height, className)
         )
     }
 
@@ -170,6 +175,16 @@ object YoutubeAnalysisTargetExtractor {
     private fun targetSelectionPriority(target: ParsedComment): Int {
         val authorId = target.authorId.orEmpty()
         if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID) {
+            return 0
+        }
+        if (authorId == YOUTUBE_STABLE_TITLE_AUTHOR_ID &&
+            VisualTextOcrCandidateFilter.shouldAnalyze(target.commentText)
+        ) {
+            return 0
+        }
+        if (authorId == YOUTUBE_SHORTS_TITLE_AUTHOR_ID &&
+            VisualTextOcrCandidateFilter.shouldAnalyze(target.commentText)
+        ) {
             return 0
         }
         if (authorId.startsWith("youtube-visual-range:") || authorId.startsWith("ocr:")) {
@@ -256,11 +271,17 @@ object YoutubeAnalysisTargetExtractor {
         if (title.length !in 2..180) return null
         if (!VisualTextOcrCandidateFilter.shouldAnalyze(title)) return null
 
-        val titleBounds = estimateCompositeYoutubeTitleBounds(node, width, height) ?: return null
+        val shortsTitle = isShortsGridCardDescription(description, width, height) &&
+            startsWithAnalyzableRange(title)
+        val titleBounds = if (shortsTitle) {
+            estimateShortsGridTitleBounds(node, width, height)
+        } else {
+            estimateCompositeYoutubeTitleBounds(node, width, height)
+        } ?: return null
         return ParsedComment(
             commentText = title,
             boundsInScreen = titleBounds,
-            authorId = COMPOSITE_DESCRIPTION_AUTHOR_ID
+            authorId = if (shortsTitle) YOUTUBE_SHORTS_TITLE_AUTHOR_ID else COMPOSITE_DESCRIPTION_AUTHOR_ID
         )
     }
 
@@ -303,6 +324,26 @@ object YoutubeAnalysisTargetExtractor {
         val top = node.top + (height * 0.78f).toInt()
         val left = node.left + (width * 0.14f).toInt()
         val right = node.right - (width * 0.10f).toInt()
+        val bottom = minOf(node.bottom, top + COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX)
+
+        if (right - left < 80 || bottom - top < 24) return null
+
+        return BoundsRect(
+            left = left,
+            top = top,
+            right = right,
+            bottom = bottom
+        )
+    }
+
+    private fun estimateShortsGridTitleBounds(
+        node: ParsedTextNode,
+        width: Int,
+        height: Int
+    ): BoundsRect? {
+        val top = node.top + (height * 0.66f).toInt()
+        val left = node.left
+        val right = node.right - (width * 0.04f).toInt()
         val bottom = minOf(node.bottom, top + COMPOSITE_TITLE_ESTIMATED_HEIGHT_PX)
 
         if (right - left < 80 || bottom - top < 24) return null
@@ -374,6 +415,29 @@ object YoutubeAnalysisTargetExtractor {
             viewId.contains("input", ignoreCase = true)
     }
 
+    private fun stableYoutubeAccessibilityAuthor(
+        node: ParsedTextNode,
+        text: String,
+        width: Int,
+        height: Int,
+        className: String
+    ): String? {
+        if (isLikelyYoutubeSearchInput(node)) return null
+        if (text.length !in 2..180) return null
+        if (width < 60 || height !in 18..160) return null
+        if (height > width) return null
+
+        return if (
+            className.contains("TextView", ignoreCase = true) ||
+            className.contains("ViewGroup", ignoreCase = true) ||
+            className.contains("Button", ignoreCase = true)
+        ) {
+            YOUTUBE_STABLE_TITLE_AUTHOR_ID
+        } else {
+            null
+        }
+    }
+
     private fun isCompositeYoutubeCardDescription(lower: String, width: Int, height: Int): Boolean {
         return (width >= 900 && height >= 180) ||
             lower.contains(" - go to channel ") ||
@@ -384,6 +448,19 @@ object YoutubeAnalysisTargetExtractor {
             Regex("""\bviews?\s*[·•]\s*""").containsMatchIn(lower) ||
             Regex("""\b\d+(?:\.\d+)?\s*[kmb]\s+views?\b""").containsMatchIn(lower) ||
             lower.contains("조회수") && lower.contains("전")
+    }
+
+    private fun isShortsGridCardDescription(description: String, width: Int, height: Int): Boolean {
+        val lower = description.lowercase()
+        return lower.contains(" - play short") &&
+            width in 320..720 &&
+            height >= 260
+    }
+
+    private fun startsWithAnalyzableRange(title: String): Boolean {
+        return VisualTextOcrCandidateFilter.findAnalysisRanges(title).any { range ->
+            range.start <= 2
+        }
     }
 
     private fun looksLikeRelativeTime(text: String): Boolean {
