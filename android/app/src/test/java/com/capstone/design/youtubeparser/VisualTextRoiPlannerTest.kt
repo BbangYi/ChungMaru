@@ -277,6 +277,28 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_keepsFallbackBandWhenOnlyGenericYoutubeRoisExist() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("All", 10, 166, 98, 230),
+                contentDescriptionNode(
+                    displayText = "이미지 안에 있는 긴 테스트 문구입니다",
+                    left = 20,
+                    top = 260,
+                    right = 320,
+                    bottom = 420,
+                    className = "android.widget.ImageView"
+                )
+            ),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("youtube-visible-band", rois.single().source)
+    }
+
+    @Test
     fun planFromNodes_deduplicatesOverlappingRegions() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(

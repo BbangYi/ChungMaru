@@ -52,9 +52,14 @@ object VisualTextRoiPlanner {
             toCandidate(node, screenWidth, screenHeight)
         }
         val fallbackCandidates = buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
+        val selectableRawCandidates = if (fallbackCandidates.isNotEmpty()) {
+            rawCandidates.filterNot { candidate -> candidate.source == "generic-visual-region" }
+        } else {
+            rawCandidates
+        }
 
         val selected = mutableListOf<VisualTextRoi>()
-        (rawCandidates + fallbackCandidates)
+        (selectableRawCandidates + fallbackCandidates)
             .sortedWith(
                 compareBy<VisualTextRoi> { it.priority }
                     .thenBy { it.boundsInScreen.top }
@@ -270,7 +275,7 @@ object VisualTextRoiPlanner {
         rawCandidates: List<VisualTextRoi>
     ): List<VisualTextRoi> {
         if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
-        if (rawCandidates.isNotEmpty()) return emptyList()
+        if (rawCandidates.any { it.source == "youtube-composite-card" }) return emptyList()
 
         val topControlBottom = nodes
             .asSequence()
