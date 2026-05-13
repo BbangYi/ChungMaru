@@ -514,8 +514,21 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     JsonFileStore.saveAnalysisResponse(applicationContext, response, currentPackage)
                 }
 
+                val shouldStartVisualSupplement =
+                    shouldRunVisualTextSupplement(currentPackage, analysis, visualRoiPlan)
+
                 // Masking must not be blocked by the optional upload channel.
                 releaseAnalysisGate()
+                if (shouldStartVisualSupplement) {
+                    handler.post {
+                        startVisualTextAnalysis(
+                            packageName = currentPackage,
+                            visualRoiPlan = visualRoiPlan,
+                            clearExistingOverlay = false,
+                            baseResponse = analysis.response
+                        )
+                    }
+                }
 
                 val uploadOk = savedFile?.let {
                     ServerUploader.uploadJsonFile(applicationContext, it)
@@ -529,17 +542,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         "filtered=${analysis.filteredCount} analysisLatencyMs=${analysis.latencyMs} " +
                         "analysisError=${analysis.error.orEmpty()}"
                 )
-
-                if (shouldRunVisualTextSupplement(currentPackage, analysis, visualRoiPlan)) {
-                    handler.post {
-                        startVisualTextAnalysis(
-                            packageName = currentPackage,
-                            visualRoiPlan = visualRoiPlan,
-                            clearExistingOverlay = false,
-                            baseResponse = analysis.response
-                        )
-                    }
-                }
             } finally {
                 if (analysisForOverlay == null) {
                     handler.post {
