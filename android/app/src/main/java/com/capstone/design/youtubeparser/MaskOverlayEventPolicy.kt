@@ -115,9 +115,14 @@ internal object MaskOverlayEventPolicy {
     fun shouldClearAfterVisualAnalysisMiss(
         hasActiveMasks: Boolean,
         hasRenderableVisualRois: Boolean,
-        isOverlayStabilizing: Boolean
+        isOverlayStabilizing: Boolean,
+        hasPreservedRecentVisualMiss: Boolean
     ): Boolean {
-        return !(hasActiveMasks && hasRenderableVisualRois && isOverlayStabilizing)
+        return !(
+            hasActiveMasks &&
+                hasRenderableVisualRois &&
+                (isOverlayStabilizing || !hasPreservedRecentVisualMiss)
+        )
     }
 
     fun isLikelySelfContentChange(

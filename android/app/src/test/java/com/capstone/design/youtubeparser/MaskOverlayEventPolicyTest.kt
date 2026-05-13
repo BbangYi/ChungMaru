@@ -273,28 +273,52 @@ class MaskOverlayEventPolicyTest {
             MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
                 hasActiveMasks = true,
                 hasRenderableVisualRois = true,
-                isOverlayStabilizing = true
+                isOverlayStabilizing = true,
+                hasPreservedRecentVisualMiss = false
             )
         )
         assertTrue(
             MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
                 hasActiveMasks = true,
                 hasRenderableVisualRois = true,
-                isOverlayStabilizing = false
+                isOverlayStabilizing = false,
+                hasPreservedRecentVisualMiss = true
             )
         )
         assertTrue(
             MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
                 hasActiveMasks = false,
                 hasRenderableVisualRois = true,
-                isOverlayStabilizing = true
+                isOverlayStabilizing = true,
+                hasPreservedRecentVisualMiss = false
             )
         )
         assertTrue(
             MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
                 hasActiveMasks = true,
                 hasRenderableVisualRois = false,
-                isOverlayStabilizing = true
+                isOverlayStabilizing = true,
+                hasPreservedRecentVisualMiss = false
+            )
+        )
+    }
+
+    @Test
+    fun shouldClearAfterVisualAnalysisMiss_preservesOneTransientMissForRetry() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                isOverlayStabilizing = false,
+                hasPreservedRecentVisualMiss = false
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
+                hasActiveMasks = true,
+                hasRenderableVisualRois = true,
+                isOverlayStabilizing = false,
+                hasPreservedRecentVisualMiss = true
             )
         )
     }

@@ -77,6 +77,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var visualAnalysisInFlight = false
     @Volatile private var visualAnalysisRunId = 0L
     @Volatile private var lastVisualSupplement: VisualSupplementCache? = null
+    private var preservedRecentVisualMiss = false
     private val sensitivityPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key != AnalysisSensitivityStore.KEY_ANALYSIS_SENSITIVITY) return@OnSharedPreferenceChangeListener
@@ -619,6 +620,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 response = analysis.response,
                 preserveExistingIfEmpty = preserveExistingIfEmpty
             )
+            preservedRecentVisualMiss = false
             resetAbsoluteScrollPosition()
         } else {
             Log.d(
@@ -632,6 +634,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun clearMaskOverlay() {
         overlayRevision += 1
         lastSnapshotSignature = null
+        preservedRecentVisualMiss = false
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
         resetAbsoluteScrollPosition()
@@ -643,6 +646,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun markVisualSceneChanged(eventType: Int) {
+        preservedRecentVisualMiss = false
         invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
     }
 
@@ -1286,14 +1290,17 @@ class YoutubeAccessibilityService : AccessibilityService() {
             !MaskOverlayEventPolicy.shouldClearAfterVisualAnalysisMiss(
                 hasActiveMasks = maskOverlayController.hasActiveMasks(),
                 hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois(),
-                isOverlayStabilizing = isInOverlayStabilizationWindow()
+                isOverlayStabilizing = isInOverlayStabilizationWindow(),
+                hasPreservedRecentVisualMiss = preservedRecentVisualMiss
             )
         ) {
-            Log.d(TAG, "preserve mask overlay after visual OCR miss during stabilization")
+            Log.d(TAG, "preserve mask overlay after transient visual OCR miss")
+            preservedRecentVisualMiss = true
             markOverlayRevisionStale()
             scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
             return
         }
+        preservedRecentVisualMiss = false
         clearMaskOverlay()
     }
 
