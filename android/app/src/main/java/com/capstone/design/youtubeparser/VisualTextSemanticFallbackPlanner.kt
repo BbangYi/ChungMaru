@@ -8,17 +8,35 @@ internal object VisualTextSemanticFallbackPlanner {
     private const val HERO_TOP_REGION_RATIO = 0.42f
     private const val HERO_MIN_WIDTH_RATIO = 0.48f
     private const val HERO_MIN_HEIGHT_PX = 180
-    private const val HERO_MASK_TOP_RATIO = 0.43f
     private const val HERO_MASK_LEFT_RATIO = 0.05f
-    private const val HERO_MASK_HEIGHT_RATIO = 0.15f
+    private const val HERO_BANNER_MASK_TOP_RATIO = 0.10f
+    private const val HERO_BANNER_MASK_HEIGHT_RATIO = 0.14f
+    private const val HERO_TITLE_MASK_TOP_RATIO = 0.43f
+    private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
+
+    private data class HeroMaskBand(
+        val topRatio: Float,
+        val heightRatio: Float
+    )
+
+    private val heroMaskBands = listOf(
+        HeroMaskBand(
+            topRatio = HERO_BANNER_MASK_TOP_RATIO,
+            heightRatio = HERO_BANNER_MASK_HEIGHT_RATIO
+        ),
+        HeroMaskBand(
+            topRatio = HERO_TITLE_MASK_TOP_RATIO,
+            heightRatio = HERO_TITLE_MASK_HEIGHT_RATIO
+        )
+    )
 
     fun selectCandidates(
         visualRoiPlan: VisualTextRoiPlan,
         screenWidth: Int,
         screenHeight: Int
     ): List<ParsedComment> {
-        return visualRoiPlan.rois.mapNotNull { roi ->
-            semanticTopHeroCandidate(
+        return visualRoiPlan.rois.flatMap { roi ->
+            semanticTopHeroCandidates(
                 roi = roi,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
@@ -26,32 +44,35 @@ internal object VisualTextSemanticFallbackPlanner {
         }
     }
 
-    private fun semanticTopHeroCandidate(
+    private fun semanticTopHeroCandidates(
         roi: VisualTextRoi,
         screenWidth: Int,
         screenHeight: Int
-    ): ParsedComment? {
-        if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return null
+    ): List<ParsedComment> {
+        if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
         val range = VisualTextOcrCandidateFilter.findAnalysisRanges(roi.sourceText)
             .firstOrNull { candidateRange ->
                 isLikelyLeadingHeroTextHit(roi.sourceText, candidateRange)
             }
-            ?: return null
+            ?: return emptyList()
 
-        val bounds = semanticTopHeroMaskBounds(
-            roi = roi,
-            visualText = range.visualText
-        ) ?: return null
+        return heroMaskBands.mapNotNull { band ->
+            val bounds = semanticTopHeroMaskBounds(
+                roi = roi,
+                visualText = range.visualText,
+                band = band
+            ) ?: return@mapNotNull null
 
-        return ParsedComment(
-            commentText = range.analysisText,
-            boundsInScreen = bounds,
-            authorId = VisualTextOcrMetadataCodec.encode(
-                source = roi.source,
-                roiBoundsInScreen = roi.boundsInScreen,
-                visualText = range.visualText
+            ParsedComment(
+                commentText = range.analysisText,
+                boundsInScreen = bounds,
+                authorId = VisualTextOcrMetadataCodec.encode(
+                    source = roi.source,
+                    roiBoundsInScreen = roi.boundsInScreen,
+                    visualText = range.visualText
+                )
             )
-        )
+        }
     }
 
     private fun isTopHeroSemanticRoi(
@@ -86,18 +107,19 @@ internal object VisualTextSemanticFallbackPlanner {
 
     private fun semanticTopHeroMaskBounds(
         roi: VisualTextRoi,
-        visualText: String
+        visualText: String,
+        band: HeroMaskBand
     ): BoundsRect? {
         val roiBounds = roi.boundsInScreen
         val roiWidth = roiBounds.right - roiBounds.left
         val roiHeight = roiBounds.bottom - roiBounds.top
         if (roiWidth <= 0 || roiHeight <= 0) return null
 
-        val height = (roiHeight * HERO_MASK_HEIGHT_RATIO)
+        val height = (roiHeight * band.heightRatio)
             .roundToInt()
             .coerceIn(34, 56)
         val left = roiBounds.left + max(24, (roiWidth * HERO_MASK_LEFT_RATIO).roundToInt())
-        val top = roiBounds.top + (roiHeight * HERO_MASK_TOP_RATIO).roundToInt()
+        val top = roiBounds.top + (roiHeight * band.topRatio).roundToInt()
         val width = estimateSemanticVisualMaskWidth(
             visualText = visualText,
             textHeight = height,

@@ -6,7 +6,7 @@ import org.junit.Test
 
 class VisualTextSemanticFallbackPlannerTest {
     @Test
-    fun selectCandidates_addsTopHeroMaskForLeadingYoutubeCompositeHit() {
+    fun selectCandidates_addsTopHeroBannerAndTitleMasksForLeadingYoutubeCompositeHit() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 166, 656, 545),
             source = "youtube-composite-card",
@@ -21,11 +21,12 @@ class VisualTextSemanticFallbackPlannerTest {
             screenHeight = 1454
         )
 
-        assertEquals(1, candidates.size)
-        assertEquals("tlqkf", candidates.single().commentText)
-        assertTrue(candidates.single().boundsInScreen.top in 310..350)
-        assertTrue(candidates.single().boundsInScreen.left in 24..40)
-        assertTrue(candidates.single().authorId.orEmpty().startsWith("ocr:youtube-composite-card:"))
+        assertEquals(2, candidates.size)
+        assertTrue(candidates.all { it.commentText == "tlqkf" })
+        assertTrue(candidates[0].boundsInScreen.top in 195..215)
+        assertTrue(candidates[1].boundsInScreen.top in 320..340)
+        assertTrue(candidates.all { it.boundsInScreen.left in 24..40 })
+        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-composite-card:") })
     }
 
     @Test
