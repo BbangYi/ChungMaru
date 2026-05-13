@@ -632,7 +632,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
             )
             preservedRecentVisualMiss = false
             preservedRecentAnalysisFailure = false
-            resetAbsoluteScrollPosition()
         } else {
             if (
                 supportsMaskOverlay(currentPackage) &&
