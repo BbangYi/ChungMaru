@@ -560,7 +560,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 }
 
                 val uploadOk = savedFile?.let {
-                    ServerUploader.uploadJsonFile(applicationContext, it)
+                    ServerUploader.uploadJsonFile(applicationContext, it, currentPackage)
                 } ?: false
 
                 Log.d(
