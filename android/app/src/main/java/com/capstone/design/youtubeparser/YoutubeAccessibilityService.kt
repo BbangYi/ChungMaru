@@ -83,6 +83,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var preservedRecentVisualMiss = false
     private var preservedRecentAnalysisFailure = false
     private var provisionalVisualMaskActive = false
+    private var provisionalAccessibilityMaskActive = false
     private val sensitivityPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key != AnalysisSensitivityStore.KEY_ANALYSIS_SENSITIVITY) return@OnSharedPreferenceChangeListener
@@ -479,6 +480,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
             lastUploadAt = now
         }
         val snapshotOverlayRevision = overlayRevision
+        renderProvisionalAccessibilityMaskOverlay(
+            packageName = currentPackage,
+            screenCandidates = screenCandidates,
+            candidateRouteSamples = candidateRouteSamples,
+            visualRoiPlan = visualRoiPlan,
+            snapshotOverlayRevision = snapshotOverlayRevision,
+            timestamp = now
+        )
         analysisInFlight = true
 
         Thread {
@@ -592,12 +601,50 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }.start()
     }
 
+    private fun renderProvisionalAccessibilityMaskOverlay(
+        packageName: String,
+        screenCandidates: List<ScreenTextCandidate>,
+        candidateRouteSamples: List<String>,
+        visualRoiPlan: VisualTextRoiPlan,
+        snapshotOverlayRevision: Long,
+        timestamp: Long
+    ) {
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = screenCandidates,
+            timestamp = timestamp
+        ) ?: return
+
+        val analysis = AndroidAnalysisAttempt(
+            ok = true,
+            packageName = packageName,
+            url = "accessibility-provisional",
+            sensitivity = AnalysisSensitivityStore.get(applicationContext),
+            latencyMs = 0L,
+            commentCount = response.results.size,
+            offensiveCount = response.results.size,
+            filteredCount = response.filteredCount,
+            response = response,
+            candidateRouteSamples = candidateRouteSamples
+        ).withOverlayDiagnostics(packageName, visualRoiPlan)
+
+        Log.d(TAG, "render provisional accessibility masks count=${response.results.size}")
+        updateMaskOverlay(
+            currentPackage = packageName,
+            analysis = analysis,
+            snapshotOverlayRevision = snapshotOverlayRevision,
+            visualRoiPlan = visualRoiPlan,
+            isProvisionalAccessibilityMask = true,
+            allowDuringScrollStabilization = true
+        )
+    }
+
     private fun updateMaskOverlay(
         currentPackage: String,
         analysis: AndroidAnalysisAttempt?,
         snapshotOverlayRevision: Long,
         visualRoiPlan: VisualTextRoiPlan? = null,
         isProvisionalVisualMask: Boolean = false,
+        isProvisionalAccessibilityMask: Boolean = false,
         allowDuringScrollStabilization: Boolean = false
     ) {
         if (currentPackage != lastObservedPackage) {
@@ -654,13 +701,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 snapshotOverlayRevision = snapshotOverlayRevision,
                 currentOverlayRevision = overlayRevision,
                 isScrollStabilizing = isInScrollStabilizationWindow(),
-                hasProvisionalMasks = provisionalVisualMaskActive,
-                isProvisionalPlan = isProvisionalVisualMask
+                hasProvisionalMasks = provisionalVisualMaskActive || provisionalAccessibilityMaskActive,
+                isProvisionalPlan = isProvisionalVisualMask || isProvisionalAccessibilityMask,
+                allowProvisionalMasksOnEmpty = provisionalAccessibilityMaskActive && !provisionalVisualMaskActive
             )
+            val responseResultCount = analysis.response?.results?.size ?: 0
             Log.d(
                 TAG,
-                "render mask overlay package=$currentPackage results=${analysis.response?.results?.size ?: 0} " +
-                    "preserveExistingIfEmpty=$preserveExistingIfEmpty provisional=$isProvisionalVisualMask"
+                "render mask overlay package=$currentPackage results=$responseResultCount " +
+                    "preserveExistingIfEmpty=$preserveExistingIfEmpty " +
+                    "provisionalVisual=$isProvisionalVisualMask provisionalAccessibility=$isProvisionalAccessibilityMask"
             )
             maskOverlayController.render(
                 response = analysis.response,
@@ -668,7 +718,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
             )
             preservedRecentVisualMiss = false
             preservedRecentAnalysisFailure = false
-            provisionalVisualMaskActive = isProvisionalVisualMask && maskOverlayController.hasActiveMasks()
+            val hasActiveMasksAfterRender = maskOverlayController.hasActiveMasks()
+            val preservedExistingEmptyPlan = preserveExistingIfEmpty && responseResultCount == 0
+            provisionalVisualMaskActive =
+                if (preservedExistingEmptyPlan) {
+                    provisionalVisualMaskActive && hasActiveMasksAfterRender
+                } else {
+                    isProvisionalVisualMask && hasActiveMasksAfterRender
+                }
+            provisionalAccessibilityMaskActive =
+                if (preservedExistingEmptyPlan) {
+                    provisionalAccessibilityMaskActive && hasActiveMasksAfterRender
+                } else {
+                    isProvisionalAccessibilityMask && hasActiveMasksAfterRender
+                }
         } else {
             if (
                 supportsMaskOverlay(currentPackage) &&
@@ -698,6 +761,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
         provisionalVisualMaskActive = false
+        provisionalAccessibilityMaskActive = false
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
         resetAbsoluteScrollPosition()
@@ -705,6 +769,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun hideMaskOverlayViewsUntilRecapture() {
         provisionalVisualMaskActive = false
+        provisionalAccessibilityMaskActive = false
         maskOverlayController.clear()
     }
 
@@ -716,6 +781,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun markVisualSceneChanged(eventType: Int) {
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
+        provisionalAccessibilityMaskActive = false
         invalidateVisualAnalysis(reason = "eventType=$eventType", requestFollowUp = true)
     }
 
