@@ -42,6 +42,7 @@ object ScreenTextCandidateExtractor {
     private const val ROOT_LIKE_RANGE_SOURCE_HEIGHT_PX = 96
     private const val MAX_SUPPLEMENTAL_RANGE_SOURCE_TEXT_LENGTH = 96
     private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
+    private const val ACCESSIBILITY_COMMENT_PREFIX = "android-accessibility-comment:"
 
     fun extractCandidates(
         packageName: String,
@@ -63,14 +64,15 @@ object ScreenTextCandidateExtractor {
         packageName: String,
         sceneRevision: Long
     ): ScreenTextCandidate {
+        val sourceId = platformCommentSourceId(packageName, authorId)
         val source = when {
-            authorId.orEmpty().startsWith("ocr:") -> CandidateSource.VISUAL_OCR
-            authorId.orEmpty().startsWith("youtube-visual-range:") -> CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
-            authorId == "youtube-composite-description" -> CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
+            sourceId.orEmpty().startsWith("ocr:") -> CandidateSource.VISUAL_OCR
+            sourceId.orEmpty().startsWith("youtube-visual-range:") -> CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
+            sourceId == "youtube-composite-description" -> CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
             else -> CandidateSource.ACCESSIBILITY_TEXT
         }
         val role = when {
-            authorId == YOUTUBE_USER_INPUT_AUTHOR_ID -> CandidateRole.USER_INPUT
+            sourceId == YOUTUBE_USER_INPUT_AUTHOR_ID -> CandidateRole.USER_INPUT
             else -> when (source) {
                 CandidateSource.VISUAL_OCR -> CandidateRole.THUMBNAIL_TEXT
                 CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY -> CandidateRole.TITLE
@@ -87,8 +89,35 @@ object ScreenTextCandidateExtractor {
             normalizedVariants = normalizedVariantsFor(commentText),
             screenRect = boundsInScreen,
             sceneRevision = sceneRevision,
-            backendSourceId = authorId
+            backendSourceId = sourceId
         )
+    }
+
+    private fun platformCommentSourceId(packageName: String, authorId: String?): String? {
+        val value = authorId?.trim().orEmpty()
+        if (value.startsWith("ocr:") ||
+            value.startsWith("youtube-visual-range:") ||
+            value == "youtube-composite-description" ||
+            value.startsWith("android-accessibility:")
+        ) {
+            return value
+        }
+
+        return when (packageName) {
+            YOUTUBE_PACKAGE -> "$ACCESSIBILITY_COMMENT_PREFIX youtube".compactSourceId()
+            INSTAGRAM_PACKAGE -> "$ACCESSIBILITY_COMMENT_PREFIX instagram".compactSourceId()
+            TIKTOK_PACKAGE, TIKTOK_ALT_PACKAGE -> {
+                val suffix = value.takeIf { it.isNotBlank() } ?: "tiktok"
+                "$ACCESSIBILITY_COMMENT_PREFIX tiktok:$suffix".compactSourceId()
+            }
+            else -> authorId
+        }
+    }
+
+    private fun String.compactSourceId(): String {
+        return replace(Regex("\\s+"), "")
+            .replace('|', '_')
+            .take(120)
     }
 
     private fun extractGenericCandidates(

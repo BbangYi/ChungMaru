@@ -1125,6 +1125,35 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun translateSpecs_keepsPlatformCommentMasksDuringScrollRecaptureGap() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 540, 940, 620),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf 뭐냐 진짜",
+                authorId = "android-accessibility-comment:youtube"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().allowScrollTranslation)
+
+        val translated = AndroidMaskOverlayPlanner.translateSpecs(
+            specs = specs,
+            deltaX = 0,
+            deltaY = -24,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(1, translated.size)
+        assertEquals(specs.single().top - 24, translated.single().top)
+    }
+
+    @Test
     fun translateSpecs_keepsLowerUserInputMasksDuringScroll() {
         val response = responseOf(
             resultOf(

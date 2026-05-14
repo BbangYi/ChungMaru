@@ -26,7 +26,7 @@ object YoutubeAnalysisTargetExtractor {
             .flatMap { toStandaloneTargets(it).asSequence() }
             .toList()
 
-        return selectTargetsForAnalysis(searchInputTargets + standaloneTargets + commentTargets)
+        return selectTargetsForAnalysis(searchInputTargets + commentTargets + standaloneTargets)
     }
 
     private fun selectTargetsForAnalysis(targets: List<ParsedComment>): List<ParsedComment> {
