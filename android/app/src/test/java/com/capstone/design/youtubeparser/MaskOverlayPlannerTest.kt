@@ -652,6 +652,23 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_rejectsLookaheadAccessibilityTargetsUntilVisibleBoundsAreConfirmed() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(159, 1320, 943, 1400),
+                spans = listOf(EvidenceSpan("Tlqkf", 9, 14, 0.99)),
+                original = "What is 'Tlqkf'?_Contemporary Korean Slang",
+                authorId = "android-accessibility-lookahead:android-accessibility:youtube_title"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertTrue(specs.isEmpty())
+    }
+
+    @Test
     fun buildSpecs_prefersPreciseOcrOverYoutubeTitleAccessibilityInsideSameCard() {
         val response = responseOf(
             resultOf(

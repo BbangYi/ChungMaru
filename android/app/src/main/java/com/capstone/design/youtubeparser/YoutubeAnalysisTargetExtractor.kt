@@ -3,6 +3,9 @@ package com.capstone.design.youtubeparser
 object YoutubeAnalysisTargetExtractor {
     private const val MAX_TARGET_COUNT = 28
     private const val MAX_LOW_PRIORITY_TARGET_COUNT = 8
+    private const val LOOKAHEAD_BAND_BELOW_SCREEN_RATIO = 0.75f
+    private const val LOOKAHEAD_BAND_ABOVE_SCREEN_RATIO = 0.25f
+    private const val LOOKAHEAD_AUTHOR_PREFIX = "android-accessibility-lookahead:"
     private const val YOUTUBE_SEARCH_INPUT_TOP_MAX_PX = 260
     private const val YOUTUBE_SEARCH_INPUT_MIN_WIDTH_PX = 96
     private const val YOUTUBE_SEARCH_INPUT_MAX_HEIGHT_PX = 128
@@ -15,7 +18,10 @@ object YoutubeAnalysisTargetExtractor {
     private const val YOUTUBE_STABLE_TITLE_AUTHOR_ID = "android-accessibility:youtube_title"
     private const val YOUTUBE_SHORTS_TITLE_AUTHOR_ID = "android-accessibility:youtube_shorts_title"
 
-    fun extractTargets(nodes: List<ParsedTextNode>): List<ParsedComment> {
+    fun extractTargets(
+        nodes: List<ParsedTextNode>,
+        screenHeight: Int? = null
+    ): List<ParsedComment> {
         val commentTargets = YoutubeCommentExtractor.extractComments(nodes)
         val searchInputTargets = nodes
             .asSequence()
@@ -23,7 +29,7 @@ object YoutubeAnalysisTargetExtractor {
             .toList()
         val standaloneTargets = nodes
             .asSequence()
-            .flatMap { toStandaloneTargets(it).asSequence() }
+            .flatMap { toStandaloneTargets(it, screenHeight).asSequence() }
             .toList()
 
         return selectTargetsForAnalysis(searchInputTargets + commentTargets + standaloneTargets)
@@ -57,13 +63,12 @@ object YoutubeAnalysisTargetExtractor {
         return selected.sortedWith(compareBy<ParsedComment> { it.boundsInScreen.top }.thenBy { it.boundsInScreen.left })
     }
 
-    private fun isUsefulStandaloneTarget(node: ParsedTextNode): Boolean {
-        return toStandaloneTargets(node).isNotEmpty()
-    }
-
-    private fun toStandaloneTargets(node: ParsedTextNode): List<ParsedComment> {
-        val primary = toStandaloneTarget(node) ?: return emptyList()
-        when (primary.authorId) {
+    private fun toStandaloneTargets(
+        node: ParsedTextNode,
+        screenHeight: Int?
+    ): List<ParsedComment> {
+        val primary = toStandaloneTarget(node, screenHeight) ?: return emptyList()
+        when (baseAuthorId(primary.authorId)) {
             YOUTUBE_SHORTS_TITLE_AUTHOR_ID -> return listOf(primary)
             COMPOSITE_DESCRIPTION_AUTHOR_ID -> {
                 return toVisualRangeTargets(
@@ -76,18 +81,23 @@ object YoutubeAnalysisTargetExtractor {
         return listOf(primary)
     }
 
-    private fun toStandaloneTarget(node: ParsedTextNode): ParsedComment? {
+    private fun toStandaloneTarget(
+        node: ParsedTextNode,
+        screenHeight: Int?
+    ): ParsedComment? {
         val text = node.displayText.orEmpty().replace(Regex("\\s+"), " ").trim()
         val lower = text.lowercase()
         val width = node.right - node.left
         val height = node.bottom - node.top
         val className = node.className.orEmpty()
         val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
+        val visibility = targetVisibility(node, screenHeight)
 
-        if (!node.isVisibleToUser) return null
+        if (visibility == TargetVisibility.HIDDEN) return null
         if (width < 24 || height < 16) return null
         if (contentDescriptionOnly && shouldTreatAsCompositeYoutubeCard(text, lower, width, height)) {
             return toCompositeYoutubeTitleTarget(node, text, width, height)
+                ?.withVisibility(visibility)
         }
         if (text.length !in 2..220) return null
         if (text.startsWith("@")) return null
@@ -119,7 +129,7 @@ object YoutubeAnalysisTargetExtractor {
                 bottom = node.bottom
             ),
             authorId = stableYoutubeAccessibilityAuthor(node, text, width, height, className)
-        )
+        ).withVisibility(visibility)
     }
 
     private fun toYoutubeSearchInputTarget(node: ParsedTextNode): ParsedComment? {
@@ -167,13 +177,17 @@ object YoutubeAnalysisTargetExtractor {
             ParsedComment(
                 commentText = range.analysisText,
                 boundsInScreen = rangeBounds,
-                authorId = "youtube-visual-range:${range.visualText}"
+                authorId = if (isLookaheadAuthor(primary.authorId)) {
+                    lookaheadAuthorId("youtube-visual-range:${range.visualText}")
+                } else {
+                    "youtube-visual-range:${range.visualText}"
+                }
             )
         }
     }
 
     private fun targetSelectionPriority(target: ParsedComment): Int {
-        val authorId = target.authorId.orEmpty()
+        val authorId = baseAuthorId(target.authorId).orEmpty()
         if (authorId == YOUTUBE_USER_INPUT_AUTHOR_ID) {
             return 0
         }
@@ -194,6 +208,53 @@ object YoutubeAnalysisTargetExtractor {
             return 1
         }
         return 2
+    }
+
+    private enum class TargetVisibility {
+        VISIBLE,
+        LOOKAHEAD,
+        HIDDEN
+    }
+
+    private fun targetVisibility(node: ParsedTextNode, screenHeight: Int?): TargetVisibility {
+        if (node.isVisibleToUser) return TargetVisibility.VISIBLE
+        val height = screenHeight?.takeIf { it > 0 } ?: return TargetVisibility.HIDDEN
+        val nodeHeight = node.bottom - node.top
+        if (nodeHeight <= 0) return TargetVisibility.HIDDEN
+
+        val belowLimit = height + (height * LOOKAHEAD_BAND_BELOW_SCREEN_RATIO).toInt()
+        val aboveLimit = -(height * LOOKAHEAD_BAND_ABOVE_SCREEN_RATIO).toInt()
+        val belowViewport = node.top >= height && node.top <= belowLimit
+        val aboveViewport = node.bottom <= 0 && node.bottom >= aboveLimit
+
+        return if (belowViewport || aboveViewport) {
+            TargetVisibility.LOOKAHEAD
+        } else {
+            TargetVisibility.HIDDEN
+        }
+    }
+
+    private fun ParsedComment.withVisibility(visibility: TargetVisibility): ParsedComment {
+        if (visibility != TargetVisibility.LOOKAHEAD) return this
+        val baseAuthorId = authorId ?: YOUTUBE_STABLE_TITLE_AUTHOR_ID
+        return copy(authorId = lookaheadAuthorId(baseAuthorId))
+    }
+
+    private fun lookaheadAuthorId(authorId: String): String {
+        return if (authorId.startsWith(LOOKAHEAD_AUTHOR_PREFIX)) {
+            authorId
+        } else {
+            LOOKAHEAD_AUTHOR_PREFIX + authorId
+        }
+    }
+
+    private fun isLookaheadAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith(LOOKAHEAD_AUTHOR_PREFIX) == true
+    }
+
+    private fun baseAuthorId(authorId: String?): String? {
+        val value = authorId ?: return null
+        return value.removePrefix(LOOKAHEAD_AUTHOR_PREFIX)
     }
 
     private fun estimateVisualRangeBounds(

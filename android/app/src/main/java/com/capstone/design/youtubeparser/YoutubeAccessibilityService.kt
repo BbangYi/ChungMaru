@@ -49,6 +49,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val VISUAL_COARSE_BASE_AREA_MULTIPLIER = 3.0f
         private const val TOP_CONTROL_OCR_EXCLUSION_MAX_PX = 220
         private const val TOP_CONTROL_OCR_EXCLUSION_RATIO = 0.12f
+        private const val CACHE_PROMOTION_THROTTLE_MS = 80L
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -69,6 +70,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var lastAbsoluteScrollY: Int? = null
     private var lastPointerInteractionAtMs = 0L
     private var lastOverlayContentChangeAtMs = 0L
+    private var lastCachePromotionAtMs = 0L
     private var lastAppliedSensitivity: Int? = null
     private var visualCaptureState: VisualTextCaptureState =
         VisualTextCaptureSupport.inspect(serviceInfo = null)
@@ -225,6 +227,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     } else {
                         markOverlayRevisionStale()
                     }
+                    promoteCachedMasksForCurrentWindow()
                 } else if (overlaySelfContentChange) {
                     Log.d(TAG, "ignore overlay self content change")
                 } else if (
@@ -358,17 +361,24 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         val visualRoiPlan = buildVisualTextRoiPlan(nodes)
+        val metrics = resources.displayMetrics
         val screenCandidates = ScreenTextCandidateExtractor.extractCandidates(
             packageName = currentPackage,
             nodes = nodes,
-            sceneRevision = visualSceneRevision
+            sceneRevision = visualSceneRevision,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
         )
+        val lookaheadCandidateCount = screenCandidates.count { candidate ->
+            candidate.backendSourceId.orEmpty().startsWith("android-accessibility-lookahead:")
+        }
         val comments = screenCandidates.map { it.toParsedComment() }
 
         Log.d(
             TAG,
                 "package=$currentPackage parsed analysis target count=${comments.size} " +
                 "screenCandidates=${screenCandidates.size} " +
+                "lookaheadCandidates=$lookaheadCandidateCount " +
                 "visualRoiCandidates=${visualRoiPlan.candidateCount} visualRois=${visualRoiPlan.rois.size}"
         )
 
@@ -582,7 +592,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         analysis: AndroidAnalysisAttempt?,
         snapshotOverlayRevision: Long,
         visualRoiPlan: VisualTextRoiPlan? = null,
-        isProvisionalVisualMask: Boolean = false
+        isProvisionalVisualMask: Boolean = false,
+        allowDuringScrollStabilization: Boolean = false
     ) {
         if (currentPackage != lastObservedPackage) {
             Log.d(
@@ -626,7 +637,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (analysis?.ok == true && isInScrollStabilizationWindow()) {
+        if (analysis?.ok == true && isInScrollStabilizationWindow() && !allowDuringScrollStabilization) {
             Log.d(TAG, "defer mask overlay render: scroll stabilization active")
             scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
             return
@@ -889,6 +900,54 @@ class YoutubeAccessibilityService : AccessibilityService() {
         return ScrollTranslationResult(
             status = translationStatus,
             hasResolvedScrollDelta = true
+        )
+    }
+
+    private fun promoteCachedMasksForCurrentWindow() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastCachePromotionAtMs < CACHE_PROMOTION_THROTTLE_MS) return
+        lastCachePromotionAtMs = now
+
+        val currentPackage = lastObservedPackage ?: return
+        if (currentPackage != YOUTUBE_PACKAGE) return
+        if (!supportsMaskOverlay(currentPackage)) return
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return
+
+        val nodes = extractVisibleTextNodesFromYoutubeWindows()
+        if (nodes.isEmpty()) return
+
+        val metrics = resources.displayMetrics
+        val comments = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = currentPackage,
+            nodes = nodes,
+            sceneRevision = visualSceneRevision,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        ).map { candidate ->
+            candidate.toParsedComment()
+        }
+        if (comments.isEmpty()) return
+
+        val snapshot = ParseSnapshot(
+            timestamp = System.currentTimeMillis(),
+            comments = comments
+        )
+        val analysis = AndroidAnalysisClient
+            .analyzeSnapshotFromCache(applicationContext, snapshot)
+            .copy(packageName = currentPackage)
+        if (analysis.offensiveCount <= 0) return
+
+        Log.d(
+            TAG,
+            "promote cached masks during scroll comments=${analysis.commentCount} " +
+                "offensive=${analysis.offensiveCount}"
+        )
+        updateMaskOverlay(
+            currentPackage = currentPackage,
+            analysis = analysis,
+            snapshotOverlayRevision = overlayRevision,
+            visualRoiPlan = buildVisualTextRoiPlan(nodes),
+            allowDuringScrollStabilization = true
         )
     }
 

@@ -114,6 +114,46 @@ class AndroidAnalysisClientTest {
     }
 
     @Test
+    fun matchFreshResultsToComments_reusesLookaheadAnalysisForVisibleAccessibilityTarget() {
+        val visibleTitle = ParsedComment(
+            commentText = "What is 'Tlqkf'?_Contemporary Korean Slang",
+            boundsInScreen = BoundsRect(left = 80, top = 420, right = 680, bottom = 500),
+            authorId = "android-accessibility:youtube_title"
+        )
+        val response = AndroidAnalysisClient.parseAndroidAnalysisResponse(
+            """
+            {
+              "timestamp": 1710000000000,
+              "filtered_count": 0,
+              "results": [
+                {
+                  "original": "What is 'Tlqkf'?_Contemporary Korean Slang",
+                  "boundsInScreen": {"left": 80, "top": 1320, "right": 680, "bottom": 1400},
+                  "author_id": "android-accessibility-lookahead:android-accessibility:youtube_title",
+                  "is_offensive": true,
+                  "is_profane": true,
+                  "is_toxic": true,
+                  "is_hate": false,
+                  "scores": {"profanity": 0.98, "toxicity": 0.9, "hate": 0.01},
+                  "evidence_spans": [
+                    {"text": "Tlqkf", "start": 9, "end": 14, "score": 0.98}
+                  ]
+                }
+              ]
+            }
+            """.trimIndent(),
+            expectedCommentCount = 1
+        )
+
+        val matched = AndroidAnalysisClient.matchFreshResultsToComments(
+            comments = listOf(visibleTitle),
+            results = response.results
+        )
+
+        assertEquals("What is 'Tlqkf'?_Contemporary Korean Slang", matched.single()?.original)
+    }
+
+    @Test
     fun parseAndroidAnalysisResponse_rejectsImpossibleCount() {
         val error = expectInvalidResponse {
             AndroidAnalysisClient.parseAndroidAnalysisResponse(

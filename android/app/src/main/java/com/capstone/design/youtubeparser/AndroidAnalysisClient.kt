@@ -30,6 +30,7 @@ object AndroidAnalysisClient {
     private const val READ_TIMEOUT_MS = 1200
     private const val RESPONSE_CACHE_LIMIT = 256
     private const val RESPONSE_CACHE_TTL_MS = 30_000L
+    private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
 
     private val gson = GsonBuilder().create()
     private val responseCache = object : LinkedHashMap<String, CachedAnalysisResult>(
@@ -217,6 +218,51 @@ object AndroidAnalysisClient {
         }
     }
 
+    fun analyzeSnapshotFromCache(context: Context, snapshot: ParseSnapshot): AndroidAnalysisAttempt {
+        val url = AnalysisEndpointStore.resolveAnalyzeUrl(context)
+        val sensitivity = AnalysisSensitivityStore.get(context)
+        val startedAt = System.currentTimeMillis()
+        val commentCount = snapshot.comments.size
+
+        if (commentCount == 0 || sensitivity <= 0) {
+            return AndroidAnalysisAttempt(
+                ok = true,
+                url = url,
+                sensitivity = sensitivity,
+                latencyMs = 0L,
+                commentCount = 0,
+                offensiveCount = 0,
+                filteredCount = 0,
+                response = AndroidAnalysisResponse(
+                    timestamp = snapshot.timestamp,
+                    filteredCount = 0,
+                    results = emptyList()
+                )
+            )
+        }
+
+        val cachedResults = snapshot.comments.mapNotNull { comment ->
+            getCachedResult(comment, startedAt, sensitivity)
+        }
+        val response = AndroidAnalysisResponse(
+            timestamp = snapshot.timestamp,
+            filteredCount = 0,
+            results = cachedResults
+        )
+
+        return AndroidAnalysisAttempt(
+            ok = true,
+            url = url,
+            sensitivity = sensitivity,
+            latencyMs = System.currentTimeMillis() - startedAt,
+            commentCount = commentCount,
+            offensiveCount = countActionableOffensiveResults(response),
+            filteredCount = 0,
+            response = response,
+            actionableSamples = buildActionableSamples(response)
+        )
+    }
+
     private fun buildCachedFallbackAttempt(
         url: String,
         sensitivity: Int,
@@ -392,7 +438,7 @@ object AndroidAnalysisClient {
     private fun normalizeSourceCacheKey(authorId: String?): String {
         val value = authorId?.trim().orEmpty()
         if (value.isBlank()) return ""
-        return value
+        return value.removePrefix(ACCESSIBILITY_LOOKAHEAD_PREFIX)
     }
 
     internal fun parseAndroidAnalysisResponse(

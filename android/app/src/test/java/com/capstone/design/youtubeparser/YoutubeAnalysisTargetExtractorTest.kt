@@ -226,6 +226,46 @@ class YoutubeAnalysisTargetExtractorTest {
     }
 
     @Test
+    fun extractTargets_includesMountedBelowViewportTitleAsLookaheadOnly() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            nodes = listOf(
+                node(
+                    "What is 'Tlqkf'?_Contemporary Korean Slang",
+                    80,
+                    1320,
+                    680,
+                    1390,
+                    isVisibleToUser = false
+                )
+            ),
+            screenHeight = 1280
+        )
+
+        val target = targets.primaryTargets().single()
+        assertEquals("What is 'Tlqkf'?_Contemporary Korean Slang", target.commentText)
+        assertEquals("android-accessibility-lookahead:android-accessibility:youtube_title", target.authorId)
+    }
+
+    @Test
+    fun extractTargets_rejectsHiddenNodeOverlappingViewportAsLookahead() {
+        val targets = YoutubeAnalysisTargetExtractor.extractTargets(
+            nodes = listOf(
+                node(
+                    "What is 'Tlqkf'?_Contemporary Korean Slang",
+                    80,
+                    420,
+                    680,
+                    490,
+                    isVisibleToUser = false
+                )
+            ),
+            screenHeight = 1280
+        )
+
+        assertTrue(targets.isEmpty())
+    }
+
+    @Test
     fun extractTargets_keepsKoreanOffensiveTextAsSinglePrimaryAccessibilityTarget() {
         val targets = YoutubeAnalysisTargetExtractor.extractTargets(
             listOf(
@@ -342,7 +382,8 @@ class YoutubeAnalysisTargetExtractorTest {
         bottom: Int,
         className: String = "android.widget.TextView",
         contentDescription: String? = null,
-        viewIdResourceName: String? = null
+        viewIdResourceName: String? = null,
+        isVisibleToUser: Boolean = true
     ): ParsedTextNode {
         return ParsedTextNode(
             packageName = "com.google.android.youtube",
@@ -356,7 +397,7 @@ class YoutubeAnalysisTargetExtractorTest {
             right = right,
             bottom = bottom,
             approxTop = top,
-            isVisibleToUser = true
+            isVisibleToUser = isVisibleToUser
         )
     }
 

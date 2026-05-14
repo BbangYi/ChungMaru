@@ -371,6 +371,29 @@ class ScreenTextCandidateExtractorTest {
         assertEquals(listOf("개새끼 뭐하는 거야"), candidates.map { it.rawText })
     }
 
+    @Test
+    fun extractCandidates_preservesYoutubeLookaheadSourceForCacheOnlyAnalysis() {
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = YOUTUBE_PACKAGE,
+            nodes = listOf(
+                node(
+                    text = "What is 'Tlqkf'?_Contemporary Korean Slang",
+                    left = 80,
+                    top = 1320,
+                    right = 680,
+                    bottom = 1390,
+                    packageName = YOUTUBE_PACKAGE,
+                    isVisibleToUser = false
+                )
+            ),
+            screenHeight = 1280
+        )
+
+        val candidate = candidates.single()
+        assertEquals(CandidateRole.TITLE, candidate.role)
+        assertEquals("android-accessibility-lookahead:android-accessibility:youtube_title", candidate.backendSourceId)
+    }
+
     private fun node(
         text: String,
         left: Int,
@@ -378,7 +401,8 @@ class ScreenTextCandidateExtractorTest {
         right: Int,
         bottom: Int,
         className: String = "android.widget.TextView",
-        packageName: String = CHROME_PACKAGE
+        packageName: String = CHROME_PACKAGE,
+        isVisibleToUser: Boolean = true
     ): ParsedTextNode {
         return ParsedTextNode(
             packageName = packageName,
@@ -392,7 +416,7 @@ class ScreenTextCandidateExtractorTest {
             right = right,
             bottom = bottom,
             approxTop = top,
-            isVisibleToUser = true
+            isVisibleToUser = isVisibleToUser
         )
     }
 

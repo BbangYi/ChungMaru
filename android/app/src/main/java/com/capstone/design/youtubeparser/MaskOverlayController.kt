@@ -141,6 +141,7 @@ object AndroidMaskOverlayPlanner {
     private const val YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_title"
     private const val YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_shorts_title"
     private const val ACCESSIBILITY_COMMENT_PREFIX = "android-accessibility-comment:"
+    private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_HEIGHT_PX = 148
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_TEXT_LENGTH = 180
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT = 4
@@ -394,6 +395,9 @@ object AndroidMaskOverlayPlanner {
         screenHeight: Int,
         authorId: String?
     ): Boolean {
+        if (isLookaheadAccessibilityAuthor(authorId)) {
+            return false
+        }
         val accessibilityAuthor = isAccessibilityAuthor(authorId)
         if (originalLength > MAX_HIGH_CONFIDENCE_TEXT_LENGTH && !accessibilityAuthor) return false
         if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX && !accessibilityAuthor) return false
@@ -577,6 +581,10 @@ object AndroidMaskOverlayPlanner {
             value.startsWith("android-accessibility-browser:") ||
             value.startsWith(ACCESSIBILITY_COMMENT_PREFIX) ||
             value.startsWith("screen:accessibility_text:")
+    }
+
+    private fun isLookaheadAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith(ACCESSIBILITY_LOOKAHEAD_PREFIX) == true
     }
 
     private fun isAccessibilityRangeAuthor(authorId: String?): Boolean {
