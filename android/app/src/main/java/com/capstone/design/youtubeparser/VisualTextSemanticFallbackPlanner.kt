@@ -5,67 +5,18 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 internal object VisualTextSemanticFallbackPlanner {
-    private const val HERO_TOP_REGION_RATIO = 0.42f
-    private const val HERO_MIN_WIDTH_RATIO = 0.48f
-    private const val HERO_MIN_HEIGHT_PX = 180
-    private const val HERO_MASK_LEFT_RATIO = 0.05f
-    private const val HERO_BANNER_MASK_TOP_RATIO = 0.12f
-    private const val HERO_BANNER_MASK_HEIGHT_RATIO = 0.14f
-    private const val HERO_TITLE_MASK_TOP_RATIO = 0.39f
-    private const val HERO_TITLE_MASK_HEIGHT_RATIO = 0.16f
-    private const val HERO_TITLE_PREFIX_MAX_CHARS = 110
-    private const val VISIBLE_BAND_TOP_REGION_RATIO = 0.36f
-    private const val VISIBLE_BAND_MIN_WIDTH_RATIO = 0.70f
-    private const val VISIBLE_BAND_MIN_HEIGHT_PX = 220
-    private const val VISIBLE_BAND_BANNER_MASK_TOP_RATIO = 0.12f
-    private const val VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO = 0.08f
-    private const val VISIBLE_BAND_TITLE_MASK_TOP_RATIO = 0.40f
-    private const val VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO = 0.11f
-    private const val VISIBLE_BAND_MASK_MAX_WIDTH_RATIO = 0.34f
-    private const val DEFAULT_MASK_MIN_HEIGHT_PX = 34
-    private const val DEFAULT_MASK_MAX_HEIGHT_PX = 56
-    private const val VISIBLE_BAND_BANNER_MASK_MAX_HEIGHT_PX = 44
-    private const val VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX = 48
-    private const val VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX = 72
-    private const val YOUTUBE_USER_INPUT_AUTHOR_ID = "android-accessibility:youtube_user_input"
+    private const val THUMBNAIL_TERM_TOP_REGION_RATIO = 0.60f
+    private const val THUMBNAIL_TERM_MIN_WIDTH_RATIO = 0.48f
+    private const val SEMANTIC_TITLE_PREFIX_MAX_CHARS = 110
+    private const val THUMBNAIL_TERM_TOP_RATIO = 0.40f
+    private const val THUMBNAIL_TERM_HEIGHT_RATIO = 0.13f
+    private const val THUMBNAIL_TERM_MIN_HEIGHT_PX = 64
+    private const val THUMBNAIL_TERM_MAX_HEIGHT_PX = 128
+    private const val THUMBNAIL_TERM_MIN_ROI_HEIGHT_PX = 480
+    private const val THUMBNAIL_TERM_MAX_WIDTH_RATIO = 0.46f
+    private const val THUMBNAIL_TERM_CENTER_X_RATIO = 0.50f
+    private const val THUMBNAIL_TERM_MIN_PREFIX_CHARS = 3
     private const val SEMANTIC_FALLBACK_SOURCE = "youtube-semantic-card"
-
-    private data class HeroMaskBand(
-        val topRatio: Float,
-        val heightRatio: Float,
-        val minHeightPx: Int = DEFAULT_MASK_MIN_HEIGHT_PX,
-        val maxHeightPx: Int = DEFAULT_MASK_MAX_HEIGHT_PX,
-        val leftRatio: Float = HERO_MASK_LEFT_RATIO,
-        val minLeftPx: Int = 24,
-        val maxWidthRatio: Float? = null
-    )
-
-    private val heroMaskBands = listOf(
-        HeroMaskBand(
-            topRatio = HERO_BANNER_MASK_TOP_RATIO,
-            heightRatio = HERO_BANNER_MASK_HEIGHT_RATIO
-        ),
-        HeroMaskBand(
-            topRatio = HERO_TITLE_MASK_TOP_RATIO,
-            heightRatio = HERO_TITLE_MASK_HEIGHT_RATIO
-        )
-    )
-
-    private val visibleBandHeroMaskBands = listOf(
-        HeroMaskBand(
-            topRatio = VISIBLE_BAND_BANNER_MASK_TOP_RATIO,
-            heightRatio = VISIBLE_BAND_BANNER_MASK_HEIGHT_RATIO,
-            maxHeightPx = VISIBLE_BAND_BANNER_MASK_MAX_HEIGHT_PX,
-            maxWidthRatio = VISIBLE_BAND_MASK_MAX_WIDTH_RATIO
-        ),
-        HeroMaskBand(
-            topRatio = VISIBLE_BAND_TITLE_MASK_TOP_RATIO,
-            heightRatio = VISIBLE_BAND_TITLE_MASK_HEIGHT_RATIO,
-            minHeightPx = VISIBLE_BAND_TITLE_MASK_MIN_HEIGHT_PX,
-            maxHeightPx = VISIBLE_BAND_TITLE_MASK_MAX_HEIGHT_PX,
-            maxWidthRatio = VISIBLE_BAND_MASK_MAX_WIDTH_RATIO
-        )
-    )
 
     fun selectCandidates(
         visualRoiPlan: VisualTextRoiPlan,
@@ -73,46 +24,35 @@ internal object VisualTextSemanticFallbackPlanner {
         screenHeight: Int,
         baseResponse: AndroidAnalysisResponse? = null
     ): List<ParsedComment> {
-        val baseHeroRange = topHeroBaseRange(baseResponse)
-        val visibleBandRange = baseHeroRange
         return visualRoiPlan.rois.flatMap { roi ->
-            semanticTopHeroCandidates(
+            semanticThumbnailTermCandidates(
                 roi = roi,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
-            ) + semanticVisibleBandHeroCandidates(
-                roi = roi,
-                screenWidth = screenWidth,
-                screenHeight = screenHeight,
-                range = visibleBandRange
-            ) + semanticCompositeHeroCandidatesFromBaseTitle(
-                roi = roi,
-                screenWidth = screenWidth,
-                screenHeight = screenHeight,
-                range = baseHeroRange
             )
         }
     }
 
-    private fun semanticTopHeroCandidates(
+    private fun semanticThumbnailTermCandidates(
         roi: VisualTextRoi,
         screenWidth: Int,
         screenHeight: Int
     ): List<ParsedComment> {
-        if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
+        if (!isFullWidthThumbnailSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
+
         val range = VisualTextOcrCandidateFilter.findAnalysisRanges(roi.sourceText)
             .firstOrNull { candidateRange ->
-                isLikelyHeroTitleTextHit(roi.sourceText, candidateRange)
+                semanticPrefixContentLength(roi.sourceText, candidateRange) >= THUMBNAIL_TERM_MIN_PREFIX_CHARS &&
+                    isLikelyHeroTitleTextHit(roi.sourceText, candidateRange)
             }
             ?: return emptyList()
 
-        return heroMaskBands.mapNotNull { band ->
-            val bounds = semanticTopHeroMaskBounds(
-                roi = roi,
-                visualText = range.visualText,
-                band = band
-            ) ?: return@mapNotNull null
+        val bounds = semanticThumbnailTermMaskBounds(
+            roi = roi,
+            visualText = range.visualText
+        ) ?: return emptyList()
 
+        return listOf(
             ParsedComment(
                 commentText = range.analysisText,
                 boundsInScreen = bounds,
@@ -122,66 +62,10 @@ internal object VisualTextSemanticFallbackPlanner {
                     visualText = range.visualText
                 )
             )
-        }
+        )
     }
 
-    private fun semanticCompositeHeroCandidatesFromBaseTitle(
-        roi: VisualTextRoi,
-        screenWidth: Int,
-        screenHeight: Int,
-        range: VisualTextOcrCandidateFilter.CandidateRange?
-    ): List<ParsedComment> {
-        if (range == null) return emptyList()
-        if (!isTopHeroSemanticRoi(roi, screenWidth, screenHeight)) return emptyList()
-
-        return heroMaskBands.mapNotNull { band ->
-            val bounds = semanticTopHeroMaskBounds(
-                roi = roi,
-                visualText = range.visualText,
-                band = band
-            ) ?: return@mapNotNull null
-
-            ParsedComment(
-                commentText = range.analysisText,
-                boundsInScreen = bounds,
-                authorId = VisualTextOcrMetadataCodec.encode(
-                    source = SEMANTIC_FALLBACK_SOURCE,
-                    roiBoundsInScreen = roi.boundsInScreen,
-                    visualText = range.visualText
-                )
-            )
-        }
-    }
-
-    private fun semanticVisibleBandHeroCandidates(
-        roi: VisualTextRoi,
-        screenWidth: Int,
-        screenHeight: Int,
-        range: VisualTextOcrCandidateFilter.CandidateRange?
-    ): List<ParsedComment> {
-        if (range == null) return emptyList()
-        if (!isTopHeroVisibleBandRoi(roi, screenWidth, screenHeight)) return emptyList()
-
-        return visibleBandHeroMaskBands.mapNotNull { band ->
-            val bounds = semanticTopHeroMaskBounds(
-                roi = roi,
-                visualText = range.visualText,
-                band = band
-            ) ?: return@mapNotNull null
-
-            ParsedComment(
-                commentText = range.analysisText,
-                boundsInScreen = bounds,
-                authorId = VisualTextOcrMetadataCodec.encode(
-                    source = SEMANTIC_FALLBACK_SOURCE,
-                    roiBoundsInScreen = roi.boundsInScreen,
-                    visualText = range.visualText
-                )
-            )
-        }
-    }
-
-    private fun isTopHeroSemanticRoi(
+    private fun isFullWidthThumbnailSemanticRoi(
         roi: VisualTextRoi,
         screenWidth: Int,
         screenHeight: Int
@@ -191,42 +75,9 @@ internal object VisualTextSemanticFallbackPlanner {
         val bounds = roi.boundsInScreen
         val width = bounds.right - bounds.left
         val height = bounds.bottom - bounds.top
-        return bounds.top < (screenHeight * HERO_TOP_REGION_RATIO).roundToInt() &&
-            width >= (screenWidth * HERO_MIN_WIDTH_RATIO).roundToInt() &&
-            height >= HERO_MIN_HEIGHT_PX
-    }
-
-    private fun isTopHeroVisibleBandRoi(
-        roi: VisualTextRoi,
-        screenWidth: Int,
-        screenHeight: Int
-    ): Boolean {
-        if (roi.source != "youtube-visible-band") return false
-
-        val bounds = roi.boundsInScreen
-        val width = bounds.right - bounds.left
-        val height = bounds.bottom - bounds.top
-        return bounds.top < (screenHeight * VISIBLE_BAND_TOP_REGION_RATIO).roundToInt() &&
-            width >= (screenWidth * VISIBLE_BAND_MIN_WIDTH_RATIO).roundToInt() &&
-            height >= VISIBLE_BAND_MIN_HEIGHT_PX
-    }
-
-    private fun topHeroBaseRange(
-        baseResponse: AndroidAnalysisResponse?
-    ): VisualTextOcrCandidateFilter.CandidateRange? {
-        return baseResponse
-            ?.results
-            .orEmpty()
-            .asSequence()
-            .filter { item -> item.isOffensive && item.evidenceSpans.isNotEmpty() }
-            .filterNot { item -> item.authorId == YOUTUBE_USER_INPUT_AUTHOR_ID }
-            .mapNotNull { item ->
-                VisualTextOcrCandidateFilter.findAnalysisRanges(item.original)
-                    .firstOrNull { range ->
-                        isLikelyHeroTitleTextHit(item.original, range)
-                    }
-            }
-            .firstOrNull()
+        return bounds.top < (screenHeight * THUMBNAIL_TERM_TOP_REGION_RATIO).roundToInt() &&
+            width >= (screenWidth * THUMBNAIL_TERM_MIN_WIDTH_RATIO).roundToInt() &&
+            height >= THUMBNAIL_TERM_MIN_ROI_HEIGHT_PX
     }
 
     private fun isLikelyHeroTitleTextHit(
@@ -242,9 +93,19 @@ internal object VisualTextSemanticFallbackPlanner {
             (compactPrefix.contains("playvideo") && compactPrefix.length <= 32) ||
             (compactPrefix.contains("동영상재생") && compactPrefix.length <= 24) ||
             (
-                before.codePointCount(0, before.length) <= HERO_TITLE_PREFIX_MAX_CHARS &&
+                before.codePointCount(0, before.length) <= SEMANTIC_TITLE_PREFIX_MAX_CHARS &&
                     !looksLikeMetadataBeforeHeroTitle(before)
-                )
+            )
+    }
+
+    private fun semanticPrefixContentLength(
+        sourceText: String,
+        range: VisualTextOcrCandidateFilter.CandidateRange
+    ): Int {
+        val before = sourceText.substring(0, range.start.coerceIn(0, sourceText.length))
+        return before.count { char ->
+            char.isLetterOrDigit() || char.code in 0xAC00..0xD7A3
+        }
     }
 
     private fun looksLikeMetadataBeforeHeroTitle(text: String): Boolean {
@@ -258,30 +119,30 @@ internal object VisualTextSemanticFallbackPlanner {
             Regex("""\d+\s*(?:초|분|시간|일|주|개월|년)\s*전""").containsMatchIn(text)
     }
 
-    private fun semanticTopHeroMaskBounds(
+    private fun semanticThumbnailTermMaskBounds(
         roi: VisualTextRoi,
-        visualText: String,
-        band: HeroMaskBand
+        visualText: String
     ): BoundsRect? {
         val roiBounds = roi.boundsInScreen
         val roiWidth = roiBounds.right - roiBounds.left
         val roiHeight = roiBounds.bottom - roiBounds.top
         if (roiWidth <= 0 || roiHeight <= 0) return null
 
-        val height = (roiHeight * band.heightRatio)
+        val height = (roiHeight * THUMBNAIL_TERM_HEIGHT_RATIO)
             .roundToInt()
-            .coerceIn(band.minHeightPx, band.maxHeightPx)
-        val left = roiBounds.left + max(band.minLeftPx, (roiWidth * band.leftRatio).roundToInt())
-        val top = roiBounds.top + (roiHeight * band.topRatio).roundToInt()
-        val maxWidth = band.maxWidthRatio
-            ?.let { ratio -> (roiWidth * ratio).roundToInt() }
-            ?.coerceAtLeast(96)
-            ?: (roiWidth - (left - roiBounds.left))
-        val width = estimateSemanticVisualMaskWidth(
+            .coerceIn(THUMBNAIL_TERM_MIN_HEIGHT_PX, THUMBNAIL_TERM_MAX_HEIGHT_PX)
+        val maxWidth = (roiWidth * THUMBNAIL_TERM_MAX_WIDTH_RATIO)
+            .roundToInt()
+            .coerceAtLeast(96)
+        val width = estimateSemanticThumbnailMaskWidth(
             visualText = visualText,
             textHeight = height,
-            maxWidth = min(maxWidth, roiWidth - (left - roiBounds.left))
+            maxWidth = maxWidth
         )
+        val centerX = roiBounds.left + (roiWidth * THUMBNAIL_TERM_CENTER_X_RATIO).roundToInt()
+        val left = (centerX - width / 2).coerceIn(roiBounds.left, roiBounds.right - width)
+        val top = (roiBounds.top + (roiHeight * THUMBNAIL_TERM_TOP_RATIO).roundToInt())
+            .coerceIn(roiBounds.top, roiBounds.bottom - height)
         val right = min(roiBounds.right, left + width)
         val bottom = min(roiBounds.bottom, top + height)
         if (right - left < 24 || bottom - top < 16) return null
@@ -294,7 +155,7 @@ internal object VisualTextSemanticFallbackPlanner {
         )
     }
 
-    private fun estimateSemanticVisualMaskWidth(
+    private fun estimateSemanticThumbnailMaskWidth(
         visualText: String,
         textHeight: Int,
         maxWidth: Int
@@ -303,10 +164,11 @@ internal object VisualTextSemanticFallbackPlanner {
         val length = text.codePointCount(0, text.length).coerceAtLeast(1)
         val hasKorean = text.any { it.code in 0xAC00..0xD7A3 }
         val charWidth = if (hasKorean) {
-            max(28, (textHeight * 0.86f).roundToInt())
+            max(34, (textHeight * 0.98f).roundToInt())
         } else {
-            max(28, (textHeight * 0.76f).roundToInt())
+            max(34, (textHeight * 0.92f).roundToInt())
         }
-        return (length * charWidth + 18).coerceIn(96, max(96, maxWidth))
+        return (length * charWidth + 28).coerceIn(112, max(112, maxWidth))
     }
+
 }

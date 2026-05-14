@@ -280,6 +280,70 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_addsVisibleBandForClippedTopCompositeBeforeConcreteCards() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("All", 42, 210, 146, 294),
+                textNode("Shorts", 167, 210, 336, 294),
+                textNode("Videos", 844, 210, 1016, 294),
+                contentDescriptionNode(
+                    displayText = "🔥\"Tlqkf 또 보여줘야 돼!\" : 식케이 (Sik-K), Lil Moshpit - LOV3 - 4 minutes, 46 seconds - Go to channel 세모플 semo playlist - 920 thousand views - 7 months ago - play video",
+                    left = 0,
+                    top = 315,
+                    right = 1080,
+                    bottom = 352
+                ),
+                contentDescriptionNode(
+                    displayText = "What is 'Tlqkf'?_Contemporary Korean Slang - 46 seconds - Go to channel Contemporary Korean Slang - 40 thousand views - 5 years ago - play video",
+                    left = 0,
+                    top = 553,
+                    right = 1080,
+                    bottom = 1350
+                )
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals("youtube-visible-band", rois.first().source)
+        assertEquals("fallback-clipped-top-composite", rois.first().reason)
+        assertEquals(315, rois.first().boundsInScreen.top)
+        assertTrue(rois.first().boundsInScreen.bottom >= 540)
+        assertTrue(rois.any { it.source == "youtube-composite-card" })
+    }
+
+    @Test
+    fun planFromNodes_expandsShortCompositeCardToIncludeVisibleTitleTextBelow() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                contentDescriptionNode(
+                    displayText = "외국인도 'tlqkf'은 못 참지 ㅋㅋㅋ 이제는 대세가 된 K-욕 - " +
+                        "Go to channel 게임부록 - 10 thousand views - 3 years ago - play video",
+                    left = 545,
+                    top = 309,
+                    right = 1054,
+                    bottom = 459
+                ),
+                textNode(
+                    displayText = "외국인도 'tlqkf'은 못 참지 ㅋㅋㅋ 이제는 대세가 된 K-욕",
+                    left = 572,
+                    top = 495,
+                    right = 1027,
+                    bottom = 603
+                )
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("youtube-composite-card", rois.single().source)
+        assertEquals("expanded-short-composite-title", rois.single().reason)
+        assertTrue(rois.single().boundsInScreen.top <= 309)
+        assertTrue(rois.single().boundsInScreen.bottom >= 603)
+    }
+
+    @Test
     fun planFromNodes_keepsFallbackBandWhenOnlyGenericYoutubeRoisExist() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(

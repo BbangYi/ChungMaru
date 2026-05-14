@@ -6,7 +6,7 @@ import org.junit.Test
 
 class VisualTextSemanticFallbackPlannerTest {
     @Test
-    fun selectCandidates_addsTopHeroBannerAndTitleMasksForLeadingYoutubeCompositeHit() {
+    fun selectCandidates_doesNotInventLeadingHeroMasksWithoutOcrGeometry() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 166, 656, 545),
             source = "youtube-composite-card",
@@ -21,16 +21,11 @@ class VisualTextSemanticFallbackPlannerTest {
             screenHeight = 1454
         )
 
-        assertEquals(2, candidates.size)
-        assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates[0].boundsInScreen.top in 205..220)
-        assertTrue(candidates[1].boundsInScreen.top in 305..325)
-        assertTrue(candidates.all { it.boundsInScreen.left in 24..40 })
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
+        assertTrue(candidates.isEmpty())
     }
 
     @Test
-    fun selectCandidates_addsTopHeroMasksWhenYoutubePrefixesTitleBeforeHit() {
+    fun selectCandidates_doesNotInventYoutubePrefixHeroMasksWithoutOcrGeometry() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 184, 656, 562),
             source = "youtube-composite-card",
@@ -45,13 +40,11 @@ class VisualTextSemanticFallbackPlannerTest {
             screenHeight = 1454
         )
 
-        assertEquals(2, candidates.size)
-        assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates.any { it.boundsInScreen.top in 325..340 })
+        assertTrue(candidates.isEmpty())
     }
 
     @Test
-    fun selectCandidates_addsCompositeHeroMasksFromBaseTitleWhenSourceTextIsNotTitleLike() {
+    fun selectCandidates_doesNotProjectBaseTitleIntoCompositeHeroMasks() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 309, 1080, 993),
             source = "youtube-composite-card",
@@ -74,14 +67,11 @@ class VisualTextSemanticFallbackPlannerTest {
             baseResponse = baseResponse
         )
 
-        assertEquals(2, candidates.size)
-        assertTrue(candidates[0].boundsInScreen.top in 385..400)
-        assertTrue(candidates[1].boundsInScreen.top in 570..585)
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
+        assertTrue(candidates.isEmpty())
     }
 
     @Test
-    fun selectCandidates_addsVisibleBandHeroMasksFromBaseTitleWhenCompositeRoiIsMissing() {
+    fun selectCandidates_doesNotProjectBaseTitleIntoVisibleBandMasks() {
         val roi = VisualTextRoi(
             boundsInScreen = BoundsRect(0, 203, 675, 582),
             source = "youtube-visible-band",
@@ -108,14 +98,52 @@ class VisualTextSemanticFallbackPlannerTest {
             baseResponse = baseResponse
         )
 
-        assertEquals(2, candidates.size)
-        assertTrue(candidates.all { it.commentText == "tlqkf" })
-        assertTrue(candidates[0].boundsInScreen.top in 240..255)
-        assertTrue(candidates[1].boundsInScreen.top in 350..365)
-        assertTrue(candidates[0].boundsInScreen.bottom - candidates[0].boundsInScreen.top <= 44)
-        assertTrue(candidates[1].boundsInScreen.bottom - candidates[1].boundsInScreen.top <= 72)
-        assertTrue(candidates.all { it.boundsInScreen.right - it.boundsInScreen.left <= 230 })
-        assertTrue(candidates.all { it.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:") })
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun selectCandidates_addsCenteredThumbnailTermMaskForFullWidthNonLeadingTitleHit() {
+        val roi = VisualTextRoi(
+            boundsInScreen = BoundsRect(0, 972, 1080, 1656),
+            source = "youtube-composite-card",
+            priority = 0,
+            reason = "content-description-only",
+            sourceText = "What is 'Tlqkf'?_Contemporary Korean Slang - 46 seconds - " +
+                "Go to channel Contemporary Korean Slang - 40 thousand views - 5 years ago - play video"
+        )
+
+        val candidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+            visualRoiPlan = VisualTextRoiPlan(rois = listOf(roi), candidateCount = 1),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        val thumbnailMask = candidates.single()
+        assertEquals("tlqkf", thumbnailMask.commentText)
+        assertTrue(thumbnailMask.boundsInScreen.left in 280..380)
+        assertTrue(thumbnailMask.boundsInScreen.top in 1220..1280)
+        assertTrue(thumbnailMask.boundsInScreen.right - thumbnailMask.boundsInScreen.left >= 360)
+        assertTrue(thumbnailMask.authorId.orEmpty().startsWith("ocr:youtube-semantic-card:"))
+    }
+
+    @Test
+    fun selectCandidates_doesNotAddThumbnailTermMaskForLatePartiallyVisibleCard() {
+        val roi = VisualTextRoi(
+            boundsInScreen = BoundsRect(0, 1687, 1080, 2217),
+            source = "youtube-composite-card",
+            priority = 0,
+            reason = "content-description-only",
+            sourceText = "What is 'Tlqkf'?_Late card - 46 seconds - Go to channel Example - " +
+                "40 thousand views - 5 years ago - play video"
+        )
+
+        val candidates = VisualTextSemanticFallbackPlanner.selectCandidates(
+            visualRoiPlan = VisualTextRoiPlan(rois = listOf(roi), candidateCount = 1),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertTrue(candidates.isEmpty())
     }
 
     @Test

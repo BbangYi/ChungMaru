@@ -33,6 +33,11 @@ object VisualTextRoiPlanner {
     private const val TOP_CONTROL_REGION_MAX_PX = 230
     private const val TOP_HERO_MEDIA_MIN_HEIGHT_PX = 180
     private const val TOP_HERO_MEDIA_MIN_WIDTH_RATIO = 0.48f
+    private const val CLIPPED_TOP_COMPOSITE_MAX_HEIGHT_PX = 59
+    private const val SHORT_COMPOSITE_EXPAND_MAX_HEIGHT_PX = 260
+    private const val SHORT_COMPOSITE_TITLE_GAP_MAX_PX = 180
+    private const val SHORT_COMPOSITE_EXPANDED_MAX_HEIGHT_PX = 420
+    private const val SHORT_COMPOSITE_TITLE_OVERLAP_RATIO = 0.55f
 
     fun planFromNodes(
         nodes: List<ParsedTextNode>,
@@ -54,7 +59,10 @@ object VisualTextRoiPlanner {
         val rawCandidates = nodes.mapNotNull { node ->
             toCandidate(node, screenWidth, screenHeight)
         }
-        val fallbackCandidates = buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
+        val fallbackCandidates =
+            buildYoutubeExpandedShortCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
+                buildYoutubeClippedTopCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
+                buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
         val selectableRawCandidates = if (fallbackCandidates.isNotEmpty()) {
             rawCandidates.filterNot { candidate -> candidate.source == "generic-visual-region" }
         } else {
@@ -327,6 +335,161 @@ object VisualTextRoiPlanner {
         }
 
         return fallbackRois
+    }
+
+    private fun buildYoutubeClippedTopCompositeRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int,
+        rawCandidates: List<VisualTextRoi>
+    ): List<VisualTextRoi> {
+        if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
+        val firstCompositeTop = rawCandidates
+            .asSequence()
+            .filter { it.source == "youtube-composite-card" }
+            .map { it.boundsInScreen.top }
+            .minOrNull()
+            ?: return emptyList()
+
+        val filterBottom = nodes
+            .asSequence()
+            .filter { node ->
+                val text = node.displayText.orEmpty().trim().lowercase()
+                text in YOUTUBE_FILTER_LABELS && node.top in 0..(screenHeight * 0.28f).toInt()
+            }
+            .map { it.bottom }
+            .maxOrNull()
+            ?: return emptyList()
+
+        val clippedTopNode = nodes
+            .asSequence()
+            .filter { node ->
+                if (!node.isVisibleToUser) return@filter false
+                val text = node.displayText.orEmpty().replace(Regex("\\s+"), " ").trim()
+                val width = node.right - node.left
+                val height = node.bottom - node.top
+                val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
+
+                contentDescriptionOnly &&
+                    node.top >= filterBottom &&
+                    node.top < firstCompositeTop &&
+                    width >= (screenWidth * MAX_FULL_WIDTH_RATIO).toInt() &&
+                    height in MIN_HEIGHT_PX / 2..CLIPPED_TOP_COMPOSITE_MAX_HEIGHT_PX &&
+                    isUsefulSourceText(text) &&
+                    isMediaCardDescription(text)
+            }
+            .minByOrNull { it.top }
+            ?: return emptyList()
+
+        val top = clippedTopNode.top.coerceIn(0, screenHeight)
+        val bottom = min(
+            screenHeight,
+            max(
+                firstCompositeTop + FALLBACK_BAND_OVERLAP_PX,
+                top + TOP_HERO_MEDIA_MIN_HEIGHT_PX
+            )
+        )
+        if (bottom - top < MIN_HEIGHT_PX) return emptyList()
+
+        return listOf(
+            VisualTextRoi(
+                boundsInScreen = BoundsRect(
+                    left = 0,
+                    top = top,
+                    right = screenWidth,
+                    bottom = bottom
+                ),
+                source = "youtube-visible-band",
+                priority = -1,
+                reason = "fallback-clipped-top-composite"
+            )
+        )
+    }
+
+    private fun buildYoutubeExpandedShortCompositeRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int,
+        rawCandidates: List<VisualTextRoi>
+    ): List<VisualTextRoi> {
+        if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
+
+        return rawCandidates
+            .asSequence()
+            .filter { candidate ->
+                candidate.source == "youtube-composite-card" &&
+                    candidate.boundsInScreen.bottom - candidate.boundsInScreen.top <= SHORT_COMPOSITE_EXPAND_MAX_HEIGHT_PX
+            }
+            .mapNotNull { candidate ->
+                val titleNode = findVisibleTitleNodeBelowComposite(candidate, nodes) ?: return@mapNotNull null
+                val expandedBottom = min(
+                    screenHeight,
+                    max(candidate.boundsInScreen.bottom, titleNode.bottom + SCREEN_EDGE_PADDING_PX)
+                )
+                val expandedHeight = expandedBottom - candidate.boundsInScreen.top
+                if (expandedHeight > SHORT_COMPOSITE_EXPANDED_MAX_HEIGHT_PX) return@mapNotNull null
+
+                VisualTextRoi(
+                    boundsInScreen = BoundsRect(
+                        left = candidate.boundsInScreen.left,
+                        top = candidate.boundsInScreen.top,
+                        right = candidate.boundsInScreen.right,
+                        bottom = expandedBottom
+                    ),
+                    source = candidate.source,
+                    priority = -1,
+                    reason = "expanded-short-composite-title",
+                    sourceText = candidate.sourceText
+                )
+            }
+            .toList()
+    }
+
+    private fun findVisibleTitleNodeBelowComposite(
+        candidate: VisualTextRoi,
+        nodes: List<ParsedTextNode>
+    ): ParsedTextNode? {
+        val candidateBounds = candidate.boundsInScreen
+        val candidateSourceKey = compactCardText(candidate.sourceText)
+        if (candidateSourceKey.isBlank()) return null
+
+        return nodes
+            .asSequence()
+            .filter { node ->
+                if (!node.isVisibleToUser || node.packageName != YOUTUBE_PACKAGE) return@filter false
+                val text = node.displayText.orEmpty().replace(Regex("\\s+"), " ").trim()
+                val textKey = compactCardText(text)
+                val width = node.right - node.left
+                val height = node.bottom - node.top
+                val verticalGap = node.top - candidateBounds.bottom
+                val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
+
+                !contentDescriptionOnly &&
+                    textKey.isNotBlank() &&
+                    textKey.length >= 4 &&
+                    candidateSourceKey.contains(textKey) &&
+                    width >= MIN_WIDTH_PX &&
+                    height in MIN_HEIGHT_PX / 2..TOP_CONTROL_REGION_MAX_PX &&
+                    verticalGap in -SCREEN_EDGE_PADDING_PX..SHORT_COMPOSITE_TITLE_GAP_MAX_PX &&
+                    horizontalOverlapRatio(candidateBounds, BoundsRect(node.left, node.top, node.right, node.bottom)) >=
+                    SHORT_COMPOSITE_TITLE_OVERLAP_RATIO
+            }
+            .minByOrNull { it.top }
+    }
+
+    private fun compactCardText(text: String): String {
+        return text
+            .lowercase()
+            .replace(Regex("""[\s"'`“”‘’.,!?_\-\[\]\(\):|#]+"""), "")
+    }
+
+    private fun horizontalOverlapRatio(first: BoundsRect, second: BoundsRect): Float {
+        val overlapLeft = max(first.left, second.left)
+        val overlapRight = min(first.right, second.right)
+        if (overlapRight <= overlapLeft) return 0f
+
+        val smallerWidth = min(first.right - first.left, second.right - second.left).coerceAtLeast(1)
+        return (overlapRight - overlapLeft).toFloat() / smallerWidth.toFloat()
     }
 
     private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
