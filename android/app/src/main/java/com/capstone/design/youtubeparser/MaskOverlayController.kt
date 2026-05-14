@@ -1497,7 +1497,7 @@ class MaskOverlayController(
             specs.forEachIndexed { index, spec ->
                 val existing = activeViews.getOrNull(index)
                 if (existing == null) {
-                    val maskView = createMaskView(spec)
+                    val maskView = createMaskView()
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
                     activeSpecs += spec
@@ -1555,7 +1555,7 @@ class MaskOverlayController(
             translatedSpecs.forEachIndexed { index, spec ->
                 val existing = activeViews.getOrNull(index)
                 if (existing == null) {
-                    val maskView = createMaskView(spec)
+                    val maskView = createMaskView()
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
                 } else {
@@ -1622,7 +1622,7 @@ class MaskOverlayController(
         }
     }
 
-    private fun createMaskView(spec: MaskOverlaySpec): View {
+    private fun createMaskView(): View {
         return BlurMaskView(service).apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
