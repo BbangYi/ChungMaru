@@ -47,6 +47,44 @@ enum class CandidateRole {
     BUTTON_OR_NAVIGATION
 }
 
+enum class CandidateSurface {
+    YOUTUBE_SEARCH_INPUT,
+    YOUTUBE_TITLE,
+    YOUTUBE_SHORTS_TITLE,
+    YOUTUBE_COMMENT,
+    YOUTUBE_VISUAL_TEXT,
+    BROWSER_RESULT,
+    GENERIC_TEXT,
+    UNKNOWN
+}
+
+enum class CandidateGeometryPolicy {
+    ACCESSIBILITY_EXACT,
+    ACCESSIBILITY_ESTIMATED,
+    ACCESSIBILITY_LOOKAHEAD,
+    VISUAL_OCR_EXACT,
+    VISUAL_FALLBACK,
+    ANALYSIS_ONLY
+}
+
+enum class CandidateRenderPolicy {
+    DIRECT_OVERLAY,
+    CACHE_ONLY,
+    OCR_REQUIRED,
+    ANALYSIS_ONLY
+}
+
+data class CandidateRoute(
+    val surface: CandidateSurface,
+    val geometryPolicy: CandidateGeometryPolicy,
+    val renderPolicy: CandidateRenderPolicy,
+    val reason: String
+) {
+    fun summaryKey(): String {
+        return "${surface.name.lowercase()}/${geometryPolicy.name.lowercase()}/${renderPolicy.name.lowercase()}"
+    }
+}
+
 data class CharBox(
     val start: Int,
     val end: Int,
@@ -67,7 +105,13 @@ data class ScreenTextCandidate(
     val sceneRevision: Long = 0L,
     val captureId: String? = null,
     val roiId: String? = null,
-    val backendSourceId: String? = null
+    val backendSourceId: String? = null,
+    val route: CandidateRoute = CandidateRoutingPolicy.routeFor(
+        packageName = packageName,
+        sourceId = backendSourceId,
+        source = source,
+        role = role
+    )
 ) {
     fun toParsedComment(): ParsedComment {
         return ParsedComment(
@@ -140,6 +184,7 @@ data class AndroidAnalysisAttempt(
     val visualRoiSelectedCount: Int = 0,
     val visualOcrRawCount: Int = 0,
     val visualOcrSelectedCount: Int = 0,
+    val candidateRouteSamples: List<String> = emptyList(),
     val response: AndroidAnalysisResponse? = null,
     val actionableSamples: List<String> = emptyList(),
     val error: String? = null
@@ -165,6 +210,7 @@ data class AndroidAnalysisDiagnostics(
     val visualRoiSelectedCount: Int,
     val visualOcrRawCount: Int,
     val visualOcrSelectedCount: Int,
+    val candidateRouteSamples: List<String>,
     val actionableSamples: List<String>,
     val error: String?
 )

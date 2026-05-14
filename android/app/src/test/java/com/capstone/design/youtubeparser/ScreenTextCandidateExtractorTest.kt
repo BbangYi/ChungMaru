@@ -353,6 +353,9 @@ class ScreenTextCandidateExtractorTest {
 
         assertEquals(CandidateRole.CONTENT, comment.role)
         assertEquals("android-accessibility-comment:youtube", comment.backendSourceId)
+        assertEquals(CandidateSurface.YOUTUBE_COMMENT, comment.route.surface)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, comment.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, comment.route.renderPolicy)
     }
 
     @Test
@@ -392,6 +395,88 @@ class ScreenTextCandidateExtractorTest {
         val candidate = candidates.single()
         assertEquals(CandidateRole.TITLE, candidate.role)
         assertEquals("android-accessibility-lookahead:android-accessibility:youtube_title", candidate.backendSourceId)
+        assertEquals(CandidateSurface.YOUTUBE_TITLE, candidate.route.surface)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_LOOKAHEAD, candidate.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.CACHE_ONLY, candidate.route.renderPolicy)
+    }
+
+    @Test
+    fun extractCandidates_routesYoutubeSearchInputAsDirectAccessibilityGeometry() {
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = YOUTUBE_PACKAGE,
+            nodes = listOf(
+                node(
+                    text = "tlqkf",
+                    left = 110,
+                    top = 42,
+                    right = 420,
+                    bottom = 106,
+                    className = "android.widget.EditText",
+                    packageName = YOUTUBE_PACKAGE
+                )
+            )
+        )
+
+        val candidate = candidates.single()
+        assertEquals(CandidateRole.USER_INPUT, candidate.role)
+        assertEquals("android-accessibility:youtube_user_input", candidate.backendSourceId)
+        assertEquals(CandidateSurface.YOUTUBE_SEARCH_INPUT, candidate.route.surface)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, candidate.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, candidate.route.renderPolicy)
+    }
+
+    @Test
+    fun extractCandidates_routesCompositeYoutubeTextAsOcrRequired() {
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = YOUTUBE_PACKAGE,
+            nodes = listOf(
+                contentDescriptionNode(
+                    "What is 'Tlqkf'?, Contemporary Korean Slang, 40K views, 5 years ago - play video",
+                    0,
+                    260,
+                    807,
+                    620
+                )
+            )
+        )
+
+        val candidate = candidates.single()
+        assertEquals(CandidateSurface.YOUTUBE_VISUAL_TEXT, candidate.route.surface)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_ESTIMATED, candidate.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.OCR_REQUIRED, candidate.route.renderPolicy)
+    }
+
+    @Test
+    fun summarizeRoutesGroupsCandidatesBySurfaceGeometryAndRenderPolicy() {
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = YOUTUBE_PACKAGE,
+            nodes = listOf(
+                node(
+                    text = "tlqkf",
+                    left = 110,
+                    top = 42,
+                    right = 420,
+                    bottom = 106,
+                    className = "android.widget.EditText",
+                    packageName = YOUTUBE_PACKAGE
+                ),
+                node(
+                    text = "What is 'Tlqkf'?_Contemporary Korean Slang",
+                    left = 80,
+                    top = 1320,
+                    right = 680,
+                    bottom = 1390,
+                    packageName = YOUTUBE_PACKAGE,
+                    isVisibleToUser = false
+                )
+            ),
+            screenHeight = 1280
+        )
+
+        val summary = CandidateRoutingPolicy.summarize(candidates)
+
+        assertTrue(summary.any { it.startsWith("youtube_search_input/accessibility_exact/direct_overlay=") })
+        assertTrue(summary.any { it.startsWith("youtube_title/accessibility_lookahead/cache_only=") })
     }
 
     private fun node(

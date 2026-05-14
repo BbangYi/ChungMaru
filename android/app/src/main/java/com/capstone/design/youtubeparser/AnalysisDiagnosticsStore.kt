@@ -25,6 +25,7 @@ object AnalysisDiagnosticsStore {
     private const val KEY_VISUAL_ROI_SELECTED_COUNT = "analysis_diagnostics_visual_roi_selected_count"
     private const val KEY_VISUAL_OCR_RAW_COUNT = "analysis_diagnostics_visual_ocr_raw_count"
     private const val KEY_VISUAL_OCR_SELECTED_COUNT = "analysis_diagnostics_visual_ocr_selected_count"
+    private const val KEY_CANDIDATE_ROUTE_SAMPLES = "analysis_diagnostics_candidate_route_samples"
     private const val KEY_ACTIONABLE_SAMPLES = "analysis_diagnostics_actionable_samples"
     private const val KEY_ERROR = "analysis_diagnostics_error"
 
@@ -50,6 +51,7 @@ object AnalysisDiagnosticsStore {
             putInt(KEY_VISUAL_ROI_SELECTED_COUNT, attempt.visualRoiSelectedCount)
             putInt(KEY_VISUAL_OCR_RAW_COUNT, attempt.visualOcrRawCount)
             putInt(KEY_VISUAL_OCR_SELECTED_COUNT, attempt.visualOcrSelectedCount)
+            putString(KEY_CANDIDATE_ROUTE_SAMPLES, attempt.candidateRouteSamples.joinToString("\n"))
             putString(KEY_ACTIONABLE_SAMPLES, attempt.actionableSamples.joinToString("\n"))
             putString(KEY_ERROR, attempt.error.orEmpty())
         }
@@ -86,6 +88,10 @@ object AnalysisDiagnosticsStore {
             visualRoiSelectedCount = prefs.getInt(KEY_VISUAL_ROI_SELECTED_COUNT, 0),
             visualOcrRawCount = prefs.getInt(KEY_VISUAL_OCR_RAW_COUNT, 0),
             visualOcrSelectedCount = prefs.getInt(KEY_VISUAL_OCR_SELECTED_COUNT, 0),
+            candidateRouteSamples = prefs.getString(KEY_CANDIDATE_ROUTE_SAMPLES, "").orEmpty()
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() },
             actionableSamples = prefs.getString(KEY_ACTIONABLE_SAMPLES, "").orEmpty()
                 .lines()
                 .map { it.trim() }
