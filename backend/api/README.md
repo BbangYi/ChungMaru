@@ -55,6 +55,10 @@ pip install -r requirements.txt
 # 2. 모델 다운로드
 python scripts/download_models.py
 
+# 2-1. OpenAI 키 등록 (선택)
+cp .env.example .env
+# .env 파일 안에 OPENAI_API_KEY를 입력
+
 # 3. 서버 실행 (브라우저 실사용 검증)
 cd api
 uvicorn app:app --host 127.0.0.1 --port 8000
@@ -181,6 +185,8 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 | `MODEL_SPAN_PATH` | `{MODEL_BASE}/models/span_large_combined_crf` | Span 모델 경로 |
 | `OPENAI_API_KEY` | 없음 | LangGraph Agent 실행용 API 키 |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Agent에 사용할 OpenAI 모델명 |
+
+`OPENAI_API_KEY`는 셸 환경변수로 주거나 `backend/.env`, `backend/api/.env` 파일에 저장할 수 있습니다.
 
 ## 요구사항
 

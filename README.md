@@ -2,13 +2,20 @@
 
 모바일 앱 + 브라우저 익스텐션 기반 실시간 텍스트 유해성 필터링 에이전트 프로젝트입니다.
 
+현재는 텍스트 블러/마스킹 외에도, 사이트 접속 전에 URL·도메인 위험도를 판별하는
+`사이트 안전성 Agent` 축을 함께 확장하고 있습니다. 이 축은 로컬 사이트 인텔 저장소,
+경량 임베딩 검색, 규칙 기반 판별, 설명용 LLM을 조합해 유해 사이트 또는 보안 위협
+가능성이 있는 사이트에 대해 사전 경고를 띄우는 구조를 목표로 합니다.
+
 ## 현재 구조
 
 ```text
 android/                  Android Studio 메인 앱
 extension/chrome/         Chrome Extension
 backend/api/              유해성 분류 API 초안
+backend/data/             사이트 인텔 DB 및 seed 데이터
 backend/tests/            API 검증 및 회귀 테스트
+backend/scripts/          사이트 인텔 수집/갱신 스크립트
 shared/contracts/         앱-익스텐션-백엔드 공통 JSON 계약
 shared/normalization/     텍스트 정규화
 shared/policy/            민감도/카테고리 정책

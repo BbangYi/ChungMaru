@@ -10,13 +10,14 @@ FastAPI 백엔드 — 혐오 표현 탐지 API
 
 from contextlib import asynccontextmanager
 import time
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from agent_service import AgentService
 from pipeline import ProfanityPipeline
+from site_risk_agent import SiteRiskAgent
 
 
 # ── Pydantic 모델 ──────────────────────────────────────────
@@ -107,17 +108,70 @@ class AgentAnalyzeResponse(BaseModel):
     llm_timing_ms: float | None = None
 
 
+class SiteCheckRequest(BaseModel):
+    url: str
+    title: str | None = None
+    snippet: str | None = None
+    force_refresh: bool | None = False
+
+
+class SiteMatchItem(BaseModel):
+    domain: str
+    title: str | None = None
+    summary: str | None = None
+    category: str
+    risk_level: str
+    security_threat: bool
+    harmful_content: bool
+    similarity: float | None = None
+    source: str | None = None
+    tags: list[str] = []
+    aliases: list[str] = []
+    indicators: list[str] = []
+    risk_types: list[str] = []
+    region: str | None = None
+    language: str | None = None
+    matched_chunks: list[dict[str, float | int | str]] = []
+
+
+class SiteCheckResponse(BaseModel):
+    url: str
+    domain: str
+    verdict: str
+    risk_score: float
+    site_category: str
+    security_threat: bool
+    harmful_content: bool
+    reasons: list[str]
+    matched_entries: list[SiteMatchItem]
+    exact_match: SiteMatchItem | None = None
+    retrieval_ms: float | None = None
+    llm_timing_ms: float | None = None
+    timing_ms: float | None = None
+    agent: AgentResponse
+
+
 # ── 파이프라인 싱글톤 ──────────────────────────────────────
 
 pipeline: ProfanityPipeline | None = None
 agent_service: AgentService | None = None
+site_risk_agent: SiteRiskAgent | None = None
+pipeline_init_error: str | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global pipeline, agent_service
-    pipeline = ProfanityPipeline()
-    agent_service = AgentService(pipeline)
+    global pipeline, agent_service, site_risk_agent, pipeline_init_error
+    pipeline = None
+    agent_service = None
+    pipeline_init_error = None
+    try:
+        pipeline = ProfanityPipeline()
+        agent_service = AgentService(pipeline)
+    except Exception as exc:
+        pipeline_init_error = str(exc)
+        print(f"텍스트 탐지 파이프라인 초기화 실패: {exc}")
+    site_risk_agent = SiteRiskAgent()
     print("파이프라인 초기화 완료")
     yield
     print("서버 종료")
@@ -161,6 +215,19 @@ def _format_result(
         "model_timing_ms": round(model_timing_ms, 3) if model_timing_ms is not None else timing.get("model_ms"),
         "llm_timing_ms": round(llm_timing_ms, 3) if llm_timing_ms is not None else None,
     }
+
+
+def _require_text_pipeline() -> tuple[ProfanityPipeline, AgentService | None]:
+    if pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "reason": "TEXT_PIPELINE_UNAVAILABLE",
+                "message": "텍스트 탐지 모델이 준비되지 않아 /analyze 계열을 사용할 수 없습니다.",
+                "pipeline_init_error": pipeline_init_error,
+            },
+        )
+    return pipeline, agent_service
 
 
 _DOCS_RESPONSE_ENHANCER = r"""
@@ -433,14 +500,21 @@ async def swagger_ui_redirect():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    intel_stats = site_risk_agent.store.stats() if site_risk_agent else None
+    return {
+        "status": "ok",
+        "site_intel": intel_stats,
+        "text_pipeline_ready": pipeline is not None,
+        "text_pipeline_error": pipeline_init_error,
+    }
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze(req: AnalyzeRequest):
     """Chrome Extension — 단일 텍스트 분석."""
+    ready_pipeline, _ = _require_text_pipeline()
     started = time.perf_counter()
-    result = pipeline.analyze(req.text, sensitivity=req.sensitivity)
+    result = ready_pipeline.analyze(req.text, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze total={elapsed_ms:.1f}ms text={req.text[:40]!r}")
     return _format_result(
@@ -454,8 +528,9 @@ async def analyze(req: AnalyzeRequest):
 @app.post("/analyze_batch", response_model=AnalyzeBatchResponse)
 async def analyze_batch(req: AnalyzeBatchRequest):
     """Chrome Extension — 배치 텍스트 분석."""
+    ready_pipeline, _ = _require_text_pipeline()
     started = time.perf_counter()
-    results = pipeline.analyze_batch(req.texts, sensitivity=req.sensitivity)
+    results = ready_pipeline.analyze_batch(req.texts, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze_batch total={elapsed_ms:.1f}ms count={len(req.texts)}")
     return {"results": [_format_result(r) for r in results]}
@@ -464,9 +539,10 @@ async def analyze_batch(req: AnalyzeBatchRequest):
 @app.post("/analyze_android", response_model=AndroidResponse)
 async def analyze_android(req: AndroidRequest):
     """Android App — 배치 분석 (boundsInScreen 보존)."""
+    ready_pipeline, _ = _require_text_pipeline()
     started = time.perf_counter()
     raw = req.model_dump()
-    result = pipeline.analyze_android_batch(raw, sensitivity=req.sensitivity)
+    result = ready_pipeline.analyze_android_batch(raw, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze_android total={elapsed_ms:.1f}ms count={len(req.comments)}")
     return result
@@ -475,8 +551,18 @@ async def analyze_android(req: AndroidRequest):
 @app.post("/agent/analyze", response_model=AgentAnalyzeResponse)
 async def analyze_with_agent(req: AnalyzeRequest):
     """LangGraph 기반 LLM Agent 설명."""
+    _, ready_agent_service = _require_text_pipeline()
+    if ready_agent_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "reason": "AGENT_SERVICE_UNAVAILABLE",
+                "message": "LLM 설명 서비스가 준비되지 않았습니다.",
+                "pipeline_init_error": pipeline_init_error,
+            },
+        )
     started = time.perf_counter()
-    result = agent_service.analyze_with_agent(req.text)
+    result = ready_agent_service.analyze_with_agent(req.text)
     elapsed_ms = (time.perf_counter() - started) * 1000
     agent_mode = result["agent"].get("mode")
     print(f"[TIMING] /agent/analyze total={elapsed_ms:.1f}ms mode={agent_mode} text={req.text[:40]!r}")
@@ -492,6 +578,22 @@ async def analyze_with_agent(req: AnalyzeRequest):
         "model_timing_ms": result["analysis"].get("_timing", {}).get("model_ms"),
         "llm_timing_ms": result.get("llm_timing_ms"),
     }
+
+
+@app.post("/site/check", response_model=SiteCheckResponse)
+async def check_site(req: SiteCheckRequest):
+    """사이트 접속 전 위험도 판별 + 설명."""
+    result = site_risk_agent.check_site(
+        req.url,
+        title=req.title or "",
+        snippet=req.snippet or "",
+        force_refresh=bool(req.force_refresh),
+    )
+    print(
+        f"[TIMING] /site/check total={result.get('timing_ms', 0):.1f}ms "
+        f"verdict={result.get('verdict')} domain={result.get('domain')!r}"
+    )
+    return result
 
 
 # ── 실행 ───────────────────────────────────────────────────
