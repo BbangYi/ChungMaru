@@ -2,16 +2,16 @@ package com.capstone.design.youtubeparser
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PixelFormat
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.graphics.RectF
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.TextView
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -102,12 +102,20 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_ESTIMATED_ACCESSIBILITY_WIDTH_RATIO = 0.78f
     private const val MAX_ACCESSIBILITY_RANGE_WIDTH_PX = 180
     private const val MAX_ACCESSIBILITY_RANGE_HEIGHT_PX = 64
+    private const val MAX_COMMENT_ACCESSIBILITY_TEXT_LENGTH = 420
+    private const val MAX_COMMENT_ACCESSIBILITY_HEIGHT_PX = 300
+    private const val MAX_COMMENT_ACCESSIBILITY_LINE_COUNT = 8
+    private const val MAX_COMMENT_ACCESSIBILITY_WIDTH_RATIO = 0.96f
     private const val MAX_UNSOURCED_LONG_TEXT_LENGTH = 70
     private const val MAX_UNSOURCED_LONG_TEXT_HEIGHT_PX = 72
     private const val MAX_VISUAL_SOURCE_HEIGHT_PX = 110
     private const val MAX_VISUAL_SOURCE_AREA_RATIO = 0.08f
     private const val MAX_COMPOSITE_SOURCE_HEIGHT_PX = 132
     private const val MAX_COMPOSITE_SOURCE_AREA_RATIO = 0.06f
+    private const val MAX_SEMANTIC_SOURCE_HEIGHT_PX = 140
+    private const val MAX_SEMANTIC_SOURCE_WIDTH_RATIO = 0.55f
+    private const val MAX_SEMANTIC_SOURCE_AREA_RATIO = 0.04f
+    private const val SEMANTIC_BOUNDS_SLOP_PX = 4
     private const val NEAR_DUPLICATE_OVERLAP_RATIO = 0.25f
     private const val MIN_SCROLL_TRANSLATION_DELTA_PX = 96
     private const val MAX_SCROLL_TRANSLATION_AXIS_RATIO = 0.25f
@@ -132,6 +140,8 @@ object AndroidMaskOverlayPlanner {
     private const val TOP_SEARCH_FALLBACK_MAX_TEXT_LENGTH = 14
     private const val YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_title"
     private const val YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID = "android-accessibility:youtube_shorts_title"
+    private const val ACCESSIBILITY_COMMENT_PREFIX = "android-accessibility-comment:"
+    private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_HEIGHT_PX = 148
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_TEXT_LENGTH = 180
     private const val MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT = 4
@@ -165,7 +175,11 @@ object AndroidMaskOverlayPlanner {
         var skippedUnstableCount = 0
         val rawSpecs = mutableListOf<MaskOverlaySpec>()
 
-        response.results
+        val renderableResults = response.results.filterNot { item ->
+            isSupersededYoutubeTitleAccessibility(item, response.results)
+        }
+
+        renderableResults
             .asSequence()
             .filter { it.isOffensive && it.evidenceSpans.isNotEmpty() }
             .forEach { item ->
@@ -190,6 +204,43 @@ object AndroidMaskOverlayPlanner {
                 spec.debugSource.takeIf { it.isNotBlank() }
             }.take(6)
         )
+    }
+
+    private fun isSupersededYoutubeTitleAccessibility(
+        item: AndroidAnalysisResultItem,
+        allItems: List<AndroidAnalysisResultItem>
+    ): Boolean {
+        if (!isYoutubeTitleAccessibilityAuthor(item.authorId)) return false
+
+        val itemKeys = overlaySpanKeys(item)
+        if (itemKeys.isEmpty()) return false
+
+        return allItems.any { other ->
+            if (other === item) return@any false
+            val metadata = VisualTextOcrMetadataCodec.decode(other.authorId) ?: return@any false
+            val roiBounds = metadata.roiBoundsInScreen ?: return@any false
+            if (metadata.source != "youtube-composite-card" && metadata.source != "youtube-visible-band") {
+                return@any false
+            }
+            if (!containsBounds(roiBounds, item.boundsInScreen)) return@any false
+
+            val otherKeys = overlaySpanKeys(other)
+            otherKeys.any { key -> key in itemKeys }
+        }
+    }
+
+    private fun overlaySpanKeys(item: AndroidAnalysisResultItem): Set<String> {
+        return item.evidenceSpans
+            .map { span -> visualSizingKey(span.text) }
+            .filter { key -> key.isNotBlank() }
+            .toSet()
+    }
+
+    private fun containsBounds(outer: BoundsRect, inner: BoundsRect): Boolean {
+        return inner.left >= outer.left &&
+            inner.top >= outer.top &&
+            inner.right <= outer.right &&
+            inner.bottom <= outer.bottom
     }
 
     fun signature(specs: List<MaskOverlaySpec>): String {
@@ -332,6 +383,8 @@ object AndroidMaskOverlayPlanner {
             value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
             value == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             value == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID ||
+            isCommentAccessibilityAuthor(value) ||
+            isSemanticVisualAuthor(value) ||
             isPreciseVisualAuthor(value)
     }
 
@@ -342,6 +395,9 @@ object AndroidMaskOverlayPlanner {
         screenHeight: Int,
         authorId: String?
     ): Boolean {
+        if (isLookaheadAccessibilityAuthor(authorId)) {
+            return false
+        }
         val accessibilityAuthor = isAccessibilityAuthor(authorId)
         if (originalLength > MAX_HIGH_CONFIDENCE_TEXT_LENGTH && !accessibilityAuthor) return false
         if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX && !accessibilityAuthor) return false
@@ -365,6 +421,15 @@ object AndroidMaskOverlayPlanner {
         if (isPreciseVisualAuthor(authorId)) {
             return spec.height <= MAX_VISUAL_SOURCE_HEIGHT_PX &&
                 areaRatio <= MAX_VISUAL_SOURCE_AREA_RATIO
+        }
+
+        if (isSemanticVisualAuthor(authorId)) {
+            return hasStableSemanticVisualGeometry(
+                spec = spec,
+                screenWidth = screenWidth,
+                areaRatio = areaRatio,
+                authorId = authorId
+            )
         }
 
         if (isCompositeYoutubeAuthor(authorId)) {
@@ -410,6 +475,13 @@ object AndroidMaskOverlayPlanner {
         if (isAccessibilityRangeAuthor(authorId)) {
             return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
                 spec.height <= MAX_ACCESSIBILITY_RANGE_HEIGHT_PX
+        }
+        if (isCommentAccessibilityAuthor(authorId)) {
+            return hasStableCommentAccessibilityGeometry(
+                spec = spec,
+                originalLength = originalLength,
+                screenWidth = screenWidth
+            )
         }
         if (isBrowserAccessibilityAuthor(authorId)) {
             // Browser accessibility nodes are reliable context, not reliable word geometry.
@@ -460,6 +532,19 @@ object AndroidMaskOverlayPlanner {
         return estimatedLineCount <= MAX_YOUTUBE_TITLE_ACCESSIBILITY_LINE_COUNT
     }
 
+    private fun hasStableCommentAccessibilityGeometry(
+        spec: MaskOverlaySpec,
+        originalLength: Int,
+        screenWidth: Int
+    ): Boolean {
+        if (originalLength > MAX_COMMENT_ACCESSIBILITY_TEXT_LENGTH) return false
+        if (spec.height > MAX_COMMENT_ACCESSIBILITY_HEIGHT_PX) return false
+        if (spec.width > (screenWidth * MAX_COMMENT_ACCESSIBILITY_WIDTH_RATIO).roundToInt()) return false
+
+        val estimatedLineCount = estimateLineCount(spec.height, originalLength)
+        return estimatedLineCount <= MAX_COMMENT_ACCESSIBILITY_LINE_COUNT
+    }
+
     private fun isYoutubeTitleAccessibilityAuthor(authorId: String?): Boolean {
         return authorId == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             authorId == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID
@@ -471,9 +556,13 @@ object AndroidMaskOverlayPlanner {
             value.startsWith("ocr:youtube-visible-band:")
     }
 
+    private fun isSemanticVisualAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("ocr:youtube-semantic-card:") == true
+    }
+
     private fun isFallbackVisualAuthor(authorId: String?): Boolean {
         val value = authorId ?: return false
-        return (value.startsWith("ocr:") && !isPreciseVisualAuthor(value)) ||
+        return (value.startsWith("ocr:") && !isPreciseVisualAuthor(value) && !isSemanticVisualAuthor(value)) ||
             value.startsWith("youtube-visual-range:")
     }
 
@@ -490,11 +579,20 @@ object AndroidMaskOverlayPlanner {
         return value.startsWith("android-accessibility:") ||
             value.startsWith("android-accessibility-range:") ||
             value.startsWith("android-accessibility-browser:") ||
+            value.startsWith(ACCESSIBILITY_COMMENT_PREFIX) ||
             value.startsWith("screen:accessibility_text:")
+    }
+
+    private fun isLookaheadAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith(ACCESSIBILITY_LOOKAHEAD_PREFIX) == true
     }
 
     private fun isAccessibilityRangeAuthor(authorId: String?): Boolean {
         return authorId?.startsWith("android-accessibility-range:") == true
+    }
+
+    private fun isCommentAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith(ACCESSIBILITY_COMMENT_PREFIX) == true
     }
 
     private fun isBrowserAccessibilityAuthor(authorId: String?): Boolean {
@@ -503,6 +601,29 @@ object AndroidMaskOverlayPlanner {
 
     private fun isGenericScreenAccessibilityAuthor(authorId: String?): Boolean {
         return authorId?.startsWith("screen:accessibility_text:") == true
+    }
+
+    private fun hasStableSemanticVisualGeometry(
+        spec: MaskOverlaySpec,
+        screenWidth: Int,
+        areaRatio: Float,
+        authorId: String?
+    ): Boolean {
+        val metadata = VisualTextOcrMetadataCodec.decode(authorId) ?: return false
+        val roiBounds = metadata.roiBoundsInScreen ?: return false
+        if (metadata.source != "youtube-semantic-card") return false
+        if (!containsWithSlop(roiBounds, spec, SEMANTIC_BOUNDS_SLOP_PX)) return false
+
+        return spec.height <= MAX_SEMANTIC_SOURCE_HEIGHT_PX &&
+            spec.width <= (screenWidth * MAX_SEMANTIC_SOURCE_WIDTH_RATIO).roundToInt() &&
+            areaRatio <= MAX_SEMANTIC_SOURCE_AREA_RATIO
+    }
+
+    private fun containsWithSlop(bounds: BoundsRect, spec: MaskOverlaySpec, slopPx: Int): Boolean {
+        return spec.left >= bounds.left - slopPx &&
+            spec.top >= bounds.top - slopPx &&
+            spec.left + spec.width <= bounds.right + slopPx &&
+            spec.top + spec.height <= bounds.bottom + slopPx
     }
 
     private fun isTopControlMask(
@@ -514,7 +635,8 @@ object AndroidMaskOverlayPlanner {
         val value = authorId ?: return false
 
         val isEstimatedMask = isAccessibilityAuthor(value) ||
-            isPreciseVisualAuthor(value)
+            isPreciseVisualAuthor(value) ||
+            isSemanticVisualAuthor(value)
         if (!isEstimatedMask) return false
 
         val trustedVisibleBandOcr = VisualTextGeometryPolicy.isTrustedVisibleBandOcr(
@@ -532,6 +654,10 @@ object AndroidMaskOverlayPlanner {
         }
 
         if (value == YOUTUBE_USER_INPUT_AUTHOR_ID) {
+            return false
+        }
+
+        if (isCommentAccessibilityAuthor(value)) {
             return false
         }
 
@@ -633,6 +759,13 @@ object AndroidMaskOverlayPlanner {
                 fullSpec = fullSpec,
                 spanText = span.text,
                 lineHeight = lineHeight,
+                allowScrollTranslation = allowScrollTranslation,
+                debugSource = debugSource
+            )
+        }
+
+        if (isSemanticVisualAuthor(authorId) && isWholeTextSpan(start, end, originalLength)) {
+            return fullSpec.copy(
                 allowScrollTranslation = allowScrollTranslation,
                 debugSource = debugSource
             )
@@ -1328,7 +1461,7 @@ class MaskOverlayController(
     }
 
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val activeViews = mutableListOf<TextView>()
+    private val activeViews = mutableListOf<View>()
     private val activeSpecs = mutableListOf<MaskOverlaySpec>()
     private var lastSignature: String = ""
     private var lastOverlayUpdateAtMs: Long = 0L
@@ -1372,12 +1505,11 @@ class MaskOverlayController(
             specs.forEachIndexed { index, spec ->
                 val existing = activeViews.getOrNull(index)
                 if (existing == null) {
-                    val maskView = createMaskView(spec)
+                    val maskView = createMaskView()
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
                     activeSpecs += spec
                 } else {
-                    existing.text = MASK_RENDER_TEXT
                     windowManager.updateViewLayout(existing, createMaskLayoutParams(spec))
                     activeSpecs[index] = spec
                 }
@@ -1431,7 +1563,7 @@ class MaskOverlayController(
             translatedSpecs.forEachIndexed { index, spec ->
                 val existing = activeViews.getOrNull(index)
                 if (existing == null) {
-                    val maskView = createMaskView(spec)
+                    val maskView = createMaskView()
                     windowManager.addView(maskView, createMaskLayoutParams(spec))
                     activeViews += maskView
                 } else {
@@ -1498,19 +1630,9 @@ class MaskOverlayController(
         }
     }
 
-    private fun createMaskView(spec: MaskOverlaySpec): TextView {
-        return TextView(service).apply {
+    private fun createMaskView(): View {
+        return BlurMaskView(service).apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            text = MASK_RENDER_TEXT
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setTextColor(Color.TRANSPARENT)
-            textSize = if (spec.height <= 90) 13f else 14f
-            typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                cornerRadius = 8f * service.resources.displayMetrics.density
-                setColor(Color.BLACK)
-            }
         }
     }
 
@@ -1531,4 +1653,37 @@ class MaskOverlayController(
     }
 }
 
-private const val MASK_RENDER_TEXT = ""
+private class BlurMaskView(context: Context) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val radius = 8f * density
+    private val rect = RectF()
+    private val bandRect = RectF()
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(236, 0, 0, 0)
+    }
+    private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(78, 255, 255, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = max(1f, density)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (width <= 0 || height <= 0) return
+
+        rect.set(0f, 0f, width.toFloat(), height.toFloat())
+        canvas.drawRoundRect(rect, radius, radius, fillPaint)
+
+        val bandHeight = max(2f, height / 6f)
+        shadePaint.color = Color.argb(24, 255, 255, 255)
+        bandRect.set(0f, height * 0.18f, width.toFloat(), height * 0.18f + bandHeight)
+        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+
+        shadePaint.color = Color.argb(20, 0, 0, 0)
+        bandRect.set(0f, height * 0.54f, width.toFloat(), height * 0.54f + bandHeight)
+        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+
+        canvas.drawRoundRect(rect, radius, radius, edgePaint)
+    }
+}

@@ -652,6 +652,49 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_rejectsLookaheadAccessibilityTargetsUntilVisibleBoundsAreConfirmed() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(159, 1320, 943, 1400),
+                spans = listOf(EvidenceSpan("Tlqkf", 9, 14, 0.99)),
+                original = "What is 'Tlqkf'?_Contemporary Korean Slang",
+                authorId = "android-accessibility-lookahead:android-accessibility:youtube_title"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertTrue(specs.isEmpty())
+    }
+
+    @Test
+    fun buildSpecs_prefersPreciseOcrOverYoutubeTitleAccessibilityInsideSameCard() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(220, 793, 879, 882),
+                spans = listOf(EvidenceSpan("Tlqkf", 2, 7, 0.99)),
+                original = "🔥\"Tlqkf 또 보여줘야 돼!\" : 식케이 (Sik-K), Lil Moshpit",
+                authorId = "android-accessibility:youtube_title"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(230, 730, 336, 774),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:80,450,1000,932:Tlgkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().debugSource.startsWith("ocr:youtube-composite-card:"))
+        assertTrue(specs.single().top in 720..780)
+    }
+
+    @Test
     fun buildSpecs_keepsEstimatedYoutubeShortsTitleMasksTranslatable() {
         val response = responseOf(
             resultOf(
@@ -730,11 +773,33 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_rejectsSemanticFallbackOcrMasks() {
+    fun buildSpecs_keepsBoundedSemanticFallbackMasksTranslatable() {
         val response = responseOf(
             resultOf(
                 offensive = true,
                 bounds = BoundsRect(54, 588, 287, 644),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-semantic-card:0,506,1080,1190:Tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertEquals(54, specs.single().left)
+        assertEquals(588, specs.single().top)
+        assertEquals(233, specs.single().width)
+        assertEquals(56, specs.single().height)
+        assertTrue(specs.single().allowScrollTranslation)
+    }
+
+    @Test
+    fun buildSpecs_rejectsOversizedSemanticFallbackMasks() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(0, 506, 1080, 1190),
                 spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
                 original = "tlqkf",
                 authorId = "ocr:youtube-semantic-card:0,506,1080,1190:Tlqkf"
@@ -1074,6 +1139,35 @@ class MaskOverlayPlannerTest {
         )
 
         assertTrue(translated.isEmpty())
+    }
+
+    @Test
+    fun translateSpecs_keepsPlatformCommentMasksDuringScrollRecaptureGap() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 540, 940, 620),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf 뭐냐 진짜",
+                authorId = "android-accessibility-comment:youtube"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().allowScrollTranslation)
+
+        val translated = AndroidMaskOverlayPlanner.translateSpecs(
+            specs = specs,
+            deltaX = 0,
+            deltaY = -24,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(1, translated.size)
+        assertEquals(specs.single().top - 24, translated.single().top)
     }
 
     @Test
