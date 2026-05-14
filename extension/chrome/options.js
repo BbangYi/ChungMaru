@@ -2,6 +2,7 @@ const DEFAULT_SETTINGS = {
   customBlockWords: "",
   customAllowWords: "",
   showReason: true,
+  siteProtectionEnabled: true,
   backendApiBaseUrl: "http://127.0.0.1:8000",
   requestTimeoutMs: 10000
 };
@@ -10,6 +11,7 @@ const els = {
   blockWords: document.getElementById("blockWords"),
   allowWords: document.getElementById("allowWords"),
   showReasonToggle: document.getElementById("showReasonToggle"),
+  siteProtectionEnabledToggle: document.getElementById("siteProtectionEnabledToggle"),
   backendApiBaseUrl: document.getElementById("backendApiBaseUrl"),
   requestTimeoutMs: document.getElementById("requestTimeoutMs"),
   checkConnectionButton: document.getElementById("checkConnectionButton"),
@@ -336,6 +338,7 @@ function readSettingsFromForm() {
     customBlockWords: els.blockWords.value.trim(),
     customAllowWords: els.allowWords.value.trim(),
     showReason: els.showReasonToggle.checked,
+    siteProtectionEnabled: els.siteProtectionEnabledToggle.checked,
     backendApiBaseUrl: sanitizeApiBaseUrl(els.backendApiBaseUrl.value),
     requestTimeoutMs: normalizeRequestTimeoutMs(els.requestTimeoutMs.value)
   };
@@ -345,6 +348,7 @@ function renderSettingsToForm(settings) {
   els.blockWords.value = settings.customBlockWords;
   els.allowWords.value = settings.customAllowWords;
   els.showReasonToggle.checked = settings.showReason;
+  els.siteProtectionEnabledToggle.checked = settings.siteProtectionEnabled !== false;
   els.backendApiBaseUrl.value = settings.backendApiBaseUrl;
   els.requestTimeoutMs.value = String(settings.requestTimeoutMs);
 }

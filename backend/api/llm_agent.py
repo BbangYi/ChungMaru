@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 
+from env_loader import load_local_env
+
 
 SYSTEM_PROMPT = (
     "너는 유해표현 탐지 결과를 설명하는 Explainer Agent다. "
@@ -129,6 +131,7 @@ def _fallback_response(text: str, analysis: dict, reason: str) -> dict:
 
 class ToxicityLLMAgent:
     def __init__(self):
+        load_local_env()
         self.enabled = False
         self.reason = ""
         self.model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")

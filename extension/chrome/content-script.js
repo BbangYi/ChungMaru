@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   blockedDomains: "",
   warnDomains: "",
   showReason: true,
+  siteProtectionEnabled: true,
   backendApiBaseUrl: "http://127.0.0.1:8000",
   requestTimeoutMs: 10000
 };
@@ -308,6 +309,8 @@ let latestPipelineSequence = 0;
 let latestAnalysisGeneration = 0;
 let settingsRevision = 0;
 let cachedSettings = null;
+let sitePolicyOverlayElement = null;
+let lastSitePolicyUrl = "";
 let settingsLoadPromise = null;
 let extensionContextInvalidated = false;
 let realtimeWorkerStatus = "idle";
@@ -393,6 +396,7 @@ function buildSettingsSnapshotKey(settings) {
     customAllowWords: String(normalizedSettings.customAllowWords || ""),
     blockedDomains: String(normalizedSettings.blockedDomains || ""),
     warnDomains: String(normalizedSettings.warnDomains || ""),
+    siteProtectionEnabled: normalizedSettings.siteProtectionEnabled !== false,
     backendApiBaseUrl: sanitizeApiBaseUrl(normalizedSettings.backendApiBaseUrl),
     requestTimeoutMs: normalizeRequestTimeoutMs(normalizedSettings.requestTimeoutMs)
   });
@@ -690,6 +694,7 @@ function getMergedSettings(storedSettings) {
   return {
     ...DEFAULT_SETTINGS,
     ...(storedSettings || {}),
+    siteProtectionEnabled: storedSettings?.siteProtectionEnabled !== false,
     backendApiBaseUrl: sanitizeApiBaseUrl(storedSettings?.backendApiBaseUrl),
     requestTimeoutMs: normalizeRequestTimeoutMs(storedSettings?.requestTimeoutMs),
     sensitivity: normalizeSensitivity(storedSettings?.sensitivity),
@@ -703,6 +708,149 @@ function getMergedSettings(storedSettings) {
 function updateCachedSettings(storedSettings) {
   cachedSettings = getMergedSettings(storedSettings || {});
   return cachedSettings;
+}
+
+function removeSitePolicyOverlay() {
+  if (sitePolicyOverlayElement?.parentNode) {
+    sitePolicyOverlayElement.parentNode.removeChild(sitePolicyOverlayElement);
+  }
+  sitePolicyOverlayElement = null;
+}
+
+function renderSitePolicyOverlay(policy) {
+  if (!policy || policy.verdict === "allow") {
+    removeSitePolicyOverlay();
+    return;
+  }
+
+  if (!document.body && !document.documentElement) {
+    return;
+  }
+
+  removeSitePolicyOverlay();
+  lastSitePolicyUrl = String(policy.url || location.href || "");
+
+  const root = document.createElement("div");
+  root.className = "shieldtext-site-policy-overlay";
+  root.setAttribute("data-shieldtext-site-policy", "true");
+
+  const box = document.createElement("div");
+  box.className = "shieldtext-site-policy-box";
+
+  const title = document.createElement("h2");
+  title.textContent =
+    policy.verdict === "block"
+      ? "주의: 위험 가능성이 높은 사이트입니다"
+      : "주의: 접속 전 확인이 필요한 사이트입니다";
+
+  const description = document.createElement("p");
+  description.textContent =
+    typeof policy.agent?.response === "string" && policy.agent.response.trim()
+      ? policy.agent.response
+      : "사이트 주소, 저장된 인텔, 위험 신호를 바탕으로 경고가 필요하다고 판단했습니다.";
+
+  const meta = document.createElement("p");
+  meta.textContent = [
+    policy.domain ? `도메인: ${policy.domain}` : "",
+    policy.site_category ? `분류: ${policy.site_category}` : "",
+    Number.isFinite(Number(policy.risk_score))
+      ? `위험 점수: ${(Number(policy.risk_score) * 100).toFixed(1)}%`
+      : ""
+  ].filter(Boolean).join(" · ");
+
+  box.appendChild(title);
+  box.appendChild(description);
+  if (meta.textContent) {
+    box.appendChild(meta);
+  }
+
+  if (Array.isArray(policy.reasons) && policy.reasons.length) {
+    const list = document.createElement("ul");
+    list.className = "shieldtext-site-policy-list";
+    for (const reason of policy.reasons.slice(0, 5)) {
+      const item = document.createElement("li");
+      item.textContent = String(reason);
+      list.appendChild(item);
+    }
+    box.appendChild(list);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "shieldtext-site-policy-actions";
+
+  const continueButton = document.createElement("button");
+  continueButton.type = "button";
+  continueButton.className = "shieldtext-site-policy-close";
+  continueButton.textContent = policy.verdict === "block" ? "위험 안내를 이해하고 계속" : "계속 접속";
+  continueButton.addEventListener("click", async () => {
+    removeSitePolicyOverlay();
+    if (!isExtensionContextAvailable()) {
+      return;
+    }
+    try {
+      await chrome.runtime.sendMessage({
+        type: "DISMISS_SITE_POLICY",
+        url: lastSitePolicyUrl || location.href
+      });
+    } catch (error) {
+      handleExtensionContextError(error);
+    }
+  });
+  actions.appendChild(continueButton);
+
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.className = "shieldtext-site-policy-secondary";
+  backButton.textContent = "뒤로 가기";
+  backButton.addEventListener("click", () => {
+    history.back();
+  });
+  actions.appendChild(backButton);
+
+  box.appendChild(actions);
+  root.appendChild(box);
+
+  const mountTarget = document.body || document.documentElement;
+  if (mountTarget) {
+    mountTarget.appendChild(root);
+    sitePolicyOverlayElement = root;
+  }
+}
+
+async function requestCurrentSitePolicy() {
+  const settings = await loadSettings().catch(() => getMergedSettings({}));
+  if (settings?.siteProtectionEnabled === false) {
+    removeSitePolicyOverlay();
+    return;
+  }
+  if (!isExtensionContextAvailable() || !location?.href || !/^https?:/i.test(location.href)) {
+    return;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_SITE_POLICY_FOR_URL",
+      url: location.href,
+      title: document.title || "",
+      snippet:
+        document.querySelector?.("meta[name='description']")?.getAttribute?.("content") || ""
+    });
+
+    if (response?.dismissed) {
+      removeSitePolicyOverlay();
+      return;
+    }
+
+    const policy = response?.policy || null;
+    if (!policy || policy.verdict === "allow") {
+      removeSitePolicyOverlay();
+      return;
+    }
+
+    renderSitePolicyOverlay(policy);
+  } catch (error) {
+    handleExtensionContextError(error);
+  }
 }
 
 function suppressMutationFeedback(ms = 160) {
@@ -7828,6 +7976,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "APPLY_SITE_POLICY") {
+    if (message?.policy) {
+      renderSitePolicyOverlay(message.policy);
+    } else {
+      removeSitePolicyOverlay();
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+
   if (message?.type === "RUN_PIPELINE" || message?.type === "RUN_FILTER") {
     executePipeline(message.reason || "manual")
       .then((result) => {
@@ -7879,6 +8037,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
   restoreAllRenderedContent();
 
   if (nextSettings.enabled === false) {
+    removeSitePolicyOverlay();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: false,
@@ -7890,6 +8049,10 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
     });
     return { ok: true, enabled: false, sensitivityMode: "off" };
   }
+
+  requestCurrentSitePolicy().catch((error) => {
+    handleExtensionContextError(error);
+  });
 
   if (isFilteringSuppressedBySensitivity(nextSettings)) {
     cancelScheduledPipeline();
@@ -7910,7 +8073,6 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
       reason: "SENSITIVITY_DISABLED"
     };
   }
-
   scheduleInitialEditablePass();
   schedulePipeline(runReason);
   return {
@@ -7936,6 +8098,9 @@ async function bootstrap() {
   initializeViewportListeners();
   initializeNavigationListeners();
   initializeLabSelfTestListeners();
+  requestCurrentSitePolicy().catch((error) => {
+    handleExtensionContextError(error);
+  });
   registerTextNodesInTree(document.body, {
     markDirty: true,
     onlyVisible: true,

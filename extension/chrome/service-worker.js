@@ -13,6 +13,7 @@ const DEFAULT_SETTINGS = {
   blockedDomains: "",
   warnDomains: "",
   showReason: true,
+  siteProtectionEnabled: true,
   backendApiBaseUrl: "http://127.0.0.1:8000",
   requestTimeoutMs: 10000,
   stats: {
@@ -45,6 +46,11 @@ const SELF_TEST_ANALYZE_TIMEOUT_CAP_MS = 5000;
 const FOREGROUND_ACTIVE_PREEMPT_AFTER_MS = 820;
 const FULL_ANALYSIS_RESPONSE_CACHE = new Map();
 const FULL_ANALYSIS_IN_FLIGHT_REQUESTS = new Map();
+const SITE_POLICY_CACHE = new Map();
+const SITE_POLICY_IN_FLIGHT = new Map();
+const SITE_POLICY_BY_TAB = new Map();
+const SITE_POLICY_CACHE_TTL_MS = 10 * 60 * 1000;
+const SITE_POLICY_SCHEMA_VERSION = "site-policy-v1";
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([
   ["foreground", 2],
   ["reconcile", 1],
@@ -332,6 +338,7 @@ function mergeSettings(stored) {
   return {
     ...DEFAULT_SETTINGS,
     ...(stored || {}),
+    siteProtectionEnabled: stored?.siteProtectionEnabled !== false,
     backendApiBaseUrl: sanitizeApiBaseUrl(stored?.backendApiBaseUrl),
     requestTimeoutMs: normalizeRequestTimeoutMs(stored?.requestTimeoutMs),
     categories: {
@@ -374,6 +381,137 @@ function isUnsupportedTabUrl(url) {
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs?.[0] || null;
+}
+
+function isHttpPageUrl(url) {
+  const value = String(url || "").trim().toLowerCase();
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function normalizeDomain(value) {
+  const domain = String(value || "").trim().toLowerCase();
+  return domain.startsWith("www.") ? domain.slice(4) : domain;
+}
+
+function domainFromUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return normalizeDomain(url.hostname);
+  } catch {
+    return "";
+  }
+}
+
+function normalizeSitePolicyCacheKey(url) {
+  try {
+    const parsed = new URL(String(url || ""));
+    return [
+      SITE_POLICY_SCHEMA_VERSION,
+      normalizeDomain(parsed.hostname),
+      parsed.pathname || "/"
+    ].join("::");
+  } catch {
+    return "";
+  }
+}
+
+function getCachedSitePolicy(url) {
+  const key = normalizeSitePolicyCacheKey(url);
+  if (!key) return null;
+  const cached = SITE_POLICY_CACHE.get(key);
+  if (!cached) return null;
+  if (Number(cached.expiresAt || 0) <= Date.now()) {
+    SITE_POLICY_CACHE.delete(key);
+    return null;
+  }
+  return cached.value || null;
+}
+
+function setCachedSitePolicy(url, value) {
+  const key = normalizeSitePolicyCacheKey(url);
+  if (!key) return;
+  SITE_POLICY_CACHE.set(key, {
+    value,
+    expiresAt: Date.now() + SITE_POLICY_CACHE_TTL_MS
+  });
+}
+
+function getInFlightSitePolicy(url) {
+  const key = normalizeSitePolicyCacheKey(url);
+  if (!key) return null;
+  return SITE_POLICY_IN_FLIGHT.get(key) || null;
+}
+
+function createInFlightSitePolicyEntry(url) {
+  const key = normalizeSitePolicyCacheKey(url);
+  let resolveEntry;
+  let rejectEntry;
+  const promise = new Promise((resolve, reject) => {
+    resolveEntry = resolve;
+    rejectEntry = reject;
+  });
+  if (key) {
+    SITE_POLICY_IN_FLIGHT.set(key, promise);
+  }
+  return { key, promise, resolve: resolveEntry, reject: rejectEntry };
+}
+
+function clearInFlightSitePolicyEntry(entry) {
+  if (!entry?.key) return;
+  if (SITE_POLICY_IN_FLIGHT.get(entry.key) === entry.promise) {
+    SITE_POLICY_IN_FLIGHT.delete(entry.key);
+  }
+}
+
+function parseDomainList(rawValue) {
+  return String(rawValue || "")
+    .split(/[\n,]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function matchDomainRule(domain, rawValue) {
+  const normalizedDomain = normalizeDomain(domain);
+  const rules = parseDomainList(rawValue);
+  for (const rule of rules) {
+    const normalizedRule = normalizeDomain(rule);
+    if (!normalizedRule) continue;
+    if (normalizedDomain === normalizedRule || normalizedDomain.endsWith(`.${normalizedRule}`)) {
+      return normalizedRule;
+    }
+  }
+  return "";
+}
+
+function buildOverrideSitePolicy(url, verdict, matchedRule) {
+  const domain = domainFromUrl(url);
+  const isBlock = verdict === "block";
+  return {
+    url,
+    domain,
+    verdict,
+    risk_score: isBlock ? 0.99 : 0.72,
+    site_category: "manual-policy",
+    security_threat: isBlock,
+    harmful_content: !isBlock,
+    reasons: [
+      `사용자 설정의 ${isBlock ? "차단" : "경고"} 도메인 목록에 '${matchedRule}' 규칙이 등록되어 있다.`
+    ],
+    matched_entries: [],
+    exact_match: null,
+    retrieval_ms: 0,
+    llm_timing_ms: 0,
+    timing_ms: 0,
+    agent: {
+      mode: "override",
+      model: null,
+      reason: null,
+      response: isBlock
+        ? "1. 판정\n수동 차단 도메인으로 등록된 사이트입니다.\n2. 근거\n사용자 정책 목록과 직접 일치했습니다.\n3. 사용자 안내\n계속 접속 전 출처와 안전성을 다시 확인하세요."
+        : "1. 판정\n수동 경고 도메인으로 등록된 사이트입니다.\n2. 근거\n사용자 정책 목록과 직접 일치했습니다.\n3. 사용자 안내\n사이트 신뢰성과 목적을 확인한 뒤 필요한 경우에만 계속 접속하세요.",
+      sub_agents: null
+    }
+  };
 }
 
 async function ensureTabContentScript(tabId) {
@@ -1292,6 +1430,135 @@ async function checkApiHealth() {
   };
 }
 
+async function fetchSitePolicyFromBackend(url, settings, options = {}) {
+  const apiBaseUrl = sanitizeApiBaseUrl(settings.backendApiBaseUrl);
+  const requestTimeoutMs = normalizeRequestTimeoutMs(settings.requestTimeoutMs);
+  const payload = {
+    url,
+    title: String(options.title || ""),
+    snippet: String(options.snippet || ""),
+    force_refresh: Boolean(options.forceRefresh)
+  };
+  return fetchJsonWithTimeout(
+    `${apiBaseUrl}/site/check`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    },
+    Math.max(1200, Math.min(requestTimeoutMs, 12000))
+  );
+}
+
+async function getSitePolicyForUrl(url, options = {}) {
+  const settings = await getSettings();
+  if (settings.siteProtectionEnabled === false) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "SITE_PROTECTION_DISABLED",
+      policy: null
+    };
+  }
+
+  if (!isHttpPageUrl(url) || isUnsupportedTabUrl(url)) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "UNSUPPORTED_URL",
+      policy: null
+    };
+  }
+
+  const domain = domainFromUrl(url);
+  const blockedRule = matchDomainRule(domain, settings.blockedDomains);
+  if (blockedRule) {
+    const policy = buildOverrideSitePolicy(url, "block", blockedRule);
+    setCachedSitePolicy(url, policy);
+    return { ok: true, source: "manual-override", policy };
+  }
+
+  const warnedRule = matchDomainRule(domain, settings.warnDomains);
+  if (warnedRule) {
+    const policy = buildOverrideSitePolicy(url, "warning", warnedRule);
+    setCachedSitePolicy(url, policy);
+    return { ok: true, source: "manual-override", policy };
+  }
+
+  if (!options.forceRefresh) {
+    const cached = getCachedSitePolicy(url);
+    if (cached) {
+      return { ok: true, source: "cache", policy: cached };
+    }
+
+    const inflight = getInFlightSitePolicy(url);
+    if (inflight) {
+      const policy = await inflight;
+      return { ok: true, source: "inflight", policy };
+    }
+  }
+
+  const inflightEntry = createInFlightSitePolicyEntry(url);
+  try {
+    const policy = await fetchSitePolicyFromBackend(url, settings, options);
+    setCachedSitePolicy(url, policy);
+    inflightEntry.resolve(policy);
+    return { ok: true, source: "backend", policy };
+  } catch (error) {
+    const normalized = normalizeBackendError(error, "SITE_CHECK_FAILED");
+    const fallback = {
+      url,
+      domain,
+      verdict: "allow",
+      risk_score: 0.0,
+      site_category: "unknown",
+      security_threat: false,
+      harmful_content: false,
+      reasons: [
+        "백엔드 사이트 판별기에 일시적으로 연결하지 못했다.",
+        `상세 원인: ${normalized.errorCode || normalized.reason || "unknown"}`
+      ],
+      matched_entries: [],
+      exact_match: null,
+      retrieval_ms: 0,
+      llm_timing_ms: 0,
+      timing_ms: 0,
+      agent: {
+        mode: "fallback",
+        model: null,
+        reason: normalized.errorCode || normalized.reason || "SITE_CHECK_FAILED",
+        response:
+          "1. 판정\n현재 사이트 위험도는 확정하지 못했습니다.\n2. 근거\n백엔드 사이트 판별기에 연결하지 못했습니다.\n3. 사용자 안내\n로그인, 결제, 파일 다운로드가 필요한 사이트라면 주소와 출처를 다시 확인한 뒤 진행하세요.",
+        sub_agents: null
+      }
+    };
+    inflightEntry.resolve(fallback);
+    return {
+      ok: false,
+      source: "fallback",
+      reason: normalized.reason,
+      errorCode: normalized.errorCode,
+      policy: fallback
+    };
+  } finally {
+    clearInFlightSitePolicyEntry(inflightEntry);
+  }
+}
+
+async function prefetchSitePolicyForTab(tabId, url) {
+  if (!tabId || !isHttpPageUrl(url) || isUnsupportedTabUrl(url)) {
+    return;
+  }
+  const result = await getSitePolicyForUrl(url);
+  SITE_POLICY_BY_TAB.set(tabId, {
+    url,
+    policy: result?.policy || null,
+    updatedAt: Date.now(),
+    source: result?.source || "unknown",
+    dismissed: false
+  });
+}
+
 async function runPipelineOnActiveTab() {
   const tab = await getActiveTab();
   if (!tab?.id) {
@@ -1402,6 +1669,9 @@ async function getLastPipelineState() {
 chrome.runtime.onInstalled.addListener(() => {
   FULL_ANALYSIS_RESPONSE_CACHE.clear();
   FULL_ANALYSIS_IN_FLIGHT_REQUESTS.clear();
+  SITE_POLICY_CACHE.clear();
+  SITE_POLICY_IN_FLIGHT.clear();
+  SITE_POLICY_BY_TAB.clear();
   ensureSettings().catch((error) => {
     console.error("[청마루] ensureSettings(onInstalled) failed", error);
   });
@@ -1410,6 +1680,9 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   FULL_ANALYSIS_RESPONSE_CACHE.clear();
   FULL_ANALYSIS_IN_FLIGHT_REQUESTS.clear();
+  SITE_POLICY_CACHE.clear();
+  SITE_POLICY_IN_FLIGHT.clear();
+  SITE_POLICY_BY_TAB.clear();
   ensureSettings().catch((error) => {
     console.error("[청마루] ensureSettings(onStartup) failed", error);
   });
@@ -1422,6 +1695,36 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
   FULL_ANALYSIS_RESPONSE_CACHE.clear();
   FULL_ANALYSIS_IN_FLIGHT_REQUESTS.clear();
+  SITE_POLICY_CACHE.clear();
+  SITE_POLICY_IN_FLIGHT.clear();
+  SITE_POLICY_BY_TAB.clear();
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const nextUrl = String(changeInfo.url || tab?.url || "");
+  if (!nextUrl || !isHttpPageUrl(nextUrl) || isUnsupportedTabUrl(nextUrl)) {
+    return;
+  }
+  if (changeInfo.url || changeInfo.status === "loading") {
+    prefetchSitePolicyForTab(tabId, nextUrl).catch((error) => {
+      console.warn("[청마루] prefetchSitePolicyForTab failed", error);
+    });
+  }
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab?.url && isHttpPageUrl(tab.url) && !isUnsupportedTabUrl(tab.url)) {
+      await prefetchSitePolicyForTab(tabId, tab.url);
+    }
+  } catch (error) {
+    console.warn("[청마루] tabs.onActivated site policy prefetch failed", error);
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  SITE_POLICY_BY_TAB.delete(tabId);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1452,6 +1755,61 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message?.type === "CHECK_API_HEALTH") {
     checkApiHealth().then(sendResponse);
+    return true;
+  }
+
+  if (message?.type === "GET_SITE_POLICY_FOR_URL") {
+    const senderTabId = sender?.tab?.id;
+    const requestedUrl = String(message?.url || sender?.tab?.url || "");
+    if (senderTabId) {
+      const current = SITE_POLICY_BY_TAB.get(senderTabId);
+      if (current?.url === requestedUrl && current.policy) {
+        sendResponse({
+          ok: true,
+          source: current.source || "tab-cache",
+          dismissed: Boolean(current.dismissed),
+          policy: current.policy
+        });
+        return true;
+      }
+    }
+    getSitePolicyForUrl(requestedUrl, {
+      title: message?.title || "",
+      snippet: message?.snippet || "",
+      forceRefresh: Boolean(message?.forceRefresh)
+    }).then((result) => {
+      if (senderTabId) {
+        SITE_POLICY_BY_TAB.set(senderTabId, {
+          url: requestedUrl,
+          policy: result?.policy || null,
+          updatedAt: Date.now(),
+          source: result?.source || "direct",
+          dismissed: false
+        });
+      }
+      sendResponse({
+        ok: Boolean(result?.ok),
+        source: result?.source || "unknown",
+        reason: result?.reason || null,
+        errorCode: result?.errorCode || null,
+        dismissed: false,
+        policy: result?.policy || null
+      });
+    });
+    return true;
+  }
+
+  if (message?.type === "DISMISS_SITE_POLICY") {
+    const senderTabId = sender?.tab?.id;
+    const requestedUrl = String(message?.url || sender?.tab?.url || "");
+    if (senderTabId) {
+      const current = SITE_POLICY_BY_TAB.get(senderTabId);
+      if (current && current.url === requestedUrl) {
+        current.dismissed = true;
+        SITE_POLICY_BY_TAB.set(senderTabId, current);
+      }
+    }
+    sendResponse({ ok: true });
     return true;
   }
 
