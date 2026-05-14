@@ -138,6 +138,7 @@ class MainActivity : AppCompatActivity() {
             diagnostics.visualRoiCandidateCount,
             diagnostics.visualOcrSelectedCount,
             diagnostics.visualOcrRawCount,
+            diagnostics.candidateRouteSamples.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: "-",
             diagnostics.actionableSamples.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: "-",
             diagnostics.error ?: "-"
         )

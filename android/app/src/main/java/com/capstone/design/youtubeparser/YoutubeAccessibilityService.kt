@@ -372,6 +372,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val lookaheadCandidateCount = screenCandidates.count { candidate ->
             candidate.backendSourceId.orEmpty().startsWith("android-accessibility-lookahead:")
         }
+        val candidateRouteSamples = CandidateRoutingPolicy.summarize(screenCandidates)
         val comments = screenCandidates.map { it.toParsedComment() }
 
         Log.d(
@@ -379,7 +380,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "package=$currentPackage parsed analysis target count=${comments.size} " +
                 "screenCandidates=${screenCandidates.size} " +
                 "lookaheadCandidates=$lookaheadCandidateCount " +
-                "visualRoiCandidates=${visualRoiPlan.candidateCount} visualRois=${visualRoiPlan.rois.size}"
+                "visualRoiCandidates=${visualRoiPlan.candidateCount} visualRois=${visualRoiPlan.rois.size} " +
+                "routes=${candidateRouteSamples.joinToString(";")}"
         )
 
         if (shouldLogRawNodes() && currentPackage == YOUTUBE_PACKAGE && comments.size <= 3) {
@@ -499,7 +501,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
             try {
                 val rawAnalysis = AndroidAnalysisClient
                     .analyzeSnapshot(applicationContext, snapshot)
-                    .copy(packageName = currentPackage)
+                    .copy(
+                        packageName = currentPackage,
+                        candidateRouteSamples = candidateRouteSamples
+                    )
                 val currentSensitivity = AnalysisSensitivityStore.get(applicationContext)
                 if (rawAnalysis.sensitivity != null && rawAnalysis.sensitivity != currentSensitivity) {
                     Log.d(
