@@ -14,9 +14,15 @@ try:
 except ImportError:
     _inko = None
 
+QWERTY_SIBAL_PATTERN = r"t(?:l|i|1)(?:q|a|g|4)k(?:f|q)?|11\s*k?t"
+LATIN_LEFT_BOUNDARY = r"(?<![A-Za-z0-9])"
+LATIN_RIGHT_BOUNDARY = r"(?![A-Za-z0-9])"
 ASCII_PROFANITY_MARKERS = re.compile(
-    r"\b(?:"
-    r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|tlqkf|"
+    LATIN_LEFT_BOUNDARY +
+    r"(?:"
+    r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|"
+    + QWERTY_SIBAL_PATTERN +
+    r"|"
     r"q[\W_]*u[\W_]*d[\W_]*t[\W_]*l[\W_]*s|qudtkf|"
     r"by[eou]+ng[\W_]*s?in|gae[\W_]*s(?:ae|e|a)[\W_]*k{1,2}i|rotori|"
     r"jiral|wlfkf|jonna|whssk|michin|alcls|k{1,2}eoj(?:ye)?o|rjwu|"
@@ -29,7 +35,8 @@ ASCII_PROFANITY_MARKERS = re.compile(
     r"porra|caralho|viado|"
     r"orospu|siktir|"
     r"nigg(?:er|a)|faggot|retard"
-    r")\b",
+    r")" +
+    LATIN_RIGHT_BOUNDARY,
     re.IGNORECASE,
 )
 NON_ASCII_PROFANITY_MARKERS = re.compile(

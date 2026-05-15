@@ -44,6 +44,23 @@ v1에서는 열린 이슈, 최근 PR, 실패한 검증, 보고서 반영 필요 
 
 즉, 일반 팀원은 PR 중심으로 작업하고, 관리자만 예외적으로 직접 정리할 수 있습니다.
 
+## Codex 작업 lane
+
+Codex 또는 자동화 에이전트로 작업할 때는 먼저 하나의 lane을 고릅니다.
+
+| lane | 주요 경로 | 기본 검증 |
+| --- | --- | --- |
+| `android` | `android/app/**` | 관련 Gradle unit test 또는 Kotlin compile 범위 |
+| `backend` | `backend/api/**`, `backend/tests/**` | backend 테스트 또는 FastAPI/TestClient 범위 |
+| `extension` | `extension/**` | extension build/smoke 또는 관련 JS test |
+| `shared-contract` | `shared/**` | 계약 변경을 쓰는 최소 consumer 확인 |
+| `docs-evaluation` | `docs/**`, `evaluation/**` | 문서 링크/JSONL 형식 확인 |
+
+원칙은 간단합니다. 한 작업에서 Android와 backend를 동시에 고치지 않습니다.
+교차 변경이 필요하면 PR 설명에 primary lane, secondary lane, 검증 범위를 먼저 씁니다.
+
+세부 기준은 `docs/codex-lanes.md`에서 관리합니다.
+
 ## 팀원 작업 방법
 
 ### 1. 브랜치 생성
@@ -150,3 +167,4 @@ git push --force-with-lease
 3. 여러 기능을 한 PR에 섞음
 4. Android, extension, backend를 한 번에 크게 건드림
 5. 충돌이 난 상태로 방치함
+6. Codex에게 lane, 검증, 종료 조건 없이 넓은 요청을 줌

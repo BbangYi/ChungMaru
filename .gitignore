@@ -61,6 +61,8 @@ pip-wheel-metadata/
 docs/Backend model/
 docs/presentation/*.pdf
 docs/presentation/*.pptx
+docs/presentation/**/*.pdf
+docs/presentation/**/*.pptx
 outputs/
 
 # Temporary

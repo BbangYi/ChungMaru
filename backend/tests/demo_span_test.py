@@ -13,7 +13,7 @@ CLF_MODEL_DIR  = os.path.join(BASE, "models", "v2")
 SPAN_MODEL_DIR = os.path.join(BASE, "models", "span_large_combined_crf")
 
 
-def test(pipeline, text, expected_offensive=None):
+def run_case(pipeline, text, expected_offensive=None):
     """단일 문장 테스트. expected_offensive: True/False/None(미지정)."""
     result = pipeline.analyze(text)
 
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         "한남충 페미충 다 똑같아",
     ]
     for text in offensive_cases:
-        test(pipeline, text, expected_offensive=True)
+        run_case(pipeline, text, expected_offensive=True)
 
     print("\n" + "=" * 60)
     print("2. 정상 문장 (span 없어야 함)")
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         "오늘 시발점이 어디야?",
     ]
     for text in normal_cases:
-        test(pipeline, text, expected_offensive=False)
+        run_case(pipeline, text, expected_offensive=False)
 
     print("\n" + "=" * 60)
     print("3. 경계 케이스")
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         "ㅁㄴㅇㄹ",
     ]
     for text in edge_cases:
-        test(pipeline, text)
+        run_case(pipeline, text)
 
     print("\n" + "=" * 60)
     print("테스트 완료")

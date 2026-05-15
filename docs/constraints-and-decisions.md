@@ -164,6 +164,24 @@
 - 대안 보류 이유: 속도는 빠르지만 문맥 판단과 `evidence_spans` 기준이 빠져 오탐/과차단이 늘 수 있다.
 - 다음 단계: 실기기에서 OCR latency, 배터리 영향, 썸네일/Shorts grid 정확도, backend round-trip까지 함께 측정한다.
 
+### Decision 16. Android 화면 텍스트는 앱별 기능이 아니라 공통 수집 계층으로 정규화
+
+- 선택: YouTube, Chrome, 일반 앱 후보를 `ScreenTextCandidate`로 정규화하고, `source`와 `role`만 분리한다.
+- 이유: YouTube OCR 기능처럼 앱별로 확장하면 Chrome 검색 결과, WebView, 일반 TextView, 이미지 텍스트를 같은 backend/evidence 계약으로 관리할 수 없다.
+- 적용: YouTube/Instagram/TikTok 기존 extractor는 그대로 감싸서 유지하고, 그 외 앱은 접근성 텍스트 후보를 `ACCESSIBILITY_TEXT` 또는 `ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY`로 변환한다.
+- 대안: YouTube, Chrome, 기타 앱을 각각 별도 분석 경로로 구현한다.
+- 대안 보류 이유: 단기 구현은 쉬워도 중복 필터/캐시/진단이 늘고, 플랫폼별 실패 원인을 같은 지표로 비교하기 어렵다.
+- 다음 단계: backend가 harmful evidence를 반환한 긴 접근성 노드는 node crop OCR로 exact geometry를 보정하고, 접근성에 없는 썸네일/영상 텍스트만 `VISUAL_OCR` 경로로 보낸다.
+
+### Decision 17. Android 브라우저 접근성 좌표는 신뢰도 낮은 추정 마스킹으로 쓰지 않음
+
+- 선택: Chrome/Firefox/Samsung Browser 같은 브라우저 접근성 후보는 `android-accessibility-browser:*` 출처로 분리하고, 넓은 행/카드 bounds는 마스킹 렌더링에서 제외한다.
+- 이유: 모바일 브라우저 접근성 트리는 검색 결과 제목, snippet, 관련 검색어를 실제 단어 좌표가 아니라 행 또는 카드 좌표로 제공하는 경우가 많다. 이 값을 그대로 span 비율로 나누면 스크롤 중 마스크가 단어와 떨어져 떠다니거나, 관련 검색어 행의 엉뚱한 위치가 가려진다.
+- 적용: 브라우저 콘텐츠에서는 `android-accessibility-range:*` 추정 후보를 만들지 않고, renderer에서도 아주 짧고 좁은 compact browser accessibility bounds만 허용한다. AI 개요/snippet처럼 120~200px 정도의 loose bounds도 단어 좌표가 아니면 렌더링하지 않는다.
+- 대안: 브라우저 접근성 bounds를 계속 사용해 빠르게 많이 가린다.
+- 대안 보류 이유: 커버리지는 높아지지만 사용자가 본 문제처럼 위치가 틀린 마스크가 반복되어 “필터가 오작동한다”는 체감이 더 커진다.
+- 다음 단계: 브라우저에서 정확한 단어 위치가 필요한 경우 harmful 판정이 난 node만 crop OCR로 보정하는 경로를 추가한다.
+
 ## 3. 보고서에 넣기 좋은 제약 요약
 
 청마루의 핵심 제약은 “정확한 문맥 판단”과 “사용자가 읽기 전 빠른 반영”이 서로 충돌한다는 점이다.

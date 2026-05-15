@@ -14,8 +14,9 @@ import os
 import re
 import time
 from difflib import SequenceMatcher
+from threading import RLock
 
-from normalizer import normalize
+from normalizer import LATIN_LEFT_BOUNDARY, LATIN_RIGHT_BOUNDARY, QWERTY_SIBAL_PATTERN, normalize
 from classifier import TextClassifier
 from span_detector import SpanDetector
 from input_filter import filter_android_json
@@ -25,8 +26,11 @@ from profanity_dict import COMPILED_PATTERNS, WHITELIST
 ZERO_SCORES = {"profanity": 0.0, "toxicity": 0.0, "hate": 0.0}
 
 LATIN_PROFANITY_PATTERN = re.compile(
-    r"\b(?:"
-    r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|tlqkf|"
+    LATIN_LEFT_BOUNDARY +
+    r"(?:"
+    r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|"
+    + QWERTY_SIBAL_PATTERN +
+    r"|"
     r"q[\W_]*u[\W_]*d[\W_]*t[\W_]*l[\W_]*s|qudtkf|"
     r"by[eou]+ng[\W_]*s?in|gae[\W_]*s(?:ae|e|a)[\W_]*k{1,2}i|rotori|"
     r"jiral|wlfkf|jonna|whssk|michin|alcls|k{1,2}eoj(?:ye)?o|rjwu|"
@@ -40,7 +44,8 @@ LATIN_PROFANITY_PATTERN = re.compile(
     r"porra|caralho|viado|"
     r"orospu|siktir|"
     r"nigg(?:er|a)|faggot|retard"
-    r")\b",
+    r")" +
+    LATIN_RIGHT_BOUNDARY,
     re.IGNORECASE,
 )
 
@@ -92,16 +97,21 @@ EXPLICIT_DEFINITION_PATTERN = re.compile(
 
 EXTRA_SPAN_PATTERNS = [
     re.compile(
-        r"\b(?:"
-        r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|tlqkf|"
+        LATIN_LEFT_BOUNDARY +
+        r"(?:"
+        r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|"
+        + QWERTY_SIBAL_PATTERN +
+        r"|"
         r"q[\W_]*u[\W_]*d[\W_]*t[\W_]*l[\W_]*s|qudtkf|"
         r"by[eou]+ng[\W_]*s?in|gae[\W_]*s(?:ae|e|a)[\W_]*k{1,2}i|rotori|"
         r"jiral|wlfkf|jonna|whssk|michin|alcls|k{1,2}eoj(?:ye)?o|rjwu"
-        r")\b",
+        r")" +
+        LATIN_RIGHT_BOUNDARY,
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:"
+        LATIN_LEFT_BOUNDARY +
+        r"(?:"
         r"f[\W_]*u[\W_]*c[\W_]*k(?:[\W_]*i[\W_]*n[\W_]*g)?|"
         r"s[\W_]*h[\W_]*i[\W_]*t|b[\W_]*i[\W_]*t[\W_]*c[\W_]*h|"
         r"asshole|bastard|cunt|dick|pussy|slut|whore|prick|twat|wanker|"
@@ -112,7 +122,8 @@ EXTRA_SPAN_PATTERNS = [
         r"porra|caralho|viado|"
         r"orospu|siktir|"
         r"nigg(?:er|a)|faggot|retard"
-        r")\b",
+        r")" +
+        LATIN_RIGHT_BOUNDARY,
         re.IGNORECASE,
     ),
     re.compile(
@@ -311,9 +322,34 @@ class ProfanityPipeline:
                 os.path.join(BASE, "models", "span_large_combined_crf"),
             )
 
-        self.classifier = TextClassifier(model_path=classifier_path)
-        self.span_detector = SpanDetector(model_dir=span_model_path)
+        self.classifier_path = classifier_path
+        self.span_model_path = span_model_path
         self.threshold = threshold
+        self._classifier: TextClassifier | None = None
+        self._span_detector: SpanDetector | None = None
+        self._model_lock = RLock()
+
+    def _get_classifier(self) -> TextClassifier:
+        if self._classifier is None:
+            with self._model_lock:
+                if self._classifier is None:
+                    self._classifier = TextClassifier(model_path=self.classifier_path)
+        return self._classifier
+
+    def _get_span_detector(self) -> SpanDetector:
+        if self._span_detector is None:
+            with self._model_lock:
+                if self._span_detector is None:
+                    self._span_detector = SpanDetector(model_dir=self.span_model_path)
+        return self._span_detector
+
+    def runtime_status(self) -> dict:
+        return {
+            "classifier_loaded": self._classifier is not None,
+            "span_detector_loaded": self._span_detector is not None,
+            "classifier_path": self.classifier_path,
+            "span_model_path": self.span_model_path,
+        }
 
     def analyze(self, text: str, sensitivity: int | None = None) -> dict:
         """단일 텍스트 분석.
@@ -343,7 +379,7 @@ class ProfanityPipeline:
 
         # [2단계] 문장 분류
         classifier_started = time.perf_counter()
-        cls_result = self.classifier.predict(normalized, threshold=threshold)
+        cls_result = self._get_classifier().predict(normalized, threshold=threshold)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000
 
         direct_is_offensive = any(span["score"] >= threshold for span in direct_spans)
@@ -359,7 +395,7 @@ class ProfanityPipeline:
         span_ms = 0.0
         if is_offensive and not evidence_spans:
             span_started = time.perf_counter()
-            raw_spans = self.span_detector.detect(normalized)
+            raw_spans = self._get_span_detector().detect(normalized)
             span_ms = (time.perf_counter() - span_started) * 1000
 
             for s in raw_spans:
@@ -424,7 +460,7 @@ class ProfanityPipeline:
 
         if classifier_texts:
             classifier_started = time.perf_counter()
-            cls_results = self.classifier.predict_batch(classifier_texts, threshold=threshold)
+            cls_results = self._get_classifier().predict_batch(classifier_texts, threshold=threshold)
             total_classifier_ms = (time.perf_counter() - classifier_started) * 1000
             per_item_classifier_ms = total_classifier_ms / max(1, len(classifier_texts))
 
@@ -451,7 +487,7 @@ class ProfanityPipeline:
                 span_ms = 0.0
                 if is_offensive and not evidence_spans:
                     span_started = time.perf_counter()
-                    raw_spans = self.span_detector.detect(normalized)
+                    raw_spans = self._get_span_detector().detect(normalized)
                     span_ms = (time.perf_counter() - span_started) * 1000
 
                     for s in raw_spans:
@@ -511,6 +547,7 @@ class ProfanityPipeline:
             results.append({
                 "original": text,
                 "boundsInScreen": bounds,
+                "author_id": item.get("author_id"),
                 "is_offensive": analysis["is_offensive"],
                 "is_profane": analysis["is_profane"],
                 "is_toxic": analysis["is_toxic"],

@@ -9,6 +9,8 @@
 {"id":"offensive-direct-byeongsin","group":"direct_attack","text":"병신아 꺼져","expected_offensive":true,"expected_spans":["병신","꺼져"],"notes":"직접 공격 표현"}
 {"id":"offensive-direct-gaesaekki","group":"direct_attack","text":"개새끼 꺼져","expected_offensive":true,"expected_spans":["개새끼","꺼져"],"notes":"직접 공격 표현"}
 {"id":"offensive-qwerty-tlqkf","group":"obfuscated","text":"TLQKF 티셔츠","expected_offensive":true,"expected_spans":["TLQKF"],"notes":"qwerty 우회 표현"}
+{"id":"offensive-qwerty-tlakf","group":"obfuscated","text":"Tlakf 공부법","expected_offensive":true,"expected_spans":["Tlakf"],"notes":"OCR/접근성 텍스트에서 자주 보이는 qwerty 변형"}
+{"id":"offensive-qwerty-tlqkf-attached","group":"obfuscated","text":"tlqkf비용 효과 있을까?","expected_offensive":true,"expected_spans":["tlqkf"],"notes":"한글과 붙은 qwerty 우회 표현"}
 {"id":"offensive-qwerty-qudtls","group":"obfuscated","text":"Qudtls 뜻","expected_offensive":true,"expected_spans":["Qudtls"],"notes":"qwerty 우회 표현"}
 {"id":"offensive-romanized-ssibal","group":"obfuscated","text":"ssibal 뜻","expected_offensive":true,"expected_spans":["ssibal"],"notes":"romanized 우회 표현"}
 {"id":"offensive-romanized-shibal","group":"obfuscated","text":"shi-bal 뭐야","expected_offensive":true,"expected_spans":["shi-bal"],"notes":"hyphenated romanized 우회 표현"}
