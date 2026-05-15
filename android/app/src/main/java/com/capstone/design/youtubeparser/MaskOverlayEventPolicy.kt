@@ -132,6 +132,16 @@ internal object MaskOverlayEventPolicy {
         return !(hasActiveMasks && hasRenderableVisualRois && !hasPreservedRecentAnalysisFailure)
     }
 
+    fun shouldRunVisualRefreshForDuplicateSnapshot(
+        hasRenderableVisualRois: Boolean,
+        visualAnalysisInFlight: Boolean,
+        hasReusableVisualSupplement: Boolean
+    ): Boolean {
+        return hasRenderableVisualRois &&
+            !visualAnalysisInFlight &&
+            !hasReusableVisualSupplement
+    }
+
     fun isLikelySelfContentChange(
         eventType: Int,
         hasActiveMasks: Boolean,

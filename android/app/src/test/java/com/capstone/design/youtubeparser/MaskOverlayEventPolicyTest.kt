@@ -363,6 +363,38 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldRunVisualRefreshForDuplicateSnapshot_runsOnlyWhenVisualWorkIsMissing() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldRunVisualRefreshForDuplicateSnapshot(
+                hasRenderableVisualRois = true,
+                visualAnalysisInFlight = false,
+                hasReusableVisualSupplement = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRunVisualRefreshForDuplicateSnapshot(
+                hasRenderableVisualRois = true,
+                visualAnalysisInFlight = true,
+                hasReusableVisualSupplement = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRunVisualRefreshForDuplicateSnapshot(
+                hasRenderableVisualRois = true,
+                visualAnalysisInFlight = false,
+                hasReusableVisualSupplement = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRunVisualRefreshForDuplicateSnapshot(
+                hasRenderableVisualRois = false,
+                visualAnalysisInFlight = false,
+                hasReusableVisualSupplement = false
+            )
+        )
+    }
+
+    @Test
     fun isLikelySelfContentChange_keepsFreshOverlayFromClearingItself() {
         assertTrue(
             MaskOverlayEventPolicy.isLikelySelfContentChange(

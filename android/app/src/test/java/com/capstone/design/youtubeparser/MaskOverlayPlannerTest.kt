@@ -756,6 +756,52 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_keepsLargeStandaloneThumbnailOcrTerm() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(286, 646, 706, 946),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:0,443,1080,1127:Tlak"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        val spec = specs.single()
+        assertTrue("spec=$spec", spec.left <= 286)
+        assertTrue("spec=$spec", spec.top <= 646)
+        assertTrue("spec=$spec", spec.left + spec.width >= 706)
+        assertTrue("spec=$spec", spec.top + spec.height >= 946)
+        assertTrue(spec.allowScrollTranslation)
+    }
+
+    @Test
+    fun buildSpecs_keepsMediumLargeStandaloneThumbnailOcrTerm() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(47, 1338, 393, 1454),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf",
+                authorId = "ocr:youtube-composite-card:0,1040,1080,1724:Tlqkf"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        val spec = specs.single()
+        assertTrue("spec=$spec", spec.left <= 47)
+        assertTrue("spec=$spec", spec.top <= 1338)
+        assertTrue("spec=$spec", spec.left + spec.width >= 393)
+        assertTrue("spec=$spec", spec.top + spec.height >= 1454)
+        assertTrue(spec.allowScrollTranslation)
+    }
+
+    @Test
     fun buildSpecs_rejectsUnknownOcrSourcesUntilProjectionIsExplicitlyTrusted() {
         val response = responseOf(
             resultOf(
@@ -1237,7 +1283,7 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
         assertEquals(2, specs.size)
-        assertTrue(specs.all { it.width in 88..100 })
+        assertTrue(specs.all { it.width in 104..116 })
     }
 
     @Test

@@ -454,7 +454,69 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
 
         if (signature == lastSnapshotSignature) {
-            Log.d(TAG, "skip duplicate snapshot")
+            val snapshotOverlayRevision = overlayRevision
+            val duplicateBaseResponse = ProvisionalAccessibilityMaskBuilder.buildResponse(
+                candidates = screenCandidates,
+                timestamp = now
+            )
+            val reusableVisualResponse = if (visualRoiPlan.canReuseVisualSupplement()) {
+                reusableVisualSupplement(
+                    packageName = currentPackage,
+                    visualRoiSignature = visualRoiPlan.signature()
+                )
+            } else {
+                null
+            }
+            val duplicateResponse = mergeAnalysisResponses(duplicateBaseResponse, reusableVisualResponse)
+                ?: reusableVisualResponse
+                ?: duplicateBaseResponse
+            if (duplicateResponse != null) {
+                val duplicateAnalysis = AndroidAnalysisAttempt(
+                    ok = true,
+                    packageName = currentPackage,
+                    url = if (reusableVisualResponse != null) {
+                        "duplicate-snapshot-visual-cache"
+                    } else {
+                        "duplicate-snapshot-provisional"
+                    },
+                    sensitivity = currentSensitivity,
+                    latencyMs = 0L,
+                    commentCount = duplicateResponse.results.size,
+                    offensiveCount = duplicateResponse.results.size,
+                    filteredCount = duplicateResponse.filteredCount,
+                    response = duplicateResponse,
+                    candidateRouteSamples = candidateRouteSamples
+                ).withOverlayDiagnostics(currentPackage, visualRoiPlan)
+                Log.d(
+                    TAG,
+                    "refresh duplicate snapshot masks results=${duplicateResponse.results.size} " +
+                        "visualCached=${reusableVisualResponse != null}"
+                )
+                updateMaskOverlay(
+                    currentPackage = currentPackage,
+                    analysis = duplicateAnalysis,
+                    snapshotOverlayRevision = snapshotOverlayRevision,
+                    visualRoiPlan = visualRoiPlan,
+                    isProvisionalAccessibilityMask = reusableVisualResponse == null,
+                    allowDuringScrollStabilization = true
+                )
+            } else {
+                Log.d(TAG, "skip duplicate snapshot without renderable masks")
+            }
+            if (
+                MaskOverlayEventPolicy.shouldRunVisualRefreshForDuplicateSnapshot(
+                    hasRenderableVisualRois = visualRoiPlan.hasRenderableVisualRois(),
+                    visualAnalysisInFlight = visualAnalysisInFlight,
+                    hasReusableVisualSupplement = reusableVisualResponse != null
+                )
+            ) {
+                startVisualTextAnalysis(
+                    packageName = currentPackage,
+                    visualRoiPlan = visualRoiPlan,
+                    clearExistingOverlay = false,
+                    baseResponse = duplicateBaseResponse
+                )
+            }
             return
         }
 
