@@ -557,7 +557,7 @@ class VisualTextOcrProcessor {
 
     companion object {
         private const val TAG = "VisualTextOcrProcessor"
-        private const val MAX_ROIS_PER_PASS = 4
+        private const val MAX_ROIS_PER_PASS = 6
         private const val MAX_OCR_TEXT_CANDIDATES = 24
         private const val WARM_UP_BITMAP_SIZE_PX = 16
         private const val MIN_CROP_WIDTH_PX = 80
