@@ -53,7 +53,8 @@ scripts/                  보조 스크립트
 1. 기본 흐름은 `feature branch -> PR -> main` 입니다.
 2. `main`은 가급적 직접 수정하지 않고, 리뷰 기록을 남깁니다.
 3. 운영상 급한 수정은 관리자 확인 후 바로 반영할 수 있습니다.
-4. 자세한 규칙은 `docs/github-collaboration-guide.md`에서 관리합니다.
+4. Codex 작업은 `android`, `backend`, `extension`, `shared-contract`, `docs-evaluation` lane 중 하나를 먼저 정하고 진행합니다.
+5. 자세한 규칙은 `docs/github-collaboration-guide.md`와 `docs/codex-lanes.md`에서 관리합니다.
 
 ## 관련 문서
 
@@ -61,6 +62,7 @@ scripts/                  보조 스크립트
 
 - [서비스 정의서](docs/service-definition.md): 프로젝트 범위와 구조
 - [GitHub 협업 가이드](docs/github-collaboration-guide.md): 이슈/PR/머지 기준
+- [Codex 작업 lane 가이드](docs/codex-lanes.md): Android/backend/docs 작업 경계와 검증 기준
 - [개발 이력 및 개선 근거 기록](docs/engineering-history.md): 보고서에 쓸 개선 흐름
 
 상세 기준은 필요할 때만 확인합니다.

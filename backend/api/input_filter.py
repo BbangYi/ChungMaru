@@ -66,7 +66,24 @@ def is_valid_comment(text: str) -> bool:
     return True
 
 
-def _is_comment_bounds(bounds: dict) -> bool:
+_PRECISE_VISUAL_AUTHOR_PREFIXES = (
+    "android-accessibility-range:",
+    "android-accessibility:",
+    "ocr:",
+    "screen:accessibility_text:",
+    "screen:accessibility_text_with_ocr_geometry:",
+    "youtube-visual-range:",
+    "youtube-composite-description",
+)
+
+
+def _is_precise_visual_candidate(author_id: Optional[str]) -> bool:
+    if not author_id:
+        return False
+    return any(author_id.startswith(prefix) for prefix in _PRECISE_VISUAL_AUTHOR_PREFIXES)
+
+
+def _is_comment_bounds(bounds: dict, author_id: Optional[str] = None) -> bool:
     """boundsInScreen으로 댓글 영역 여부 판별.
 
     댓글:     가로로 매우 넓고 세로로 얇음  (예: width=172, height=36)
@@ -74,6 +91,8 @@ def _is_comment_bounds(bounds: dict) -> bool:
 
     조건: width < 250 이고 height > width * 0.4 이면 아이콘/버튼으로 간주.
     """
+    if _is_precise_visual_candidate(author_id):
+        return True
     if not bounds:
         return True  # bounds 없으면 통과 (Chrome Extension 등)
     width = bounds.get("right", 0) - bounds.get("left", 0)
@@ -97,10 +116,11 @@ def filter_android_json(raw: dict) -> list[dict]:
     for item in raw.get("comments", []):
         text = item.get("commentText", "")
         bounds = item.get("boundsInScreen", {})
-        if is_valid_comment(text) and _is_comment_bounds(bounds):
+        author_id = item.get("author_id")
+        if is_valid_comment(text) and _is_comment_bounds(bounds, author_id):
             result.append({
                 "commentText": text.strip(),
-                "author_id": item.get("author_id"),
+                "author_id": author_id,
                 "boundsInScreen": bounds,   # 앱이 화면에 재배치할 때 사용
             })
     return result

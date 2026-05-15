@@ -86,6 +86,7 @@ class AgentResponse(BaseModel):
 class AndroidResultItem(BaseModel):
     original: str
     boundsInScreen: BoundsInScreen
+    author_id: str | None = None
     is_offensive: bool
     is_profane: bool
     is_toxic: bool
@@ -172,7 +173,7 @@ async def lifespan(app: FastAPI):
         pipeline_init_error = str(exc)
         print(f"텍스트 탐지 파이프라인 초기화 실패: {exc}")
     site_risk_agent = SiteRiskAgent()
-    print("파이프라인 초기화 완료")
+    print("파이프라인 준비 완료 (lazy model loading)")
     yield
     print("서버 종료")
 
@@ -501,11 +502,15 @@ async def swagger_ui_redirect():
 @app.get("/health")
 async def health():
     intel_stats = site_risk_agent.store.stats() if site_risk_agent else None
+    pipeline_status = pipeline.runtime_status() if pipeline is not None else None
     return {
         "status": "ok",
         "site_intel": intel_stats,
         "text_pipeline_ready": pipeline is not None,
         "text_pipeline_error": pipeline_init_error,
+        "pipeline_loaded": pipeline is not None,
+        "agent_service_loaded": agent_service is not None,
+        "models": pipeline_status,
     }
 
 
