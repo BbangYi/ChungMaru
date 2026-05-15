@@ -108,6 +108,7 @@ object ScreenTextCandidateExtractor {
             value.startsWith("youtube-visual-range:") ||
             value == "youtube-composite-description" ||
             value.startsWith(ACCESSIBILITY_LOOKAHEAD_PREFIX) ||
+            value.startsWith(ACCESSIBILITY_COMMENT_PREFIX) ||
             value.startsWith("android-accessibility:")
         ) {
             return value

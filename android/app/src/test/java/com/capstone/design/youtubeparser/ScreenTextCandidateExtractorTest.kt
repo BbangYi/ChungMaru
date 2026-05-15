@@ -352,7 +352,7 @@ class ScreenTextCandidateExtractorTest {
         val comment = candidates.single { it.rawText == "tlqkf 뭐냐 진짜" }
 
         assertEquals(CandidateRole.CONTENT, comment.role)
-        assertEquals("android-accessibility-comment:youtube", comment.backendSourceId)
+        assertEquals("android-accessibility-comment:youtube:sampleuser", comment.backendSourceId)
         assertEquals(CandidateSurface.YOUTUBE_COMMENT, comment.route.surface)
         assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, comment.route.geometryPolicy)
         assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, comment.route.renderPolicy)
