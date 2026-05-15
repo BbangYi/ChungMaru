@@ -73,7 +73,18 @@ class VisualTextOcrCandidateFilterTest {
 
     @Test
     fun findAnalysisRanges_canonicalizesCommonOcrMisreadsForBackend() {
-        val samples = listOf("Tlakf", "Tlgkf", "TIqkf", "T|qkf", "11KT")
+        val samples = listOf(
+            "Tlakf",
+            "Tlgkf",
+            "TIqkf",
+            "T|qkf",
+            "Tlkf",
+            "TIkf",
+            "TIokt",
+            "Tlolkf",
+            "IIakt",
+            "11KT"
+        )
 
         samples.forEach { sample ->
             val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("$sample 또 보여줘야 돼")

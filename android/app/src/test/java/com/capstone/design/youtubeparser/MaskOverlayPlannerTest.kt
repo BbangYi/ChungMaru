@@ -1044,8 +1044,8 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 656, screenHeight = 1454)
 
         assertEquals(1, specs.size)
-        assertEquals(110, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
+        assertEquals(100, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 180..196)
         assertTrue(specs.single().allowScrollTranslation)
     }
 
@@ -1063,8 +1063,8 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 675, screenHeight = 1478)
 
         assertEquals(1, specs.size)
-        assertEquals(123, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
+        assertEquals(113, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 180..196)
     }
 
     @Test

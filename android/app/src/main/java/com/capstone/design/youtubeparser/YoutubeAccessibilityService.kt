@@ -50,6 +50,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val TOP_CONTROL_OCR_EXCLUSION_MAX_PX = 220
         private const val TOP_CONTROL_OCR_EXCLUSION_RATIO = 0.12f
         private const val CACHE_PROMOTION_THROTTLE_MS = 80L
+        private val PRECISE_YOUTUBE_VISUAL_SOURCES = setOf("youtube-composite-card", "youtube-visible-band")
+        private const val YOUTUBE_SEMANTIC_FALLBACK_SOURCE = "youtube-semantic-card"
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -213,16 +215,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
                             hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta
                         )
                     ) {
-                        Log.d(TAG, "hide mask overlay until scroll recapture: unresolved delta")
-                        hideMaskOverlayViewsUntilRecapture()
+                        Log.d(TAG, "preserve mask overlay until scroll recapture: unresolved delta")
                         markOverlayRevisionStale()
                         scheduleDeferredFollowUpParse()
                     } else if (scrollTranslation.shouldHideUntilRecapture && hasActiveMasks) {
-                        Log.d(
-                            TAG,
-                            "hide mask overlay until scroll recapture status=${scrollTranslation.status}"
-                        )
-                        hideMaskOverlayViewsUntilRecapture()
+                        Log.d(TAG, "preserve mask overlay until scroll recapture status=${scrollTranslation.status}")
                         markOverlayRevisionStale()
                         scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                     } else {
@@ -248,8 +245,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     clearMaskOverlay()
                 } else if (contentChangedWithActiveMask) {
-                    Log.d(TAG, "hide mask overlay until content recapture")
-                    hideMaskOverlayViewsUntilRecapture()
+                    Log.d(TAG, "preserve mask overlay until content recapture")
                     markOverlayRevisionStale()
                     markVisualSceneChanged(event.eventType)
                     scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
@@ -827,12 +823,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
         maskOverlayController.clear()
         resetAbsoluteScrollPosition()
-    }
-
-    private fun hideMaskOverlayViewsUntilRecapture() {
-        provisionalVisualMaskActive = false
-        provisionalAccessibilityMaskActive = false
-        maskOverlayController.clear()
     }
 
     private fun markOverlayRevisionStale() {
@@ -1912,11 +1902,34 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun isSameVisualCandidate(left: ParsedComment, right: ParsedComment): Boolean {
+        if (isSameVisualCandidateWithinRoi(left, right)) return true
+
         val overlapRatio = boundsOverlapRatio(left.boundsInScreen, right.boundsInScreen)
         return (
             normalizeAnalysisTextKey(left.commentText) == normalizeAnalysisTextKey(right.commentText) &&
                 overlapRatio >= VISUAL_DUPLICATE_OVERLAP_RATIO
             ) || overlapRatio >= VISUAL_GEOMETRY_DUPLICATE_OVERLAP_RATIO
+    }
+
+    private fun isSameVisualCandidateWithinRoi(left: ParsedComment, right: ParsedComment): Boolean {
+        val leftMetadata = left.visualOcrMetadata() ?: return false
+        val rightMetadata = right.visualOcrMetadata() ?: return false
+        val leftRoi = leftMetadata.roiBoundsInScreen ?: return false
+        val rightRoi = rightMetadata.roiBoundsInScreen ?: return false
+        if (leftRoi != rightRoi) return false
+
+        val leftSource = leftMetadata.source
+        val rightSource = rightMetadata.source
+        val hasPrecise = leftSource in PRECISE_YOUTUBE_VISUAL_SOURCES ||
+            rightSource in PRECISE_YOUTUBE_VISUAL_SOURCES
+        val hasSemanticFallback = leftSource == YOUTUBE_SEMANTIC_FALLBACK_SOURCE ||
+            rightSource == YOUTUBE_SEMANTIC_FALLBACK_SOURCE
+        if (!hasPrecise || !hasSemanticFallback) return false
+
+        val leftKeys = analysisTextKeys(left.commentText)
+        if (leftKeys.isEmpty()) return false
+        val rightKeys = analysisTextKeys(right.commentText)
+        return rightKeys.any { key -> key in leftKeys }
     }
 
     private fun boundsOverlapRatio(left: BoundsRect, right: BoundsRect): Float {
