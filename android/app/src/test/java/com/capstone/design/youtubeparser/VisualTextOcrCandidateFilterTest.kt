@@ -16,6 +16,7 @@ class VisualTextOcrCandidateFilterTest {
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("Tlakf 또 보여줘야 돼"))
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("Tlgkf 공부법"))
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("11KT 또 보여줘야 돼"))
+        assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("C발 비용 효과 있을까?"))
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("ssibal 뜻"))
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("병신아 꺼져"))
         assertTrue(VisualTextOcrCandidateFilter.shouldAnalyze("개새끼 뭐하는 거야"))
@@ -115,6 +116,14 @@ class VisualTextOcrCandidateFilterTest {
             assertEquals(sample, listOf("ssibal"), ranges.map { it.analysisText })
             assertEquals(sample, listOf(sample), ranges.map { it.visualText })
         }
+    }
+
+    @Test
+    fun findAnalysisRanges_keepsMixedLatinKoreanSibalVariant() {
+        val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("C발 비용 효과 있을까?")
+
+        assertEquals(listOf("C발"), ranges.map { it.analysisText })
+        assertEquals(listOf("C발"), ranges.map { it.visualText })
     }
 
     @Test

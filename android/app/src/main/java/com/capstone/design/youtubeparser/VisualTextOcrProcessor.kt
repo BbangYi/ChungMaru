@@ -710,6 +710,7 @@ internal object VisualTextOcrCandidateFilter {
         pattern = listOf(
             "시\\s*발",
             "씨\\s*발",
+            "c\\s*발",
             "ㅅ\\s*ㅂ",
             "ㅆ\\s*ㅂ",
             "병\\s*신",

@@ -538,6 +538,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             lastUploadAt = now
         }
         val snapshotOverlayRevision = overlayRevision
+        val snapshotVisualSceneRevision = visualSceneRevision
         renderProvisionalAccessibilityMaskOverlay(
             packageName = currentPackage,
             screenCandidates = screenCandidates,
@@ -622,6 +623,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 releaseAnalysisGate()
                 if (shouldStartVisualSupplement) {
                     handler.post {
+                        if (snapshotVisualSceneRevision != visualSceneRevision) {
+                            Log.d(
+                                TAG,
+                                "skip visual OCR start: stale base scene " +
+                                    "snapshot=$snapshotVisualSceneRevision current=$visualSceneRevision"
+                            )
+                            return@post
+                        }
                         startVisualTextAnalysis(
                             packageName = currentPackage,
                             visualRoiPlan = visualRoiPlan,
