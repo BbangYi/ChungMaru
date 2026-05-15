@@ -52,13 +52,13 @@ object AndroidMaskOverlayPlanner {
     private const val MIN_WIDTH_PX = 24
     private const val MIN_HEIGHT_PX = 16
     private const val MIN_SPAN_MASK_WIDTH_PX = 24
-    private const val SPAN_HORIZONTAL_PADDING_PX = 4
+    private const val SPAN_HORIZONTAL_PADDING_PX = 8
     private const val MAX_SPAN_MASK_HEIGHT_PX = 32
     private const val MAX_PRECISE_VISUAL_SPAN_MASK_HEIGHT_PX = 56
     private const val KOREAN_SPAN_CHAR_WIDTH_PX = 28
-    private const val LATIN_SPAN_CHAR_WIDTH_PX = 14
+    private const val LATIN_SPAN_CHAR_WIDTH_PX = 16
     private const val KOREAN_SPAN_MAX_CHAR_WIDTH_PX = 28
-    private const val LATIN_SPAN_MAX_CHAR_WIDTH_PX = 14
+    private const val LATIN_SPAN_MAX_CHAR_WIDTH_PX = 16
     private const val KOREAN_SPAN_HEIGHT_WIDTH_RATIO = 0.56f
     private const val LATIN_SPAN_HEIGHT_WIDTH_RATIO = 0.38f
     private const val PRECISE_VISUAL_KOREAN_WIDTH_RATIO = 0.86f
@@ -83,7 +83,7 @@ object AndroidMaskOverlayPlanner {
     private const val TOP_HERO_DISPLAY_LEFT_PADDING_PX = 32
     private const val TOP_HERO_DISPLAY_MAX_WIDTH_RATIO = 0.42f
     private const val MAX_COMPACT_KOREAN_SPAN_WIDTH_PX = 112
-    private const val MAX_COMPACT_LATIN_SPAN_WIDTH_PX = 84
+    private const val MAX_COMPACT_LATIN_SPAN_WIDTH_PX = 112
     private const val COMPACT_SPAN_CODEPOINT_LIMIT = 8
     private const val LEADING_SPAN_PREFIX_TOLERANCE = 2
     private const val ESTIMATED_LINE_HEIGHT_PX = 34
@@ -110,6 +110,12 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_UNSOURCED_LONG_TEXT_HEIGHT_PX = 72
     private const val MAX_VISUAL_SOURCE_HEIGHT_PX = 110
     private const val MAX_VISUAL_SOURCE_AREA_RATIO = 0.08f
+    private const val MIN_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX = 108
+    private const val MAX_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX = 360
+    private const val MAX_LARGE_PRECISE_VISUAL_SOURCE_AREA_RATIO = 0.08f
+    private const val MAX_LARGE_PRECISE_VISUAL_TERM_LENGTH = 8
+    private const val LARGE_PRECISE_VISUAL_HORIZONTAL_PADDING_PX = 18
+    private const val LARGE_PRECISE_VISUAL_VERTICAL_PADDING_PX = 12
     private const val MAX_COMPOSITE_SOURCE_HEIGHT_PX = 132
     private const val MAX_COMPOSITE_SOURCE_AREA_RATIO = 0.06f
     private const val MAX_SEMANTIC_SOURCE_HEIGHT_PX = 140
@@ -399,8 +405,11 @@ object AndroidMaskOverlayPlanner {
             return false
         }
         val accessibilityAuthor = isAccessibilityAuthor(authorId)
+        val preciseVisualAuthor = isPreciseVisualAuthor(authorId)
         if (originalLength > MAX_HIGH_CONFIDENCE_TEXT_LENGTH && !accessibilityAuthor) return false
-        if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX && !accessibilityAuthor) return false
+        if (spec.height > MAX_HIGH_CONFIDENCE_HEIGHT_PX && !accessibilityAuthor && !preciseVisualAuthor) {
+            return false
+        }
 
         val screenArea = (screenWidth * screenHeight).coerceAtLeast(1)
         val specArea = spec.width * spec.height
@@ -418,9 +427,19 @@ object AndroidMaskOverlayPlanner {
             return false
         }
 
-        if (isPreciseVisualAuthor(authorId)) {
-            return spec.height <= MAX_VISUAL_SOURCE_HEIGHT_PX &&
+        if (preciseVisualAuthor) {
+            if (spec.height <= MAX_VISUAL_SOURCE_HEIGHT_PX &&
                 areaRatio <= MAX_VISUAL_SOURCE_AREA_RATIO
+            ) {
+                return true
+            }
+            return hasStableLargePreciseVisualGeometry(
+                spec = spec,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight,
+                areaRatio = areaRatio,
+                authorId = authorId
+            )
         }
 
         if (isSemanticVisualAuthor(authorId)) {
@@ -619,6 +638,39 @@ object AndroidMaskOverlayPlanner {
             areaRatio <= MAX_SEMANTIC_SOURCE_AREA_RATIO
     }
 
+    private fun hasStableLargePreciseVisualGeometry(
+        spec: MaskOverlaySpec,
+        screenWidth: Int,
+        screenHeight: Int,
+        areaRatio: Float,
+        authorId: String?
+    ): Boolean {
+        val metadata = VisualTextOcrMetadataCodec.decode(authorId) ?: return false
+        if (metadata.source != "youtube-composite-card" && metadata.source != "youtube-visible-band") {
+            return false
+        }
+        val visualText = metadata.visualText?.trim().orEmpty()
+        val visualKey = visualSizingKey(visualText)
+        if (visualKey.length !in 3..MAX_LARGE_PRECISE_VISUAL_TERM_LENGTH) return false
+
+        val roiBounds = metadata.roiBoundsInScreen ?: return false
+        if (!containsBounds(roiBounds, BoundsRect(spec.left, spec.top, spec.left + spec.width, spec.top + spec.height))) {
+            return false
+        }
+
+        val roiWidth = roiBounds.right - roiBounds.left
+        val roiHeight = roiBounds.bottom - roiBounds.top
+        if (roiWidth < (screenWidth * 0.48f).roundToInt()) return false
+        if (roiHeight < MIN_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX) return false
+
+        val maxSourceHeight = min(
+            MAX_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX,
+            (screenHeight * 0.26f).roundToInt().coerceAtLeast(MIN_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX)
+        )
+        return spec.height in MIN_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX..maxSourceHeight &&
+            areaRatio <= MAX_LARGE_PRECISE_VISUAL_SOURCE_AREA_RATIO
+    }
+
     private fun containsWithSlop(bounds: BoundsRect, spec: MaskOverlaySpec, slopPx: Int): Boolean {
         return spec.left >= bounds.left - slopPx &&
             spec.top >= bounds.top - slopPx &&
@@ -772,6 +824,15 @@ object AndroidMaskOverlayPlanner {
         }
 
         if (preciseVisualBounds && isWholeTextSpan(start, end, originalLength)) {
+            if (shouldUseLargePreciseVisualGeometry(fullSpec, visualMetadata, span.text, screenHeight)) {
+                return toLargePreciseVisualSpanSpec(
+                    fullSpec = fullSpec,
+                    visualMetadata = visualMetadata,
+                    allowScrollTranslation = allowScrollTranslation,
+                    debugSource = debugSource
+                )
+            }
+
             if (shouldUseTopHeroDisplayGeometry(fullSpec, visualMetadata, span.text, screenHeight)) {
                 return toTopHeroDisplayTextSpanSpec(
                     fullSpec = fullSpec,
@@ -1119,11 +1180,63 @@ object AndroidMaskOverlayPlanner {
         return fullSpec.top in roiBounds.top..maxTop
     }
 
+    private fun shouldUseLargePreciseVisualGeometry(
+        fullSpec: MaskOverlaySpec,
+        visualMetadata: VisualTextOcrMetadata?,
+        spanText: String,
+        screenHeight: Int
+    ): Boolean {
+        val metadata = visualMetadata ?: return false
+        val roiBounds = metadata.roiBoundsInScreen ?: return false
+        if (metadata.source != "youtube-composite-card" && metadata.source != "youtube-visible-band") return false
+        if (!isLikelyStandaloneVisualTerm(metadata.visualText, spanText)) return false
+        if (fullSpec.height < MIN_LARGE_PRECISE_VISUAL_SOURCE_HEIGHT_PX) return false
+        if (screenHeight > 0 && fullSpec.height > (screenHeight * 0.26f).roundToInt()) return false
+        return containsBounds(roiBounds, BoundsRect(fullSpec.left, fullSpec.top, fullSpec.left + fullSpec.width, fullSpec.top + fullSpec.height))
+    }
+
+    private fun toLargePreciseVisualSpanSpec(
+        fullSpec: MaskOverlaySpec,
+        visualMetadata: VisualTextOcrMetadata?,
+        allowScrollTranslation: Boolean,
+        debugSource: String
+    ): MaskOverlaySpec? {
+        val roiBounds = visualMetadata?.roiBoundsInScreen ?: return null
+        val left = (fullSpec.left - LARGE_PRECISE_VISUAL_HORIZONTAL_PADDING_PX).coerceAtLeast(roiBounds.left)
+        val top = (fullSpec.top - LARGE_PRECISE_VISUAL_VERTICAL_PADDING_PX).coerceAtLeast(roiBounds.top)
+        val right = (fullSpec.left + fullSpec.width + LARGE_PRECISE_VISUAL_HORIZONTAL_PADDING_PX)
+            .coerceAtMost(roiBounds.right)
+        val bottom = (fullSpec.top + fullSpec.height + LARGE_PRECISE_VISUAL_VERTICAL_PADDING_PX)
+            .coerceAtMost(roiBounds.bottom)
+        if (right - left < MIN_WIDTH_PX || bottom - top < MIN_HEIGHT_PX) return null
+
+        return MaskOverlaySpec(
+            left = left,
+            top = top,
+            width = right - left,
+            height = bottom - top,
+            label = MASK_LABEL,
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
+        )
+    }
+
     private fun isStandaloneVisualTerm(visualText: String?, spanText: String): Boolean {
         val cleanVisualText = visualText?.trim()?.takeIf { it.isNotBlank() } ?: return false
         val visualKey = visualSizingKey(cleanVisualText)
         val spanKey = visualSizingKey(spanText.trim())
         return visualKey.isNotBlank() && visualKey == spanKey
+    }
+
+    private fun isLikelyStandaloneVisualTerm(visualText: String?, spanText: String): Boolean {
+        val cleanVisualText = visualText?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val visualKey = visualSizingKey(cleanVisualText)
+        val spanKey = visualSizingKey(spanText.trim())
+        if (visualKey.isBlank() || spanKey.isBlank()) return false
+        if (visualKey == spanKey) return true
+
+        val lengthDelta = abs(visualKey.length - spanKey.length)
+        return lengthDelta <= 1 && (visualKey.startsWith(spanKey) || spanKey.startsWith(visualKey))
     }
 
     private fun toTopHeroDisplayTextSpanSpec(
@@ -1659,7 +1772,7 @@ private class BlurMaskView(context: Context) : View(context) {
     private val rect = RectF()
     private val bandRect = RectF()
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(236, 0, 0, 0)
+        color = Color.BLACK
     }
     private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
