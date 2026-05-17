@@ -400,6 +400,74 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun mergeWithPreservedPreciseVisualSpecs_keepsTranslatedOcrMasksDuringAccessibilityRefresh() {
+        val accessibilitySpec = MaskOverlaySpec(
+            left = 155,
+            top = 110,
+            width = 188,
+            height = 32,
+            label = "***",
+            debugSource = "android-accessibility:youtube_user_input span=tlqkf"
+        )
+        val translatedVisualSpec = MaskOverlaySpec(
+            left = 46,
+            top = 612,
+            width = 98,
+            height = 38,
+            label = "***",
+            debugSource = "ocr:youtube-composite-card:20,177,541,710:Tlgkf span=tlqkf"
+        )
+
+        val merged = AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+            newSpecs = listOf(accessibilitySpec),
+            existingSpecs = listOf(translatedVisualSpec),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(2, merged.size)
+        assertTrue(merged.any { it.debugSource.startsWith("android-accessibility:youtube_user_input") })
+        assertTrue(merged.any { it.debugSource.startsWith("ocr:youtube-composite-card:") })
+    }
+
+    @Test
+    fun mergeWithPreservedPreciseVisualSpecs_dropsOverlappingOrOffscreenOcrMasks() {
+        val nextSpec = MaskOverlaySpec(
+            left = 46,
+            top = 612,
+            width = 98,
+            height = 38,
+            label = "***",
+            debugSource = "android-accessibility:youtube_shorts_title span=Tlqkf"
+        )
+        val overlappingVisualSpec = MaskOverlaySpec(
+            left = 48,
+            top = 614,
+            width = 96,
+            height = 36,
+            label = "***",
+            debugSource = "ocr:youtube-composite-card:20,177,541,710:Tlgkf span=tlqkf"
+        )
+        val offscreenVisualSpec = MaskOverlaySpec(
+            left = 80,
+            top = -120,
+            width = 96,
+            height = 36,
+            label = "***",
+            debugSource = "ocr:youtube-visible-band:0,0,1080,600:tlqkf span=tlqkf"
+        )
+
+        val merged = AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+            newSpecs = listOf(nextSpec),
+            existingSpecs = listOf(overlappingVisualSpec, offscreenVisualSpec),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(listOf(nextSpec), merged)
+    }
+
+    @Test
     fun buildSpecs_suppressesNearDuplicateOverlappingMasks() {
         val response = responseOf(
             resultOf(
@@ -1044,8 +1112,8 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 656, screenHeight = 1454)
 
         assertEquals(1, specs.size)
-        assertEquals(110, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
+        assertEquals(100, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 180..196)
         assertTrue(specs.single().allowScrollTranslation)
     }
 
@@ -1063,8 +1131,8 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 675, screenHeight = 1478)
 
         assertEquals(1, specs.size)
-        assertEquals(123, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 132..152)
+        assertEquals(113, specs.single().left)
+        assertTrue("spec=${specs.single()}", specs.single().width in 180..196)
     }
 
     @Test
