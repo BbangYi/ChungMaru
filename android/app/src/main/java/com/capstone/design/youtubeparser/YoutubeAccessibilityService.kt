@@ -494,7 +494,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     snapshotOverlayRevision = snapshotOverlayRevision,
                     visualRoiPlan = visualRoiPlan,
                     isProvisionalAccessibilityMask = reusableVisualResponse == null,
-                    allowDuringScrollStabilization = true
+                    allowDuringScrollStabilization = true,
+                    preserveExistingPreciseVisualMasks = true
                 )
             } else {
                 Log.d(TAG, "skip duplicate snapshot without renderable masks")
@@ -607,7 +608,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         currentPackage = currentPackage,
                         analysis = analysis,
                         snapshotOverlayRevision = snapshotOverlayRevision,
-                        visualRoiPlan = visualRoiPlan
+                        visualRoiPlan = visualRoiPlan,
+                        preserveExistingPreciseVisualMasks = visualRoiPlan.hasRenderableVisualRois()
                     )
                 }
                 AnalysisDiagnosticsStore.saveAttempt(applicationContext, analysis)
@@ -701,7 +703,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
             snapshotOverlayRevision = snapshotOverlayRevision,
             visualRoiPlan = visualRoiPlan,
             isProvisionalAccessibilityMask = true,
-            allowDuringScrollStabilization = true
+            allowDuringScrollStabilization = true,
+            preserveExistingPreciseVisualMasks = true
         )
     }
 
@@ -712,7 +715,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         visualRoiPlan: VisualTextRoiPlan? = null,
         isProvisionalVisualMask: Boolean = false,
         isProvisionalAccessibilityMask: Boolean = false,
-        allowDuringScrollStabilization: Boolean = false
+        allowDuringScrollStabilization: Boolean = false,
+        preserveExistingPreciseVisualMasks: Boolean = false
     ) {
         if (currentPackage != lastObservedPackage) {
             Log.d(
@@ -781,7 +785,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
             )
             maskOverlayController.render(
                 response = analysis.response,
-                preserveExistingIfEmpty = preserveExistingIfEmpty
+                preserveExistingIfEmpty = preserveExistingIfEmpty,
+                preserveExistingPreciseVisualMasks = preserveExistingPreciseVisualMasks
             )
             preservedRecentVisualMiss = false
             preservedRecentAnalysisFailure = false
@@ -1079,7 +1084,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
             analysis = analysis,
             snapshotOverlayRevision = overlayRevision,
             visualRoiPlan = buildVisualTextRoiPlan(nodes),
-            allowDuringScrollStabilization = true
+            allowDuringScrollStabilization = true,
+            preserveExistingPreciseVisualMasks = true
         )
     }
 

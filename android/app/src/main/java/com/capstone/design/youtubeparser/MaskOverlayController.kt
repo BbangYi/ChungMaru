@@ -123,6 +123,7 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_SEMANTIC_SOURCE_AREA_RATIO = 0.04f
     private const val SEMANTIC_BOUNDS_SLOP_PX = 4
     private const val NEAR_DUPLICATE_OVERLAP_RATIO = 0.25f
+    private const val PRESERVED_VISUAL_OVERLAP_RATIO = 0.72f
     private const val MIN_SCROLL_TRANSLATION_DELTA_PX = 96
     private const val MAX_SCROLL_TRANSLATION_AXIS_RATIO = 0.25f
     private const val TOP_CONTROL_REGION_RATIO = 0.14f
@@ -253,6 +254,24 @@ object AndroidMaskOverlayPlanner {
         return specs.joinToString("|") {
             "${it.left},${it.top},${it.width},${it.height},${it.label},${it.allowScrollTranslation}"
         }
+    }
+
+    fun mergeWithPreservedPreciseVisualSpecs(
+        newSpecs: List<MaskOverlaySpec>,
+        existingSpecs: List<MaskOverlaySpec>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<MaskOverlaySpec> {
+        if (existingSpecs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) return newSpecs
+
+        val preserved = existingSpecs.filter { spec ->
+            isPreservablePreciseVisualSpec(spec) &&
+                isPartiallyOnScreen(spec, screenWidth, screenHeight) &&
+                newSpecs.none { next -> overlapRatio(spec, next) >= PRESERVED_VISUAL_OVERLAP_RATIO }
+        }
+        if (preserved.isEmpty()) return newSpecs
+
+        return suppressOverlappingSpecs(newSpecs + preserved).take(MAX_MASK_COUNT)
     }
 
     fun translateSpecs(
@@ -392,6 +411,22 @@ object AndroidMaskOverlayPlanner {
             isCommentAccessibilityAuthor(value) ||
             isSemanticVisualAuthor(value) ||
             isPreciseVisualAuthor(value)
+    }
+
+    private fun isPreservablePreciseVisualSpec(spec: MaskOverlaySpec): Boolean {
+        return spec.debugSource.startsWith("ocr:youtube-composite-card:") ||
+            spec.debugSource.startsWith("ocr:youtube-visible-band:")
+    }
+
+    private fun isPartiallyOnScreen(
+        spec: MaskOverlaySpec,
+        screenWidth: Int,
+        screenHeight: Int
+    ): Boolean {
+        return spec.left + spec.width > 0 &&
+            spec.top + spec.height > 0 &&
+            spec.left < screenWidth &&
+            spec.top < screenHeight
     }
 
     private fun hasHighConfidenceTextBounds(
@@ -1581,7 +1616,8 @@ class MaskOverlayController(
 
     fun render(
         response: AndroidAnalysisResponse?,
-        preserveExistingIfEmpty: Boolean = false
+        preserveExistingIfEmpty: Boolean = false,
+        preserveExistingPreciseVisualMasks: Boolean = false
     ) {
         val metrics = service.resources.displayMetrics
         val plan = AndroidMaskOverlayPlanner.buildPlan(
@@ -1589,7 +1625,16 @@ class MaskOverlayController(
             screenWidth = metrics.widthPixels,
             screenHeight = metrics.heightPixels
         )
-        val specs = plan.specs
+        val specs = if (preserveExistingPreciseVisualMasks) {
+            AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+                newSpecs = plan.specs,
+                existingSpecs = activeSpecs,
+                screenWidth = metrics.widthPixels,
+                screenHeight = metrics.heightPixels
+            )
+        } else {
+            plan.specs
+        }
 
         if (specs.isEmpty()) {
             if (preserveExistingIfEmpty && activeViews.isNotEmpty()) {
