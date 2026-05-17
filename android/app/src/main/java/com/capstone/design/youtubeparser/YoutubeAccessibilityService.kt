@@ -1054,15 +1054,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (nodes.isEmpty()) return
 
         val metrics = resources.displayMetrics
-        val comments = ScreenTextCandidateExtractor.extractCandidates(
-            packageName = currentPackage,
+        val visualRoiPlan = buildVisualTextRoiPlan(nodes)
+        val comments = CachedMaskPromotionCandidateBuilder.buildYoutubeComments(
             nodes = nodes,
-            sceneRevision = visualSceneRevision,
+            visualRoiPlan = visualRoiPlan,
             screenWidth = metrics.widthPixels,
-            screenHeight = metrics.heightPixels
-        ).map { candidate ->
-            candidate.toParsedComment()
-        }
+            screenHeight = metrics.heightPixels,
+            sceneRevision = visualSceneRevision,
+        )
         if (comments.isEmpty()) return
 
         val snapshot = ParseSnapshot(
@@ -1083,7 +1082,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             currentPackage = currentPackage,
             analysis = analysis,
             snapshotOverlayRevision = overlayRevision,
-            visualRoiPlan = buildVisualTextRoiPlan(nodes),
+            visualRoiPlan = visualRoiPlan,
             allowDuringScrollStabilization = true,
             preserveExistingPreciseVisualMasks = true
         )

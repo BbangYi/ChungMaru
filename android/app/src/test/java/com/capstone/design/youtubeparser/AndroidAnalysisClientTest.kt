@@ -171,6 +171,21 @@ class AndroidAnalysisClientTest {
     }
 
     @Test
+    fun cacheKeysForComment_addsTextOnlyAliasForYoutubeSemanticFallbackCandidate() {
+        val candidate = ParsedComment(
+            commentText = "tlqkf",
+            boundsInScreen = BoundsRect(left = 340, top = 1240, right = 700, bottom = 1320),
+            authorId = "ocr:youtube-semantic-card:0,972,1080,1656:Tlqkf"
+        )
+
+        val keys = AndroidAnalysisClient.cacheKeysForComment(candidate, sensitivity = 2)
+
+        assertEquals(2, keys.size)
+        assertTrue(keys.any { it.contains("ocr:youtube-semantic-card") })
+        assertTrue(keys.contains("2::tlqkf"))
+    }
+
+    @Test
     fun cacheKeysForComment_reusesLookaheadYoutubeTitleUnderVisibleSourceAndTextAlias() {
         val candidate = ParsedComment(
             commentText = "What is 'Tlqkf'?_Contemporary Korean Slang",
