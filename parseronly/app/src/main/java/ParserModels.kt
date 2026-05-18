@@ -21,7 +21,10 @@ data class ParsedTextNode(
     val right: Int,
     val bottom: Int,
     val approxTop: Int,
-    val isVisibleToUser: Boolean
+    val isVisibleToUser: Boolean,
+    val isClickable: Boolean = false,
+    val hasClickAction: Boolean = false,
+    val hasClickableAncestor: Boolean = false
 )
 
 data class ParsedComment(

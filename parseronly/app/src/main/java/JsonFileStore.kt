@@ -36,7 +36,22 @@ object JsonFileStore {
             .filter { it.commentText.isNotBlank() }
 
         val commentsToSave = when (sourcePackage) {
-            YOUTUBE_PACKAGE -> filterNewYoutubeComments(dir, normalizedComments)
+            YOUTUBE_PACKAGE -> filterNewPlatformComments(
+                dir = dir,
+                comments = normalizedComments,
+                filePrefix = "Youtube_comment",
+                logLabel = "youtube",
+                requireAuthorId = true,
+                dedupeSentenceText = false
+            )
+            TIKTOK_PACKAGE, TIKTOK_ALT_PACKAGE -> filterNewPlatformComments(
+                dir = dir,
+                comments = normalizedComments,
+                filePrefix = "Tiktok_comment",
+                logLabel = "tiktok",
+                requireAuthorId = false,
+                dedupeSentenceText = true
+            )
             else -> normalizedComments
         }
 
@@ -64,35 +79,46 @@ object JsonFileStore {
         return file
     }
 
-    private fun filterNewYoutubeComments(
+    private fun filterNewPlatformComments(
         dir: File,
-        comments: List<ParsedComment>
+        comments: List<ParsedComment>,
+        filePrefix: String,
+        logLabel: String,
+        requireAuthorId: Boolean,
+        dedupeSentenceText: Boolean
     ): List<ParsedComment> {
-        val savedKeys = readSavedYoutubeCommentKeys(dir)
+        val savedKeys = readSavedCommentKeys(dir, filePrefix, requireAuthorId, dedupeSentenceText)
         val currentKeys = mutableSetOf<String>()
 
         val filtered = comments.filter { comment ->
-            val key = youtubeDedupKey(comment) ?: return@filter true
-            if (key in savedKeys || key in currentKeys) {
+            val keys = commentDedupKeys(comment, requireAuthorId, dedupeSentenceText)
+            if (keys.isEmpty()) return@filter true
+
+            if (keys.any { it in savedKeys || it in currentKeys }) {
                 false
             } else {
-                currentKeys += key
+                currentKeys += keys
                 true
             }
         }
 
         val skippedCount = comments.size - filtered.size
         if (skippedCount > 0) {
-            Log.d(TAG, "youtube duplicate comments skipped = $skippedCount")
+            Log.d(TAG, "$logLabel duplicate comments skipped = $skippedCount")
         }
 
         return filtered
     }
 
-    private fun readSavedYoutubeCommentKeys(dir: File): Set<String> {
+    private fun readSavedCommentKeys(
+        dir: File,
+        filePrefix: String,
+        requireAuthorId: Boolean,
+        dedupeSentenceText: Boolean
+    ): Set<String> {
         val files = dir.listFiles { file ->
             file.isFile &&
-                file.name.startsWith("Youtube_comment_") &&
+                file.name.startsWith("${filePrefix}_") &&
                 file.extension.equals("json", ignoreCase = true)
         } ?: return emptySet()
 
@@ -105,15 +131,19 @@ object JsonFileStore {
                 )
                 savedSnapshot?.comments.orEmpty()
                     .map { normalizeCommentForSave(it) }
-                    .mapNotNullTo(keys) { youtubeDedupKey(it) }
+                    .flatMapTo(keys) { commentDedupKeys(it, requireAuthorId, dedupeSentenceText) }
             }.onFailure {
-                Log.w(TAG, "failed to read saved youtube json: ${file.name}", it)
+                Log.w(TAG, "failed to read saved parser json: ${file.name}", it)
             }
         }
         return keys
     }
 
-    private fun youtubeDedupKey(comment: ParsedComment): String? {
+    private fun commentDedupKeys(
+        comment: ParsedComment,
+        requireAuthorId: Boolean,
+        dedupeSentenceText: Boolean
+    ): List<String> {
         val authorId = comment.authorId
             ?.trim()
             ?.removePrefix("@")
@@ -123,9 +153,47 @@ object JsonFileStore {
             .trim()
             .replace(Regex("\\s+"), " ")
 
-        if (authorId.isBlank() || commentText.isBlank()) return null
+        if (commentText.isBlank()) return emptyList()
 
-        return "$authorId\n$commentText"
+        val keys = mutableListOf<String>()
+        if (authorId.isBlank()) {
+            if (!requireAuthorId) {
+                sentenceTextDedupKey(commentText)?.takeIf { dedupeSentenceText }?.let { keys += it }
+            }
+        } else {
+            keys += "author\n$authorId\n$commentText"
+            sentenceTextDedupKey(commentText)?.takeIf { dedupeSentenceText }?.let { keys += it }
+        }
+
+        return keys
+    }
+
+    private fun sentenceTextDedupKey(commentText: String): String? {
+        val text = commentText
+            .trim()
+            .replace(Regex("""[\u200E\u200F\u202A-\u202E\u2066-\u2069]"""), "")
+            .replace(Regex("\\s+"), " ")
+        if (!isSentenceLikeDuplicateText(text)) return null
+        return "sentence\n${text.lowercase(Locale.ROOT)}"
+    }
+
+    private fun isSentenceLikeDuplicateText(text: String): Boolean {
+        if (text.length < 5) return false
+
+        val letterOrDigitCount = text.count { it.isLetterOrDigit() }
+        if (letterOrDigitCount < 4) return false
+
+        if (text.all { !it.isLetterOrDigit() }) return false
+        if (Regex("""^[ㅋㅎㅠㅜㅡ\s~!?.…]+$""").matches(text)) return false
+
+        val hasWordGap = text.any { it.isWhitespace() }
+        val hasSentencePunctuation = text.any { it in listOf('.', ',', '!', '?', '~', '…') }
+        val hasKoreanSentenceSignal = listOf(
+            "은", "는", "이", "가", "을", "를", "에", "에서", "한테", "하고",
+            "하다", "해", "임", "요", "네", "다", "까", "죠", "듯", "면"
+        ).any { text.contains(it) }
+
+        return hasWordGap || hasSentencePunctuation || hasKoreanSentenceSignal
     }
 
     private fun normalizeCommentForSave(comment: ParsedComment): ParsedComment {

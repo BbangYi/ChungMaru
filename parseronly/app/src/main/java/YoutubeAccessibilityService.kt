@@ -117,6 +117,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (automationPlatform?.let { !AutomationSettingsStore.isPlatformAllowed(applicationContext, it.name) } == true) {
+            handler.removeCallbacks(automationStepRunnable)
+            handler.removeCallbacks(automationRotationRunnable)
+            automationPlatform = null
+            automationStepScheduled = false
+            automationRotationScheduled = false
+        }
+
         if (automationPlatform == null) {
             rotateAutomationPlatform()
             return
@@ -152,7 +160,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun switchToNextAutomationPlatform() {
-        val platforms = AutomationPlatform.values().filter { isPlatformAvailable(it) }
+        val platforms = allowedAutomationPlatforms()
         if (platforms.isEmpty()) {
             AutomationSettingsStore.saveStatus(applicationContext, "자동 운전 가능 앱 없음")
             return
@@ -207,12 +215,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun scheduleAutomationRotation() {
+        if (allowedAutomationPlatforms().size <= 1) return
         if (automationRotationScheduled) return
         automationRotationScheduled = true
         handler.postDelayed(
             automationRotationRunnable,
             AutomationSettingsStore.getRotationIntervalMs(applicationContext)
         )
+    }
+
+    private fun allowedAutomationPlatforms(): List<AutomationPlatform> {
+        return AutomationPlatform.values().filter {
+            isPlatformAvailable(it) &&
+                AutomationSettingsStore.isPlatformAllowed(applicationContext, it.name)
+        }
     }
 
     private fun scheduleAutomationStep(delayMs: Long = AUTOMATION_VIDEO_STEP_MS) {
@@ -813,10 +829,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
         var current: AccessibilityNodeInfo? = node
         repeat(6) {
             val candidate = current ?: return false
-            if (candidate.isClickable) return true
+            if (hasClickAction(candidate)) return true
             current = candidate.parent
         }
         return false
+    }
+
+    private fun hasClickAction(node: AccessibilityNodeInfo): Boolean {
+        return node.isClickable ||
+                (node.actions and AccessibilityNodeInfo.ACTION_CLICK) != 0 ||
+                node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
@@ -952,7 +974,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             nodes.take(60).forEachIndexed { index, node ->
                 Log.d(
                     TAG,
-                    "TT_RAW[$index] text=${node.displayText} | cls=${node.className} | id=${node.viewIdResourceName} | bounds=(${node.left},${node.top},${node.right},${node.bottom})"
+                    "TT_RAW[$index] text=${node.displayText} | cls=${node.className} | id=${node.viewIdResourceName} | click=${node.isClickable}/${node.hasClickAction}/${node.hasClickableAncestor} | bounds=(${node.left},${node.top},${node.right},${node.bottom})"
                 )
             }
         }
@@ -960,7 +982,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (comments.isEmpty()) return
 
         comments.take(20).forEachIndexed { index, comment ->
-            Log.d(TAG, "[$index] COMMENT=${comment.commentText} | BOUNDS=${comment.boundsInScreen}")
+            Log.d(TAG, "[$index] AUTHOR=${comment.authorId.orEmpty()} | COMMENT=${comment.commentText} | BOUNDS=${comment.boundsInScreen}")
         }
 
         val signature = comments.joinToString("||") {
@@ -1118,7 +1140,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
             right = rect.right,
             bottom = rect.bottom,
             approxTop = rect.top,
-            isVisibleToUser = node.isVisibleToUser
+            isVisibleToUser = node.isVisibleToUser,
+            isClickable = node.isClickable,
+            hasClickAction = hasClickAction(node),
+            hasClickableAncestor = hasClickableSelfOrParent(node)
         )
     }
 
@@ -1142,8 +1167,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (rect.bottom <= upperCutoff) return false
         if (trimmed.length == 1 && !trimmed[0].isLetterOrDigit() && trimmed[0] !in listOf('@', '#')) return false
 
-        if (Regex(""".+님의 프로필$""").matches(trimmed)) return false
-        if (Regex("""^[\u200E\u200F\u202A-\u202E]*댓글\s*\d+개$""").matches(trimmed)) return false
+        if (!tiktokMode && Regex(""".+님의 프로필$""").matches(trimmed)) return false
+        if (Regex("""^[\u200E\u200F\u202A-\u202E]*댓글\s*[\d,]+개$""").matches(trimmed)) return false
 
         if (instagramMode) {
             if (
@@ -1181,13 +1206,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
             if (
                 lower == "알림" ||
                 lower == "스티커" ||
+                lower == "사진" ||
                 lower == "엄지척" ||
                 lower == "아래" ||
                 lower == "동영상" ||
                 lower == "댓글" ||
+                lower == "게시물" ||
+                lower == "첫 댓글" ||
+                lower == "ai 생성 미디어 포함" ||
+                lower == "크리에이터가 댓글 액세스를 제한했습니다." ||
+                lower.contains("효과 사용") ||
                 lower == "video" ||
                 lower == "notification" ||
                 lower == "sticker" ||
+                isTiktokNonCommentUiText(trimmed) ||
                 lower.contains("멘션") ||
                 lower.contains("말 한마디 해주세요") ||
                 lower.contains("자세히") ||
@@ -1252,9 +1284,115 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         if (lower.endsWith(" likes") || lower.endsWith(" like")) return false
         if (trimmed.endsWith("좋아요")) return false
-        if (className.contains("Button", ignoreCase = true)) return false
+        if (className.contains("Button", ignoreCase = true)) {
+            if (!tiktokMode || !looksLikeTiktokAuthorButton(node, trimmed)) return false
+        }
 
         return true
+    }
+
+    private fun looksLikeTiktokAuthorButton(node: AccessibilityNodeInfo, text: String): Boolean {
+        val t = text.trim()
+        if (!hasClickableSelfOrParent(node)) return false
+        if (t.isBlank() || t.contains('\n')) return false
+        if (t.length !in 2..40) return false
+        if (isLikelyTiktokUiLabel(t)) return false
+        if (hasEmojiOrOtherSymbol(t)) return false
+
+        val author = t
+            .removePrefix("@")
+            .replace(Regex("""님의\s*프로필(로\s*이동)?$"""), "")
+            .replace(Regex("""의\s*프로필(로\s*이동)?$"""), "")
+            .trim()
+
+        if (author.isBlank()) return false
+        if (author.any { it.isWhitespace() }) return false
+        if (author.all { it.isDigit() }) return false
+        if (!author.all { it.isLetterOrDigit() || it == '_' || it == '.' }) return false
+
+        return t.startsWith("@") ||
+                author.any { it.isDigit() || it == '_' || it == '.' } ||
+                author.any { it in 'A'..'Z' || it in 'a'..'z' } ||
+                author.count { it in '\uAC00'..'\uD7A3' } in 2..12
+    }
+
+    private fun isLikelyTiktokUiLabel(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        val compact = lower.replace(Regex("\\s+"), "")
+
+        if (isTiktokNonCommentUiText(text)) return true
+
+        if (compact in setOf(
+                "now",
+                "justnow",
+                "방금",
+                "방금전",
+                "오늘",
+                "어제",
+                "편집효과",
+                "음악",
+                "숨겨짐",
+                "검색",
+                "공유",
+                "좋아요",
+                "댓글",
+                "답글",
+                "팔로우",
+                "프로필",
+                "동영상",
+                "스티커",
+                "알림",
+                "작성자",
+                "사진",
+                "게시물",
+                "첫댓글",
+                "·효과사용",
+                "ai생성미디어포함"
+            )
+        ) return true
+
+        return Regex("""^\d{1,2}-\d{1,2}$""").matches(lower) ||
+                Regex("""^\d{1,2}:\d{2}$""").matches(lower) ||
+                Regex("""^\d+(\.\d+)?[smhdw]$""").matches(lower) ||
+                Regex("""^\d+(\.\d+)?(초|분|시간|일|주|개월|달|년)(전)?$""").matches(compact) ||
+                Regex("""^\d+([.,]\d+)?(천|만|개|명|회|k|m)?$""").matches(compact) ||
+                lower.endsWith("좋아요") ||
+                lower.endsWith("likes") ||
+                lower.endsWith("like")
+    }
+
+    private fun isTiktokNonCommentUiText(text: String): Boolean {
+        val lower = text.trim()
+            .lowercase()
+            .replace(Regex("""[\u200E\u200F\u202A-\u202E\u2066-\u2069]"""), "")
+            .trim()
+        val compact = lower.replace(Regex("\\s+"), "")
+
+        return lower.startsWith("검색 ·") ||
+                lower.startsWith("검색·") ||
+                lower.startsWith("검색:") ||
+                lower.startsWith("search ·") ||
+                Regex("""^@\d{5,}$""").matches(lower) ||
+                lower == "ai 생성 미디어 포함" ||
+                lower == "사진" ||
+                lower == "게시물" ||
+                lower == "첫 댓글" ||
+                compact == "ai생성미디어포함" ||
+                compact == "첫댓글" ||
+                lower.contains("효과 사용") ||
+                Regex("""^댓글\s*[\d,]+개$""").matches(lower) ||
+                Regex("""^협업자\s*[\d,]+명$""").matches(lower) ||
+                Regex("""^게시물\s*[\d,.]+[km천만]?개$""").matches(lower) ||
+                lower.contains("님이 게시한 동영상이 여기에 나타납니다")
+                || lower.contains("크리에이터가 댓글 액세스를 제한했습니다")
+    }
+
+    private fun hasEmojiOrOtherSymbol(text: String): Boolean {
+        return text.any {
+            val type = Character.getType(it)
+            type == Character.OTHER_SYMBOL.toInt() ||
+                    type == Character.SURROGATE.toInt()
+        }
     }
 
     private fun scoreInstagramWindow(nodes: List<ParsedTextNode>): Int {
