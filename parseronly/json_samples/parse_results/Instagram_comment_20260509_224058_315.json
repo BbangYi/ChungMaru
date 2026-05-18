@@ -1,0 +1,51 @@
+{
+  "comments": [
+    {
+      "author_id": "homuramagica_",
+      "boundsInScreen": {
+        "bottom": 966,
+        "left": 130,
+        "right": 430,
+        "top": 930
+      },
+      "commentText": "돼지두루치기가 됐노 ㅋㅋ"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1027,
+        "left": 130,
+        "right": 255,
+        "top": 966
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 866,
+        "left": 130,
+        "right": 255,
+        "top": 812
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1476,
+        "left": 130,
+        "right": 255,
+        "top": 1415
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1794,
+        "left": 1072,
+        "right": 1164,
+        "top": 1738
+      },
+      "commentText": "게시"
+    }
+  ],
+  "timestamp": 1778334058309
+}

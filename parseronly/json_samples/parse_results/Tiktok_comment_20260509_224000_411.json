@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1551,
+        "left": 90,
+        "right": 186,
+        "top": 1519
+      },
+      "commentText": "편집효과"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1551,
+        "left": 186,
+        "right": 312,
+        "top": 1519
+      },
+      "commentText": "· 효과 사용"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1678,
+        "left": 30,
+        "right": 540,
+        "top": 1639
+      },
+      "commentText": "양쪽 데려가라우"
+    }
+  ],
+  "timestamp": 1778334000407
+}

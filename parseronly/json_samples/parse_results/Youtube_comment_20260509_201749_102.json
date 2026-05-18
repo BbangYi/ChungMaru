@@ -1,0 +1,23 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 640,
+        "left": 241,
+        "right": 378,
+        "top": 604
+      },
+      "commentText": "자세히 보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1756,
+        "left": 796,
+        "right": 820,
+        "top": 1732
+      },
+      "commentText": "새로운 콘텐츠 시청 가능"
+    }
+  ],
+  "timestamp": 1778325469099
+}

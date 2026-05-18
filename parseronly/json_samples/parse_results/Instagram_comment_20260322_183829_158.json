@@ -1,0 +1,53 @@
+{
+  "comments": [
+    {
+      "author_id": "juhyeon_zonza1",
+      "boundsInScreen": {
+        "bottom": 913,
+        "left": 130,
+        "right": 234,
+        "top": 877
+      },
+      "commentText": "심심해서"
+    },
+    {
+      "author_id": "lee_haechan_pubg",
+      "boundsInScreen": {
+        "bottom": 1120,
+        "left": 130,
+        "right": 208,
+        "top": 1084
+      },
+      "commentText": "원신력"
+    },
+    {
+      "author_id": "don_pyong",
+      "boundsInScreen": {
+        "bottom": 1327,
+        "left": 130,
+        "right": 411,
+        "top": 1291
+      },
+      "commentText": "난 고체인데 그걸 어케앎"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1624,
+        "left": 130,
+        "right": 1088,
+        "top": 1498
+      },
+      "commentText": "kimgh_07님이 간단한 유체역학으로 설명되요\n회전하고 있는 저 상태를 유지하고 있다고 가정하면, (정역학 가정) 힘의 평형으로 유도할수 있어용( 점성 고려 x)\n계가 정지상태라는건 외부로부터의 합력이 0이라는 것이오 체적력인 중력과 표면력 구배인 압력이 평형 상태라는거죵\n반경으로의 압력 구배 dp/dr 은 구심력일 것이고,\n높이로의 압력 구배 dp/dh는 중력이라는 점을 이용해서 연속체 속에서의 압력을 계산할 수 있습니다. dp \u003d( dp/dr )dr + (dp/dh) dh\ndp(r,h) \u003d qrw dr - qg dh (q는 밀도)\n따라서 p(r,h) \u003d q(r²w/2 - gh) + P0\n우리가 관심 있어하는 유체 표면에서는 모두 압력이 대기압으로 일정하므로 p(r,h) \u003d p대기압 을 풀면 구할 수 있겟죠. 따라서 h는 r에 대한 이차항을 가지므로 이차곡선 모양을 띄게 되는 겁니당"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1796,
+        "left": 161,
+        "right": 1096,
+        "top": 1748
+      },
+      "commentText": "회전하는 액체가 곡면을 이루는 이유는 회전에 따른 관성 효과와 중력이 동시 …"
+    }
+  ],
+  "timestamp": 1774172309152
+}

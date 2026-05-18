@@ -1,0 +1,59 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 939,
+        "left": 127,
+        "right": 1176,
+        "top": 893
+      },
+      "commentText": "기부함 틱메"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1167,
+        "left": 127,
+        "right": 1176,
+        "top": 1121
+      },
+      "commentText": "이거 어캐 해여?"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1551,
+        "left": 90,
+        "right": 186,
+        "top": 1519
+      },
+      "commentText": "편집효과"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1551,
+        "left": 186,
+        "right": 312,
+        "top": 1519
+      },
+      "commentText": "· 효과 사용"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1653,
+        "left": 175,
+        "right": 1176,
+        "top": 1607
+      },
+      "commentText": "왼쪽 맨 위 3칸짜리로 뚫고 그 다음 두칸짜리로 왼위"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1678,
+        "left": 30,
+        "right": 540,
+        "top": 1639
+      },
+      "commentText": "양쪽 데려가라우"
+    }
+  ],
+  "timestamp": 1778334007340
+}

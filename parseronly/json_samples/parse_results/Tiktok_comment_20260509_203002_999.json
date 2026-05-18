@@ -1,0 +1,23 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1515,
+        "left": 41,
+        "right": 76,
+        "top": 1481
+      },
+      "commentText": "캡션"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1514,
+        "left": 85,
+        "right": 188,
+        "top": 1482
+      },
+      "commentText": "캡션 표시"
+    }
+  ],
+  "timestamp": 1778326202995
+}

@@ -1,0 +1,59 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 924,
+        "left": 127,
+        "right": 1176,
+        "top": 878
+      },
+      "commentText": "미용 가위 겁나 비쌀텐데ㄷ"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1150,
+        "left": 127,
+        "right": 1176,
+        "top": 1104
+      },
+      "commentText": "다음 화 나오면 알림좀"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1376,
+        "left": 127,
+        "right": 1176,
+        "top": 1330
+      },
+      "commentText": "아 맨날 다음화 볼려고 하면 오늘 올라온거"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1515,
+        "left": 41,
+        "right": 76,
+        "top": 1481
+      },
+      "commentText": "캡션"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1514,
+        "left": 85,
+        "right": 188,
+        "top": 1482
+      },
+      "commentText": "캡션 표시"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1602,
+        "left": 127,
+        "right": 1176,
+        "top": 1556
+      },
+      "commentText": "다음화 나오면 알림 주세요!"
+    }
+  ],
+  "timestamp": 1778326206959
+}

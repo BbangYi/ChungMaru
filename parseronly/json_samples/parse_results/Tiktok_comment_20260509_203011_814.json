@@ -1,0 +1,41 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1279,
+        "left": 127,
+        "right": 1176,
+        "top": 1233
+      },
+      "commentText": "다음 화 나오면 알림좀주세뇨"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1505,
+        "left": 127,
+        "right": 1176,
+        "top": 1459
+      },
+      "commentText": "나만 처음에 개 웃긴가"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1515,
+        "left": 41,
+        "right": 76,
+        "top": 1481
+      },
+      "commentText": "캡션"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1514,
+        "left": 85,
+        "right": 188,
+        "top": 1482
+      },
+      "commentText": "캡션 표시"
+    }
+  ],
+  "timestamp": 1778326211809
+}

@@ -1,0 +1,140 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 700,
+        "left": 88,
+        "right": 1112,
+        "top": 382
+      },
+      "commentText": "한눈에 보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 552,
+        "left": 978,
+        "right": 1042,
+        "top": 488
+      },
+      "commentText": "맑음"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 565,
+        "left": 843,
+        "right": 891,
+        "top": 517
+      },
+      "commentText": "더보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 555,
+        "left": 144,
+        "right": 292,
+        "top": 527
+      },
+      "commentText": "5월 9일 토요일"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 594,
+        "left": 983,
+        "right": 1037,
+        "top": 552
+      },
+      "commentText": "17°C"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1336,
+        "left": 88,
+        "right": 293,
+        "top": 1018
+      },
+      "commentText": "Cxxdroid"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1654,
+        "left": 88,
+        "right": 293,
+        "top": 1336
+      },
+      "commentText": "폴더: Google, 항목 4개 이상"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1654,
+        "left": 498,
+        "right": 703,
+        "top": 1336
+      },
+      "commentText": "Play 북"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1654,
+        "left": 908,
+        "right": 1112,
+        "top": 1336
+      },
+      "commentText": "Play 스토어"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1654,
+        "left": 104,
+        "right": 277,
+        "top": 1531
+      },
+      "commentText": "Google"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1830,
+        "left": 88,
+        "right": 293,
+        "top": 1706
+      },
+      "commentText": "카메라"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1830,
+        "left": 293,
+        "right": 498,
+        "top": 1706
+      },
+      "commentText": "어시스턴트"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1830,
+        "left": 498,
+        "right": 703,
+        "top": 1706
+      },
+      "commentText": "설정"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1830,
+        "left": 703,
+        "right": 908,
+        "top": 1706
+      },
+      "commentText": "YouTube"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1830,
+        "left": 908,
+        "right": 1112,
+        "top": 1706
+      },
+      "commentText": "Chrome"
+    }
+  ],
+  "timestamp": 1778326668513
+}

@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 924,
+        "left": 127,
+        "right": 1176,
+        "top": 878
+      },
+      "commentText": "내가 본 ai영상 중에서 제일 유용하다."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1152,
+        "left": 127,
+        "right": 1176,
+        "top": 1106
+      },
+      "commentText": "엔진 브레이크를 어떻게 쓰는지 설명 부탁해요"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1378,
+        "left": 127,
+        "right": 1176,
+        "top": 1332
+      },
+      "commentText": "그렇구나"
+    }
+  ],
+  "timestamp": 1774172279468
+}

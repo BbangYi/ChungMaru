@@ -1,0 +1,33 @@
+{
+  "comments": [
+    {
+      "author_id": "박자....",
+      "boundsInScreen": {
+        "bottom": 990,
+        "left": 127,
+        "right": 1176,
+        "top": 944
+      },
+      "commentText": "ㅋ⁰"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 839,
+        "left": 127,
+        "right": 1176,
+        "top": 826
+      },
+      "commentText": "박자...."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1162,
+        "left": 127,
+        "right": 1176,
+        "top": 1116
+      },
+      "commentText": "ㅋㅋㅎㅎㅋㅎㅋ"
+    }
+  ],
+  "timestamp": 1778325573678
+}

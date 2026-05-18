@@ -1,0 +1,77 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1739,
+        "left": 129,
+        "right": 1072,
+        "top": 61
+      },
+      "commentText": "Test ClipsSingleImageAdsComponent"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1176,
+        "left": 0,
+        "right": 1200,
+        "top": 1090
+      },
+      "commentText": "아직 댓글이 없습니다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1209,
+        "left": 0,
+        "right": 1200,
+        "top": 1176
+      },
+      "commentText": "댓글을 남겨보세요."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1443,
+        "left": 193,
+        "right": 329,
+        "top": 1407
+      },
+      "commentText": "더 알아보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1606,
+        "left": 144,
+        "right": 1168,
+        "top": 1572
+      },
+      "commentText": "더 알아보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1631,
+        "left": 161,
+        "right": 968,
+        "top": 1583
+      },
+      "commentText": "최저가 보험까지 포함된 오토바이 인수 · 광고"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1635,
+        "left": 144,
+        "right": 1168,
+        "top": 1606
+      },
+      "commentText": "swapswap.kr(으)로 이동"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1802,
+        "left": 112,
+        "right": 1092,
+        "top": 1730
+      },
+      "commentText": "대화를 시작해보세요..."
+    }
+  ],
+  "timestamp": 1778326549917
+}

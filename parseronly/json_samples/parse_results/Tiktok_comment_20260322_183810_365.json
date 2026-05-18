@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 953,
+        "left": 127,
+        "right": 1176,
+        "top": 907
+      },
+      "commentText": "패딩은 잘 모랐다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1006,
+        "left": 127,
+        "right": 186,
+        "top": 960
+      },
+      "commentText": "2시간"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1605,
+        "left": 127,
+        "right": 1176,
+        "top": 1559
+      },
+      "commentText": "틱톡영상으로 수익창출 가능함?"
+    }
+  ],
+  "timestamp": 1774172290362
+}

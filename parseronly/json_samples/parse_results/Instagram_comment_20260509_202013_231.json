@@ -1,0 +1,41 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1635,
+        "left": 144,
+        "right": 1168,
+        "top": 1606
+      },
+      "commentText": "스토어에서 보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1606,
+        "left": 144,
+        "right": 1168,
+        "top": 1572
+      },
+      "commentText": "지금 설치"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1635,
+        "left": 161,
+        "right": 968,
+        "top": 1587
+      },
+      "commentText": "나는 살뺄때 라면이 제일 먹고싶더라. …"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1635,
+        "left": 144,
+        "right": 1168,
+        "top": 1606
+      },
+      "commentText": "Play 스토어에서 보기"
+    }
+  ],
+  "timestamp": 1778325613226
+}

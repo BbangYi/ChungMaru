@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1052,
+        "left": 127,
+        "right": 1176,
+        "top": 1006
+      },
+      "commentText": "도전해볼께요"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1222,
+        "left": 127,
+        "right": 1176,
+        "top": 1176
+      },
+      "commentText": "멋지네요"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1451,
+        "left": 1111,
+        "right": 1168,
+        "top": 1415
+      },
+      "commentText": "1.3만"
+    }
+  ],
+  "timestamp": 1778326057994
+}

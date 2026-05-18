@@ -1,0 +1,77 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 998,
+        "left": 0,
+        "right": 1200,
+        "top": 912
+      },
+      "commentText": "아직 댓글이 없습니다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 862,
+        "left": 346,
+        "right": 855,
+        "top": 60
+      },
+      "commentText": "Test ClipsSingleImageAdsComponent"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1031,
+        "left": 0,
+        "right": 1200,
+        "top": 998
+      },
+      "commentText": "댓글을 남겨보세요."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1462,
+        "left": 193,
+        "right": 329,
+        "top": 1426
+      },
+      "commentText": "더 알아보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1606,
+        "left": 144,
+        "right": 1168,
+        "top": 1572
+      },
+      "commentText": "더 알아보기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1635,
+        "left": 144,
+        "right": 1168,
+        "top": 1606
+      },
+      "commentText": "m.shop.tworld.co.kr(으)로 이동"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1662,
+        "left": 161,
+        "right": 968,
+        "top": 1614
+      },
+      "commentText": "T다이렉트샵 … 광고"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1711,
+        "left": 161,
+        "right": 968,
+        "top": 1678
+      },
+      "commentText": "게시물 399개에서 tdirectshop_official님을 태그했습니다"
+    }
+  ],
+  "timestamp": 1778326128933
+}

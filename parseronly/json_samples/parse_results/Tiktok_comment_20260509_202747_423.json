@@ -1,0 +1,70 @@
+{
+  "comments": [
+    {
+      "author_id": "9시간",
+      "boundsInScreen": {
+        "bottom": 1148,
+        "left": 127,
+        "right": 1176,
+        "top": 1102
+      },
+      "commentText": "좋아"
+    },
+    {
+      "author_id": "14시간",
+      "boundsInScreen": {
+        "bottom": 1658,
+        "left": 127,
+        "right": 1176,
+        "top": 1612
+      },
+      "commentText": "매일 백잔씩 먹으면 어캐되나요?"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1031,
+        "left": 127,
+        "right": 186,
+        "top": 985
+      },
+      "commentText": "9시간"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1318,
+        "left": 127,
+        "right": 1176,
+        "top": 1272
+      },
+      "commentText": "구독좋아요 👍👍👍👍👍"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1451,
+        "left": 1111,
+        "right": 1168,
+        "top": 1415
+      },
+      "commentText": "1.3만"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1488,
+        "left": 127,
+        "right": 1176,
+        "top": 1442
+      },
+      "commentText": "감사합니다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1541,
+        "left": 127,
+        "right": 198,
+        "top": 1495
+      },
+      "commentText": "14시간"
+    }
+  ],
+  "timestamp": 1778326067419
+}

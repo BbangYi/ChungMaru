@@ -1,0 +1,52 @@
+{
+  "comments": [
+    {
+      "author_id": "kyuho_kim5",
+      "boundsInScreen": {
+        "bottom": 735,
+        "left": 130,
+        "right": 489,
+        "top": 699
+      },
+      "commentText": "인기가 많아 수요에 공급합니다"
+    },
+    {
+      "author_id": "kyuho_kim5",
+      "boundsInScreen": {
+        "bottom": 897,
+        "left": 130,
+        "right": 208,
+        "top": 861
+      },
+      "commentText": "비싸다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 958,
+        "left": 130,
+        "right": 255,
+        "top": 897
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 796,
+        "left": 130,
+        "right": 255,
+        "top": 735
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1691,
+        "left": 161,
+        "right": 968,
+        "top": 1643
+      },
+      "commentText": "자기장의 척력돔 …"
+    }
+  ],
+  "timestamp": 1778326594249
+}

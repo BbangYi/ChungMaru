@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1631,
+        "left": 161,
+        "right": 968,
+        "top": 1583
+      },
+      "commentText": "최저가 보험까지 포함된 오토바이 인수 · 광고"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1739,
+        "left": 129,
+        "right": 1072,
+        "top": 61
+      },
+      "commentText": "Test ClipsSingleImageAdsComponent"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1443,
+        "left": 193,
+        "right": 329,
+        "top": 1407
+      },
+      "commentText": "더 알아보기"
+    }
+  ],
+  "timestamp": 1778326547942
+}

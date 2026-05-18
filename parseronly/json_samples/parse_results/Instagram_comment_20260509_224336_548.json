@@ -1,0 +1,51 @@
+{
+  "comments": [
+    {
+      "author_id": "vip.0551",
+      "boundsInScreen": {
+        "bottom": 1372,
+        "left": 130,
+        "right": 624,
+        "top": 1336
+      },
+      "commentText": "@mong_10200609 이래가 대기업 간거가"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1691,
+        "left": 161,
+        "right": 968,
+        "top": 1643
+      },
+      "commentText": "해병대 갈지 말지 고민돼요 …"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 843,
+        "left": 130,
+        "right": 255,
+        "top": 812
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1277,
+        "left": 130,
+        "right": 255,
+        "top": 1216
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1433,
+        "left": 130,
+        "right": 255,
+        "top": 1372
+      },
+      "commentText": "답글 달기"
+    }
+  ],
+  "timestamp": 1778334216544
+}

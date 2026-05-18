@@ -1,0 +1,61 @@
+{
+  "comments": [
+    {
+      "author_id": "lvuhxnn",
+      "boundsInScreen": {
+        "bottom": 1359,
+        "left": 130,
+        "right": 574,
+        "top": 1323
+      },
+      "commentText": "여러분들아 가 아니라 여러분아 입니다"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1420,
+        "left": 130,
+        "right": 255,
+        "top": 1359
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "author_id": "bkbbkbkbb",
+      "boundsInScreen": {
+        "bottom": 1562,
+        "left": 130,
+        "right": 267,
+        "top": 1526
+      },
+      "commentText": "잘하네 진짜"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1623,
+        "left": 130,
+        "right": 255,
+        "top": 1562
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1691,
+        "left": 161,
+        "right": 968,
+        "top": 1643
+      },
+      "commentText": "해병대 갈지 말지 고민돼요 …"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1260,
+        "left": 130,
+        "right": 255,
+        "top": 1199
+      },
+      "commentText": "답글 달기"
+    }
+  ],
+  "timestamp": 1778334212325
+}

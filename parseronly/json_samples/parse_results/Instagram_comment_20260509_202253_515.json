@@ -1,0 +1,32 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 1699,
+        "left": 161,
+        "right": 205,
+        "top": 1666
+      },
+      "commentText": "광고"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1739,
+        "left": 129,
+        "right": 1072,
+        "top": 61
+      },
+      "commentText": "Test ClipsSingleImageAdsComponent"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1650,
+        "left": 161,
+        "right": 968,
+        "top": 1602
+      },
+      "commentText": "⚡아이폰 남은재고 \" 오늘 신청시 무조건 0원 \""
+    }
+  ],
+  "timestamp": 1778325773512
+}

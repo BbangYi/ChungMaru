@@ -1,0 +1,53 @@
+{
+  "comments": [
+    {
+      "author_id": "3일",
+      "boundsInScreen": {
+        "bottom": 1201,
+        "left": 127,
+        "right": 1176,
+        "top": 1155
+      },
+      "commentText": "밤 샜어요 :)"
+    },
+    {
+      "author_id": "3일",
+      "boundsInScreen": {
+        "bottom": 1427,
+        "left": 127,
+        "right": 1176,
+        "top": 1381
+      },
+      "commentText": "저 알람좀 주세요"
+    },
+    {
+      "author_id": "1일",
+      "boundsInScreen": {
+        "bottom": 1678,
+        "left": 30,
+        "right": 540,
+        "top": 1639
+      },
+      "commentText": "행복하시길"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 826,
+        "left": 454,
+        "right": 674,
+        "top": 738
+      },
+      "commentText": "‎댓글 2,404개"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 975,
+        "left": 127,
+        "right": 1176,
+        "top": 929
+      },
+      "commentText": "여기 다 몇분전이야 지리네 요이"
+    }
+  ],
+  "timestamp": 1778326523261
+}

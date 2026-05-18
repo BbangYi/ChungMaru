@@ -1,0 +1,61 @@
+{
+  "comments": [
+    {
+      "author_id": "hongyt87",
+      "boundsInScreen": {
+        "bottom": 954,
+        "left": 130,
+        "right": 208,
+        "top": 918
+      },
+      "commentText": "오우얌"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1291,
+        "left": 192,
+        "right": 317,
+        "top": 1230
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "author_id": "jami_imi",
+      "boundsInScreen": {
+        "bottom": 1457,
+        "left": 192,
+        "right": 401,
+        "top": 1421
+      },
+      "commentText": "@hongyt87 냠냠"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1520,
+        "left": 328,
+        "right": 437,
+        "top": 1489
+      },
+      "commentText": "응답 881개"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1711,
+        "left": 161,
+        "right": 968,
+        "top": 1663
+      },
+      "commentText": "맛저하세용🥵 …"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1015,
+        "left": 130,
+        "right": 255,
+        "top": 954
+      },
+      "commentText": "답글 달기"
+    }
+  ],
+  "timestamp": 1778326460643
+}

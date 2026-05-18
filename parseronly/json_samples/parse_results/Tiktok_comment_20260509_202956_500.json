@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 879,
+        "left": 127,
+        "right": 1176,
+        "top": 833
+      },
+      "commentText": "불펌아님?"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1100,
+        "left": 127,
+        "right": 1176,
+        "top": 1054
+      },
+      "commentText": "알수도있는사람?누구세여?"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1220,
+        "left": 266,
+        "right": 340,
+        "top": 1188
+      },
+      "commentText": "작성자"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1270,
+        "left": 175,
+        "right": 1176,
+        "top": 1224
+      },
+      "commentText": "저 그냥 님 영상 재밌어서..."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1496,
+        "left": 127,
+        "right": 1176,
+        "top": 1450
+      },
+      "commentText": "아니 출처 이러는데 허락을 맡아야 불법이 아닌거임"
+    }
+  ],
+  "timestamp": 1778326196497
+}

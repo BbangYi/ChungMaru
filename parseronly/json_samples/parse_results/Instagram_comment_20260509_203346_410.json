@@ -1,0 +1,80 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 907,
+        "left": 130,
+        "right": 255,
+        "top": 846
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "author_id": "jami_imi",
+      "boundsInScreen": {
+        "bottom": 925,
+        "left": 192,
+        "right": 610,
+        "top": 889
+      },
+      "commentText": "@jjoony0308 딱 알맞는사람이네여"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1023,
+        "left": 192,
+        "right": 317,
+        "top": 962
+      },
+      "commentText": "답글 달기"
+    },
+    {
+      "author_id": "noocar2021",
+      "boundsInScreen": {
+        "bottom": 1074,
+        "left": 130,
+        "right": 371,
+        "top": 1038
+      },
+      "commentText": "깨끗하니 다행이에요"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1520,
+        "left": 328,
+        "right": 437,
+        "top": 1489
+      },
+      "commentText": "응답 881개"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1711,
+        "left": 161,
+        "right": 968,
+        "top": 1663
+      },
+      "commentText": "맛저하세용🥵 …"
+    },
+    {
+      "author_id": "jjoony0308",
+      "boundsInScreen": {
+        "bottom": 846,
+        "left": 130,
+        "right": 716,
+        "top": 812
+      },
+      "commentText": "더럽게 자란 내가 이렇게 야한걸 알아도 되는걸까..."
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1159,
+        "left": 130,
+        "right": 255,
+        "top": 1098
+      },
+      "commentText": "답글 달기"
+    }
+  ],
+  "timestamp": 1778326426402
+}

@@ -1,0 +1,64 @@
+{
+  "comments": [
+    {
+      "author_id": "kim_ji.hwan",
+      "boundsInScreen": {
+        "bottom": 243,
+        "left": 130,
+        "right": 1088,
+        "top": 169
+      },
+      "commentText": "과학에 모르는 사람으로 추측컨데 원심력으로 양쪽으로 쏠리지만 중력이 없어진건 아니니 저런게 아닐까 싶음"
+    },
+    {
+      "author_id": "2gg.yaru",
+      "boundsInScreen": {
+        "bottom": 450,
+        "left": 130,
+        "right": 567,
+        "top": 414
+      },
+      "commentText": "왜인지는 알것같은데 설명을 못하겟음"
+    },
+    {
+      "author_id": "jeon_sihwan_09",
+      "boundsInScreen": {
+        "bottom": 1152,
+        "left": 130,
+        "right": 204,
+        "top": 1116
+      },
+      "commentText": "y\u003dax?"
+    },
+    {
+      "author_id": "mr.kim0128",
+      "boundsInScreen": {
+        "bottom": 1359,
+        "left": 130,
+        "right": 208,
+        "top": 1323
+      },
+      "commentText": "원심력"
+    },
+    {
+      "author_id": "sinjihun1806",
+      "boundsInScreen": {
+        "bottom": 1523,
+        "left": 130,
+        "right": 267,
+        "top": 1487
+      },
+      "commentText": "할게 없어서"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1796,
+        "left": 161,
+        "right": 1096,
+        "top": 1748
+      },
+      "commentText": "회전하는 액체가 곡면을 이루는 이유는 회전에 따른 관성 효과와 중력이 동시 …"
+    }
+  ],
+  "timestamp": 1774172333531
+}

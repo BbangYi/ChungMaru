@@ -1,0 +1,50 @@
+{
+  "comments": [
+    {
+      "boundsInScreen": {
+        "bottom": 991,
+        "left": 127,
+        "right": 1176,
+        "top": 945
+      },
+      "commentText": "나오면 알림"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1217,
+        "left": 127,
+        "right": 1176,
+        "top": 1171
+      },
+      "commentText": "다음편 나오면 대댓글로 알림 주세요!"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1443,
+        "left": 127,
+        "right": 1176,
+        "top": 1397
+      },
+      "commentText": "다음화 나오면 알림 주세용"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1515,
+        "left": 41,
+        "right": 76,
+        "top": 1481
+      },
+      "commentText": "캡션"
+    },
+    {
+      "boundsInScreen": {
+        "bottom": 1514,
+        "left": 85,
+        "right": 188,
+        "top": 1482
+      },
+      "commentText": "캡션 표시"
+    }
+  ],
+  "timestamp": 1778326216001
+}
