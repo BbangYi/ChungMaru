@@ -1,0 +1,42 @@
+{
+  "url": "https://www.dcinside.com",
+  "domain": "dcinside.com",
+  "verdict": "warning",
+  "risk_score": 0.6,
+  "site_category": "community",
+  "security_threat": false,
+  "harmful_content": true,
+  "reasons": [
+    "커뮤니티형 사이트로 게시판별 유해성 편차가 커 사전 주의가 필요하다.",
+    "임베딩 DB에 저장된 동일 도메인 인텔에서 'community' / 'warning'로 분류되어 있다."
+  ],
+  "matched_entries": [],
+  "exact_match": {
+    "domain": "dcinside.com",
+    "title": "디시인사이드",
+    "summary": "익명성 비중이 높은 대형 커뮤니티. 게시판별 편차가 크고 일부 영역은 혐오·저속 표현 노출 가능성이 있어 주의가 필요하다.",
+    "category": "community",
+    "risk_level": "warning",
+    "security_threat": false,
+    "harmful_content": true,
+    "similarity": null,
+    "source": "curated-seed",
+    "tags": ["community", "ugc", "anonymous-board"],
+    "aliases": ["dcinside", "디씨", "디시"],
+    "indicators": ["anonymous board", "ugc variability", "exposure to toxic discourse"],
+    "risk_types": ["harmful-content"],
+    "region": "kr",
+    "language": "ko",
+    "matched_chunks": []
+  },
+  "retrieval_ms": 8.124,
+  "llm_timing_ms": 1354.812,
+  "timing_ms": 1363.754,
+  "agent": {
+    "mode": "judge",
+    "model": "gpt-4o-mini",
+    "reason": null,
+    "response": "커뮤니티 특성상 게시판별로 유해성 편차가 있을 수 있어 주의가 필요합니다.",
+    "sub_agents": null
+  }
+}

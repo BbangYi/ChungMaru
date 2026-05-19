@@ -71,3 +71,14 @@ scripts/                  보조 스크립트
 - [보고서 작성 및 이력 관리 워크플로우](docs/reporting-workflow.md)
 - [팀 작업 분담표](docs/team-ownership.md)
 - [공통 계약 문서](shared/contracts/README.md)
+
+## 사이트 안전성 Agent 현재 위치
+
+사이트 접속 전 위험도 판별 기능은 현재 아래 구조로 들어가 있습니다.
+
+- 백엔드 판별기: `backend/api/site_risk_agent.py`
+- 로컬 사이트 인텔 저장소: `backend/api/site_intel_store.py`
+- LLM 설명/보조 판단: `backend/api/site_llm_agent.py`
+- 데이터 수집/재구축 스크립트: `backend/scripts/`
+- Chrome 사전 경고 흐름: `extension/chrome/service-worker.js`, `extension/chrome/content-script.js`
+- 공통 계약: `shared/contracts/chrome-extension/site-check-*.schema.json`

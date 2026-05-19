@@ -13,156 +13,35 @@ import time
 from fastapi import FastAPI, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
 
 from agent_service import AgentService
 from pipeline import ProfanityPipeline
-from site_risk_agent import SiteRiskAgent
-
-
-# ── Pydantic 모델 ──────────────────────────────────────────
-
-class AnalyzeRequest(BaseModel):
-    text: str
-    sensitivity: int | None = None
-
-
-class AnalyzeBatchRequest(BaseModel):
-    texts: list[str]
-    sensitivity: int | None = None
-
-
-class BoundsInScreen(BaseModel):
-    top: int
-    bottom: int
-    left: int
-    right: int
-
-
-class AndroidComment(BaseModel):
-    commentText: str
-    boundsInScreen: BoundsInScreen
-    author_id: str | None = None
-
-
-class AndroidRequest(BaseModel):
-    timestamp: int
-    comments: list[AndroidComment]
-    sensitivity: int | None = None
-
-
-class EvidenceSpan(BaseModel):
-    text: str
-    start: int
-    end: int
-    score: float
-
-
-class AnalyzeResponse(BaseModel):
-    original: str
-    is_offensive: bool
-    is_profane: bool
-    is_toxic: bool
-    is_hate: bool
-    scores: dict[str, float]
-    evidence_spans: list[EvidenceSpan]
-    timing_ms: float | None = None
-    model_timing_ms: float | None = None
-    llm_timing_ms: float | None = None
-
-
-class AnalyzeBatchResponse(BaseModel):
-    results: list[AnalyzeResponse]
-
-
-class AgentResponse(BaseModel):
-    mode: str
-    model: str | None = None
-    reason: str | None = None
-    response: str
-    sub_agents: dict[str, str] | None = None
-
-
-class AndroidResultItem(BaseModel):
-    original: str
-    boundsInScreen: BoundsInScreen
-    author_id: str | None = None
-    is_offensive: bool
-    is_profane: bool
-    is_toxic: bool
-    is_hate: bool
-    scores: dict[str, float]
-    evidence_spans: list[EvidenceSpan]
-
-
-class AndroidResponse(BaseModel):
-    timestamp: int
-    filtered_count: int
-    results: list[AndroidResultItem]
-
-
-class AgentAnalyzeResponse(BaseModel):
-    analysis: AnalyzeResponse
-    agent: AgentResponse
-    timing_ms: float | None = None
-    model_timing_ms: float | None = None
-    llm_timing_ms: float | None = None
-
-
-class SiteCheckRequest(BaseModel):
-    url: str
-    title: str | None = None
-    snippet: str | None = None
-    force_refresh: bool | None = False
-
-
-class SiteMatchItem(BaseModel):
-    domain: str
-    title: str | None = None
-    summary: str | None = None
-    category: str
-    risk_level: str
-    security_threat: bool
-    harmful_content: bool
-    similarity: float | None = None
-    source: str | None = None
-    tags: list[str] = []
-    aliases: list[str] = []
-    indicators: list[str] = []
-    risk_types: list[str] = []
-    region: str | None = None
-    language: str | None = None
-    matched_chunks: list[dict[str, float | int | str]] = []
-
-
-class SiteCheckResponse(BaseModel):
-    url: str
-    domain: str
-    verdict: str
-    risk_score: float
-    site_category: str
-    security_threat: bool
-    harmful_content: bool
-    reasons: list[str]
-    matched_entries: list[SiteMatchItem]
-    exact_match: SiteMatchItem | None = None
-    retrieval_ms: float | None = None
-    llm_timing_ms: float | None = None
-    timing_ms: float | None = None
-    agent: AgentResponse
+from schemas import (
+    AgentAnalyzeResponse,
+    AnalyzeBatchRequest,
+    AnalyzeBatchResponse,
+    AnalyzeRequest,
+    AnalyzeResponse,
+    AndroidRequest,
+    AndroidResponse,
+    SiteCheckRequest,
+    SiteCheckResponse,
+    format_analysis_result,
+)
+from site_service import SiteRiskService
 
 
 # ── 파이프라인 싱글톤 ──────────────────────────────────────
 
 pipeline: ProfanityPipeline | None = None
 agent_service: AgentService | None = None
-site_risk_agent: SiteRiskAgent | None = None
+site_risk_service: SiteRiskService | None = None
 pipeline_init_error: str | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global pipeline, agent_service, site_risk_agent, pipeline_init_error
+    global pipeline, agent_service, site_risk_service, pipeline_init_error
     pipeline = None
     agent_service = None
     pipeline_init_error = None
@@ -172,7 +51,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         pipeline_init_error = str(exc)
         print(f"텍스트 탐지 파이프라인 초기화 실패: {exc}")
-    site_risk_agent = SiteRiskAgent()
+    site_risk_service = SiteRiskService()
     print("파이프라인 준비 완료 (lazy model loading)")
     yield
     print("서버 종료")
@@ -186,38 +65,6 @@ app = FastAPI(
 )
 
 
-# ── 헬퍼 ───────────────────────────────────────────────────
-
-def _format_result(
-    analysis: dict,
-    timing_ms: float | None = None,
-    model_timing_ms: float | None = None,
-    llm_timing_ms: float | None = None,
-) -> dict:
-    """pipeline.analyze() 결과를 API 응답 형식으로 변환."""
-    timing = analysis.get("_timing", {})
-    return {
-        "original": analysis["text"],
-        "is_offensive": analysis["is_offensive"],
-        "is_profane": analysis["is_profane"],
-        "is_toxic": analysis["is_toxic"],
-        "is_hate": analysis["is_hate"],
-        "scores": analysis["scores"],
-        "evidence_spans": [
-            {
-                "text": s["text"],
-                "start": s.get("start", -1),
-                "end": s.get("end", -1),
-                "score": s["score"],
-            }
-            for s in analysis["evidence_spans"]
-        ],
-        "timing_ms": round(timing_ms, 3) if timing_ms is not None else timing.get("pipeline_ms"),
-        "model_timing_ms": round(model_timing_ms, 3) if model_timing_ms is not None else timing.get("model_ms"),
-        "llm_timing_ms": round(llm_timing_ms, 3) if llm_timing_ms is not None else None,
-    }
-
-
 def _require_text_pipeline() -> tuple[ProfanityPipeline, AgentService | None]:
     if pipeline is None:
         raise HTTPException(
@@ -229,6 +76,18 @@ def _require_text_pipeline() -> tuple[ProfanityPipeline, AgentService | None]:
             },
         )
     return pipeline, agent_service
+
+
+def _require_site_service() -> SiteRiskService:
+    if site_risk_service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "reason": "SITE_RISK_SERVICE_UNAVAILABLE",
+                "message": "사이트 안전성 Agent가 아직 준비되지 않았습니다.",
+            },
+        )
+    return site_risk_service
 
 
 _DOCS_RESPONSE_ENHANCER = r"""
@@ -501,7 +360,7 @@ async def swagger_ui_redirect():
 
 @app.get("/health")
 async def health():
-    intel_stats = site_risk_agent.store.stats() if site_risk_agent else None
+    intel_stats = site_risk_service.health_summary() if site_risk_service else None
     pipeline_status = pipeline.runtime_status() if pipeline is not None else None
     return {
         "status": "ok",
@@ -522,7 +381,7 @@ async def analyze(req: AnalyzeRequest):
     result = ready_pipeline.analyze(req.text, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze total={elapsed_ms:.1f}ms text={req.text[:40]!r}")
-    return _format_result(
+    return format_analysis_result(
         result,
         timing_ms=elapsed_ms,
         model_timing_ms=result.get("_timing", {}).get("model_ms"),
@@ -538,7 +397,7 @@ async def analyze_batch(req: AnalyzeBatchRequest):
     results = ready_pipeline.analyze_batch(req.texts, sensitivity=req.sensitivity)
     elapsed_ms = (time.perf_counter() - started) * 1000
     print(f"[TIMING] /analyze_batch total={elapsed_ms:.1f}ms count={len(req.texts)}")
-    return {"results": [_format_result(r) for r in results]}
+    return {"results": [format_analysis_result(r) for r in results]}
 
 
 @app.post("/analyze_android", response_model=AndroidResponse)
@@ -572,7 +431,7 @@ async def analyze_with_agent(req: AnalyzeRequest):
     agent_mode = result["agent"].get("mode")
     print(f"[TIMING] /agent/analyze total={elapsed_ms:.1f}ms mode={agent_mode} text={req.text[:40]!r}")
     return {
-        "analysis": _format_result(
+        "analysis": format_analysis_result(
             result["analysis"],
             timing_ms=elapsed_ms,
             model_timing_ms=result["analysis"].get("_timing", {}).get("model_ms"),
@@ -588,7 +447,8 @@ async def analyze_with_agent(req: AnalyzeRequest):
 @app.post("/site/check", response_model=SiteCheckResponse)
 async def check_site(req: SiteCheckRequest):
     """사이트 접속 전 위험도 판별 + 설명."""
-    result = site_risk_agent.check_site(
+    ready_site_service = _require_site_service()
+    result = ready_site_service.check(
         req.url,
         title=req.title or "",
         snippet=req.snippet or "",

@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "chrome-extension/site-check-request.schema.json",
+  "title": "SiteCheckRequest",
+  "description": "사이트 접속 전 위험도 판별 요청",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "snippet": {
+      "type": ["string", "null"]
+    },
+    "force_refresh": {
+      "type": ["boolean", "null"]
+    }
+  },
+  "required": ["url"],
+  "additionalProperties": false
+}

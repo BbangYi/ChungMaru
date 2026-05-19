@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "common/site-match-item.schema.json",
+  "title": "SiteMatchItem",
+  "description": "사이트 위험도 판정에 사용한 exact match 또는 유사 사이트 인텔 항목",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "summary": {
+      "type": ["string", "null"]
+    },
+    "category": {
+      "type": "string"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["allow", "warning", "block"]
+    },
+    "security_threat": {
+      "type": "boolean"
+    },
+    "harmful_content": {
+      "type": "boolean"
+    },
+    "similarity": {
+      "type": ["number", "null"]
+    },
+    "source": {
+      "type": ["string", "null"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "indicators": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "risk_types": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "region": {
+      "type": ["string", "null"]
+    },
+    "language": {
+      "type": ["string", "null"]
+    },
+    "matched_chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chunk_index": {
+            "type": "integer"
+          },
+          "chunk_text": {
+            "type": "string"
+          },
+          "similarity": {
+            "type": "number"
+          }
+        },
+        "required": ["chunk_index", "chunk_text", "similarity"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "domain",
+    "category",
+    "risk_level",
+    "security_threat",
+    "harmful_content",
+    "tags",
+    "aliases",
+    "indicators",
+    "risk_types",
+    "matched_chunks"
+  ],
+  "additionalProperties": false
+}

@@ -44,6 +44,12 @@
 | `profanity_dict.py` | 욕설 사전/패턴 (보조 용도) |
 | `llm_agent.py` | LangGraph 기반 LLM Agent |
 | `agent_service.py` | 분석 파이프라인 + Agent 연결 |
+| `schemas.py` | FastAPI 요청/응답 스키마 및 응답 포맷 헬퍼 |
+| `site_service.py` | 사이트 안전성 Agent 서비스 레이어 |
+| `site_intel_store.py` | 로컬 사이트 인텔 DB 및 임베딩 검색 |
+| `site_risk_agent.py` | URL/도메인 기반 사이트 위험도 판별기 |
+| `site_llm_agent.py` | 사이트 판별 설명/보조 판단 LLM |
+| `env_loader.py` | `.env` 기반 환경변수 로더 |
 
 ## 설치 및 실행
 
@@ -73,10 +79,13 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 ```json
 {
   "status": "ok",
-  "model_ready": true,
-  "pipeline_loaded": true,
-  "pipeline_error": null,
-  "missing_model_files": []
+  "site_intel": {
+    "total_sites": 1162,
+    "blocked": 619,
+    "warned": 189
+  },
+  "text_pipeline_ready": true,
+  "text_pipeline_error": null
 }
 ```
 
@@ -149,23 +158,53 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 `OPENAI_API_KEY`가 없거나 LangGraph 의존성이 없으면 `fallback` 모드로 동작합니다.
+
+### `POST /site/check` — 사이트 접속 전 위험도 판별
+요청:
+```json
+{
+  "url": "https://www.dcinside.com",
+  "title": "디시인사이드",
+  "snippet": "국내 대형 커뮤니티 메인 페이지",
+  "force_refresh": false
+}
+```
+
 응답:
 ```json
 {
-  "timestamp": 1712500000,
-  "filtered_count": 0,
-  "results": [
-    {
-      "original": "댓글 내용",
-      "boundsInScreen": {"top": 100, "bottom": 200, "left": 0, "right": 1080},
-      "is_offensive": false,
-      "is_profane": false,
-      "is_toxic": false,
-      "is_hate": false,
-      "scores": {"profanity": 0.01, "toxicity": 0.02, "hate": 0.01},
-      "evidence_spans": []
-    }
-  ]
+  "url": "https://www.dcinside.com",
+  "domain": "dcinside.com",
+  "verdict": "warning",
+  "risk_score": 0.6,
+  "site_category": "community",
+  "security_threat": false,
+  "harmful_content": true,
+  "reasons": [
+    "커뮤니티형 사이트로 게시판별 유해성 편차가 커 사전 주의가 필요하다."
+  ],
+  "matched_entries": [],
+  "exact_match": {
+    "domain": "dcinside.com",
+    "category": "community",
+    "risk_level": "warning",
+    "security_threat": false,
+    "harmful_content": true,
+    "tags": ["community", "ugc", "anonymous-board"],
+    "aliases": ["dcinside", "디씨", "디시"],
+    "indicators": ["anonymous board", "ugc variability", "exposure to toxic discourse"],
+    "risk_types": ["harmful-content"],
+    "matched_chunks": []
+  },
+  "retrieval_ms": 8.124,
+  "llm_timing_ms": 1354.812,
+  "timing_ms": 1363.754,
+  "agent": {
+    "mode": "judge",
+    "model": "gpt-4o-mini",
+    "reason": null,
+    "response": "커뮤니티 특성상 게시판별로 유해성 편차가 있을 수 있어 주의가 필요합니다."
+  }
 }
 ```
 
@@ -185,6 +224,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 | `MODEL_SPAN_PATH` | `{MODEL_BASE}/models/span_large_combined_crf` | Span 모델 경로 |
 | `OPENAI_API_KEY` | 없음 | LangGraph Agent 실행용 API 키 |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Agent에 사용할 OpenAI 모델명 |
+| `OPENAI_TIMEOUT_SECONDS` | `12` | 사이트 안전성 Agent의 OpenAI 호출 timeout |
 
 `OPENAI_API_KEY`는 셸 환경변수로 주거나 `backend/.env`, `backend/api/.env` 파일에 저장할 수 있습니다.
 

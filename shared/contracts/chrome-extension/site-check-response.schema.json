@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "chrome-extension/site-check-response.schema.json",
+  "title": "SiteCheckResponse",
+  "description": "사이트 접속 전 위험도 판별 응답",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["allow", "warning", "block"]
+    },
+    "risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "site_category": {
+      "type": "string"
+    },
+    "security_threat": {
+      "type": "boolean"
+    },
+    "harmful_content": {
+      "type": "boolean"
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "matched_entries": {
+      "type": "array",
+      "items": {
+        "$ref": "../common/site-match-item.schema.json"
+      }
+    },
+    "exact_match": {
+      "anyOf": [
+        { "$ref": "../common/site-match-item.schema.json" },
+        { "type": "null" }
+      ]
+    },
+    "retrieval_ms": {
+      "type": ["number", "null"]
+    },
+    "llm_timing_ms": {
+      "type": ["number", "null"]
+    },
+    "timing_ms": {
+      "type": ["number", "null"]
+    },
+    "agent": {
+      "$ref": "../common/agent-response.schema.json"
+    }
+  },
+  "required": [
+    "url",
+    "domain",
+    "verdict",
+    "risk_score",
+    "site_category",
+    "security_threat",
+    "harmful_content",
+    "reasons",
+    "matched_entries",
+    "agent"
+  ],
+  "additionalProperties": false
+}
