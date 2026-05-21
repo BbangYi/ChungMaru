@@ -112,6 +112,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun ensureAutomationLoop() {
+        if (AutomationSettingsStore.getPlatformMode(applicationContext) == AutomationSettingsStore.PLATFORM_INSTAGRAM) {
+            if (AutomationSettingsStore.isEnabled(applicationContext)) {
+                AutomationSettingsStore.setEnabled(applicationContext, false)
+                AutomationSettingsStore.saveStatus(
+                    applicationContext,
+                    "Instagram parse-only mode: open comments manually"
+                )
+            }
+            cancelAutomationLoop()
+            return
+        }
+
         if (!AutomationSettingsStore.isEnabled(applicationContext)) {
             cancelAutomationLoop()
             return
@@ -226,7 +238,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun allowedAutomationPlatforms(): List<AutomationPlatform> {
         return AutomationPlatform.values().filter {
-            isPlatformAvailable(it) &&
+            it != AutomationPlatform.INSTAGRAM &&
+                isPlatformAvailable(it) &&
                 AutomationSettingsStore.isPlatformAllowed(applicationContext, it.name)
         }
     }
@@ -248,6 +261,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (platform == AutomationPlatform.INSTAGRAM) {
+            parseAndSaveCurrentWindow()
+            cancelAutomationLoop()
+            return
+        }
+
         val observedPackage = lastObservedPackage
         if (observedPackage == null || !platform.matches(observedPackage)) {
             AutomationSettingsStore.saveStatus(
@@ -264,6 +283,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
         launchAttemptedFor = null
 
         AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글 파싱 사이클 시작")
+        if (platform == AutomationPlatform.INSTAGRAM && !isInstagramReelsSelected()) {
+            clickInstagramReelsTab()
+            scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
+            return
+        }
+
         if (enterShortFormIfNeeded(platform)) {
             scheduleAutomationStep(AUTOMATION_AFTER_LAUNCH_MS)
             return
@@ -276,42 +301,73 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
-        parseAndSaveCurrentWindow()
-        commentPanelOpenedFor = null
-        val commentsOpened = openCommentPanel(platform)
-        if (!commentsOpened) {
-            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} comments not opened; moving next")
-            moveToNextVideo(platform, strongSwipe = platform != AutomationPlatform.TIKTOK)
-            scheduleAutomationStep(if (platform == AutomationPlatform.YOUTUBE) AD_SKIP_RECHECK_MS else AUTOMATION_VIDEO_STEP_MS)
-            return
+        val instagramPanelAlreadyOpen =
+            platform == AutomationPlatform.INSTAGRAM && isCommentPanelLikelyOpen(platform)
+
+        if (instagramPanelAlreadyOpen) {
+            commentPanelOpenedFor = platform
+            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글창 열린 상태: 현재 릴스 댓글 파싱")
+            parseAndSaveCurrentWindow()
+        } else {
+            parseAndSaveCurrentWindow()
+            commentPanelOpenedFor = null
+            val commentsOpened = openCommentPanel(platform)
+            if (!commentsOpened) {
+                AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} comments not opened; moving next")
+                moveToNextVideo(platform, strongSwipe = platform != AutomationPlatform.TIKTOK)
+                scheduleAutomationStep(if (platform == AutomationPlatform.YOUTUBE) AD_SKIP_RECHECK_MS else AUTOMATION_VIDEO_STEP_MS)
+                return
+            }
         }
 
         runLaterIfActive(platform, cycleId, COMMENT_PANEL_OPEN_MS) {
+            if (platform == AutomationPlatform.INSTAGRAM && !isCommentPanelLikelyOpen(platform)) {
+                AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글창 미확인: 스크롤 생략")
+                return@runLaterIfActive
+            }
+            if (platform == AutomationPlatform.INSTAGRAM) {
+                parseAndSaveCurrentWindow()
+                return@runLaterIfActive
+            }
             expandCommentPanel()
             parseAndSaveCurrentWindow()
         }
 
         runLaterIfActive(platform, cycleId, COMMENT_SCROLL_1_MS) {
+            if (platform == AutomationPlatform.INSTAGRAM && !isCommentPanelLikelyOpen(platform)) {
+                AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글창 미확인: 스크롤 생략")
+                return@runLaterIfActive
+            }
             scrollCommentPanel(platform)
             parseAndSaveCurrentWindow()
         }
 
         runLaterIfActive(platform, cycleId, COMMENT_SCROLL_2_MS) {
+            if (platform == AutomationPlatform.INSTAGRAM && !isCommentPanelLikelyOpen(platform)) {
+                AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글창 미확인: 스크롤 생략")
+                return@runLaterIfActive
+            }
             scrollCommentPanel(platform)
             parseAndSaveCurrentWindow()
         }
 
         runLaterIfActive(platform, cycleId, COMMENT_SCROLL_3_MS) {
+            if (platform == AutomationPlatform.INSTAGRAM && !isCommentPanelLikelyOpen(platform)) {
+                AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 댓글창 미확인: 스크롤 생략")
+                return@runLaterIfActive
+            }
             scrollCommentPanel(platform)
             parseAndSaveCurrentWindow()
         }
 
         runLaterIfActive(platform, cycleId, COMMENT_CLOSE_MS) {
-            closeCommentPanel()
+            if (platform != AutomationPlatform.INSTAGRAM) {
+                closeCommentPanel()
+            }
         }
 
         runLaterIfActive(platform, cycleId, NEXT_VIDEO_MS) {
-            moveToNextVideo(platform)
+            moveToNextVideo(platform, strongSwipe = platform == AutomationPlatform.INSTAGRAM)
         }
 
         scheduleAutomationStep(AUTOMATION_VIDEO_STEP_MS)
@@ -403,10 +459,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "TikTok comments",
                 commentButtonKeywords(platform)
             )
-            AutomationPlatform.INSTAGRAM -> clickNamedButton(
-                "Instagram comments",
-                commentButtonKeywords(platform)
-            )
+            AutomationPlatform.INSTAGRAM -> clickInstagramCommentButton()
         }
 
         if (!clicked) {
@@ -430,7 +483,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun scrollCommentPanel(platform: AutomationPlatform) {
         when (platform) {
-            AutomationPlatform.INSTAGRAM -> swipeFraction(0.50f, 0.68f, 0.50f, 0.30f)
+            AutomationPlatform.INSTAGRAM -> scrollInstagramCommentPanel()
             else -> scrollCommentPanel()
         }
     }
@@ -449,6 +502,38 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun moveToNextVideo(platform: AutomationPlatform, strongSwipe: Boolean = false) {
         if (commentPanelOpenedFor == platform || isCommentPanelLikelyOpen(platform)) {
+            if (platform == AutomationPlatform.INSTAGRAM) {
+                if (isInstagramTwoPaneCommentsOpen()) {
+                    swipeNextVideo(platform, strongSwipe = true)
+                    AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 다음 릴스로 이동")
+                    commentPanelOpenedFor = null
+                    return
+                }
+
+                dismissCommentPanelWithGesture()
+                commentPanelOpenedFor = null
+
+                handler.postDelayed(
+                    {
+                        if (
+                            AutomationSettingsStore.isEnabled(applicationContext) &&
+                            automationPlatform == platform &&
+                            lastObservedPackage?.let { platform.matches(it) } == true
+                        ) {
+                            if (!isInstagramReelsSelected()) {
+                                clickInstagramReelsTab()
+                                return@postDelayed
+                            }
+                            swipeNextVideo(platform, strongSwipe = true)
+                            AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 다음 영상으로 이동")
+                            commentPanelOpenedFor = null
+                        }
+                    },
+                    1_650L
+                )
+                return
+            }
+
             val closedByButton = closeCommentPanel()
             if (!closedByButton) {
                 dismissCommentPanelWithGesture()
@@ -487,9 +572,193 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (platform == AutomationPlatform.INSTAGRAM && !isInstagramReelsSelected()) {
+            clickInstagramReelsTab()
+            return
+        }
+
         swipeNextVideo(platform, strongSwipe)
         AutomationSettingsStore.saveStatus(applicationContext, "${platform.label} 다음 영상으로 이동")
         commentPanelOpenedFor = null
+    }
+
+    private fun isInstagramReelsSelected(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return findNodeByViewId(root, "clips_tab")?.isSelected == true
+    }
+
+    private fun clickInstagramReelsTab(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val node = findNodeByViewId(root, "clips_tab") ?: return false
+        val clicked = clickNodeOrParent(node)
+        if (clicked) {
+            AutomationSettingsStore.saveStatus(applicationContext, "Instagram Reels tab selected")
+            shortFormEntryAttemptedFor = AutomationPlatform.INSTAGRAM
+            commentPanelOpenedFor = null
+        }
+        return clicked
+    }
+
+    private fun clickInstagramCommentButton(): Boolean {
+        if (!isInstagramReelsSelected()) {
+            clickInstagramReelsTab()
+            return false
+        }
+
+        val root = rootInActiveWindow ?: return false
+        val node = findInstagramCommentButton(root) ?: run {
+            AutomationSettingsStore.saveStatus(applicationContext, "Instagram comment_button not found")
+            return false
+        }
+
+        val clicked = tapNodeCenter(node)
+        if (clicked) {
+            AutomationSettingsStore.saveStatus(applicationContext, "Instagram comment_button clicked")
+            Log.d(TAG, "Instagram comment_button clicked")
+        }
+        return clicked
+    }
+
+    private fun isInstagramTwoPaneCommentsOpen(): Boolean {
+        return isInstagramTwoPaneCommentsOpen(rootInActiveWindow)
+    }
+
+    private fun isInstagramTwoPaneCommentsOpen(root: AccessibilityNodeInfo?): Boolean {
+        root ?: return false
+        val pane = findInstagramCommentsPane(root) ?: return false
+        val rect = Rect()
+        pane.getBoundsInScreen(rect)
+        val rootRect = Rect().also { root.getBoundsInScreen(it) }
+        val bounds = if (rootRect.width() > 0 && rootRect.height() > 0) rootRect else activeScreenBounds()
+        return pane.isVisibleToUser &&
+            rect.width() >= bounds.width() * 0.35f &&
+            rect.height() >= bounds.height() * 0.45f
+    }
+
+    private fun isInstagramCommentSurfaceOpenAcrossWindows(): Boolean {
+        if (isInstagramCommentSurfaceRoot(rootInActiveWindow)) return true
+
+        windows?.forEach { window ->
+            if (isInstagramCommentSurfaceRoot(window.root)) return true
+        }
+
+        return false
+    }
+
+    private fun isInstagramCommentSurfaceRoot(root: AccessibilityNodeInfo?): Boolean {
+        if (root == null) return false
+        if (root.packageName?.toString() != INSTAGRAM_PACKAGE) return false
+        if (isInstagramTwoPaneCommentsOpen(root)) return true
+        if (findInstagramCommentsPane(root) != null) return true
+        return containsAnyLabel(root, instagramCommentPanelKeywords())
+    }
+
+    private fun findInstagramCommentsPane(root: AccessibilityNodeInfo? = rootInActiveWindow): AccessibilityNodeInfo? {
+        if (root == null) return null
+        return findNodeByViewId(root, "comments_pane")
+            ?: findNodeByViewId(root, "comments_container")
+            ?: findNodeByViewId(root, "comments_title")
+    }
+
+    private fun findInstagramCommentButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val candidates = mutableListOf<AccessibilityNodeInfo>()
+
+        fun dfs(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+
+            val viewId = node.viewIdResourceName.orEmpty()
+            val description = node.contentDescription?.toString().orEmpty()
+            if (
+                node.isVisibleToUser &&
+                hasClickableSelfOrParent(node) &&
+                (
+                    viewId == "com.instagram.android:id/comment_button" ||
+                        viewId.endsWith(":id/comment_button") ||
+                        description == "댓글 달기" ||
+                        description.equals("comment", ignoreCase = true)
+                    )
+            ) {
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                if (rect.width() > 0 && rect.height() > 0) {
+                    candidates += node
+                }
+            }
+
+            for (index in 0 until node.childCount) {
+                dfs(node.getChild(index))
+            }
+        }
+
+        dfs(root)
+        val bounds = activeScreenBounds()
+        return candidates.maxByOrNull { node ->
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val viewId = node.viewIdResourceName.orEmpty()
+            val description = node.contentDescription?.toString().orEmpty()
+            var score = 0
+            if (viewId == "com.instagram.android:id/comment_button") score += 220
+            if (viewId.endsWith(":id/comment_button")) score += 160
+            if (description == "댓글 달기") score += 140
+            if (description.contains("comment", ignoreCase = true)) score += 100
+            if (rect.left >= bounds.left + bounds.width() * 0.55f) score += 80
+            if (rect.top >= bounds.top + bounds.height() * 0.18f) score += 40
+            if (rect.left <= bounds.left + 120 && rect.top <= bounds.top + 120) score -= 160
+            if (viewId.startsWith("litho:id/")) score -= 80
+            score
+        }
+    }
+
+    private fun scrollInstagramCommentPanel(): Boolean {
+        val x = instagramCommentsPaneXFraction()
+        return gestureFraction(x, 0.68f, x, 0.30f, GESTURE_DURATION_MS)
+    }
+
+    private fun instagramCommentsPaneXFraction(): Float {
+        val bounds = activeScreenBounds()
+        val pane = findInstagramCommentsPane() ?: return 0.50f
+        val rect = Rect()
+        pane.getBoundsInScreen(rect)
+        if (rect.width() <= 0 || bounds.width() <= 0) return 0.50f
+
+        val x = rect.left + rect.width() / 2f
+        return ((x - bounds.left) / bounds.width()).coerceIn(0.12f, 0.88f)
+    }
+
+    private fun instagramVideoSwipeXFraction(): Float {
+        val bounds = activeScreenBounds()
+        val pane = findInstagramCommentsPane() ?: return 0.50f
+        val rect = Rect()
+        pane.getBoundsInScreen(rect)
+        if (rect.width() <= 0 || bounds.width() <= 0) return 0.50f
+
+        val rightSpace = bounds.right - rect.right
+        val leftSpace = rect.left - bounds.left
+        val x = when {
+            rightSpace >= 160 -> rect.right + rightSpace * 0.55f
+            leftSpace >= 160 -> bounds.left + leftSpace * 0.45f
+            else -> bounds.left + bounds.width() * 0.50f
+        }
+
+        return ((x - bounds.left) / bounds.width()).coerceIn(0.08f, 0.92f)
+    }
+
+    private fun findNodeByViewId(node: AccessibilityNodeInfo?, viewIdPart: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (
+            node.isVisibleToUser &&
+            node.viewIdResourceName.orEmpty().contains(viewIdPart, ignoreCase = true)
+        ) {
+            return node
+        }
+
+        for (index in 0 until node.childCount) {
+            val found = findNodeByViewId(node.getChild(index), viewIdPart)
+            if (found != null) return found
+        }
+
+        return null
     }
 
     private fun dismissCommentPanelWithGesture(): Boolean {
@@ -499,7 +768,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun swipeNextVideo(platform: AutomationPlatform, strongSwipe: Boolean = false) {
         val duration = if (strongSwipe) 760L else 650L
         val swiped = when (platform) {
-            AutomationPlatform.INSTAGRAM -> gestureFraction(0.50f, 0.66f, 0.50f, 0.12f, duration)
+            AutomationPlatform.INSTAGRAM -> {
+                val x = instagramVideoSwipeXFraction()
+                gestureFraction(x, 0.66f, x, 0.12f, duration)
+            }
             AutomationPlatform.TIKTOK -> gestureFraction(0.50f, 0.76f, 0.50f, 0.16f, duration)
             AutomationPlatform.YOUTUBE -> gestureFraction(0.50f, 0.88f, 0.50f, 0.08f, duration)
         }
@@ -512,7 +784,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val observedPackage = lastObservedPackage ?: return false
         if (!platform.matches(observedPackage)) return false
 
-        if (!isAdVisible(platform)) return false
+        val adVisible = when (platform) {
+            AutomationPlatform.INSTAGRAM -> isInstagramAdVisible()
+            else -> isAdVisible(platform)
+        }
+        if (!adVisible) return false
 
         val message = "${platform.label} 광고 감지: 다음 영상으로 스와이프"
         Log.d(TAG, message)
@@ -530,6 +806,47 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun isAdVisible(platform: AutomationPlatform): Boolean {
         val root = rootInActiveWindow ?: return false
         return containsLikelyAdNode(root, adKeywords(platform))
+    }
+
+    private fun isInstagramAdVisible(): Boolean {
+        if (isCommentPanelLikelyOpen(AutomationPlatform.INSTAGRAM)) return false
+
+        val root = rootInActiveWindow ?: return false
+        return containsVisibleInstagramAdLabel(root)
+    }
+
+    private fun containsVisibleInstagramAdLabel(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+
+        if (node.isVisibleToUser) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            val label = buildString {
+                append(node.text?.toString().orEmpty())
+                append(' ')
+                append(node.contentDescription?.toString().orEmpty())
+            }.trim().lowercase()
+
+            if (rect.width() > 0 && rect.height() > 0 && isInstagramAdLabel(label)) {
+                return true
+            }
+        }
+
+        for (index in 0 until node.childCount) {
+            if (containsVisibleInstagramAdLabel(node.getChild(index))) return true
+        }
+
+        return false
+    }
+
+    private fun isInstagramAdLabel(label: String): Boolean {
+        if (label.isBlank()) return false
+        return label == "광고" ||
+            label == "스폰서" ||
+            label == "sponsored" ||
+            label.contains("스폰서") ||
+            label.contains("sponsored") ||
+            label.contains("promoted")
     }
 
     private fun containsLikelyAdNode(node: AccessibilityNodeInfo?, keywords: List<String>): Boolean {
@@ -593,6 +910,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun isCommentPanelLikelyOpen(platform: AutomationPlatform): Boolean {
         val root = rootInActiveWindow ?: return false
+        if (platform == AutomationPlatform.INSTAGRAM && isInstagramCommentSurfaceOpenAcrossWindows()) {
+            return true
+        }
+
         val panelKeywords = when (platform) {
             AutomationPlatform.YOUTUBE -> listOf(
                 "add a comment",
@@ -614,17 +935,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "댓글을 추가",
                 "댓글 패널"
             )
-            AutomationPlatform.INSTAGRAM -> listOf(
-                "add a comment",
-                "write a comment",
-                "reply",
-                "댓글 추가",
-                "댓글 달기",
-                "답글 달기"
-            )
+            AutomationPlatform.INSTAGRAM -> instagramCommentPanelKeywords()
         }
 
         return containsAnyLabel(root, panelKeywords)
+    }
+
+    private fun instagramCommentPanelKeywords(): List<String> {
+        return listOf(
+            "comments",
+            "add a comment",
+            "write a comment",
+            "comment as",
+            "댓글",
+            "댓글 추가",
+            "댓글 달기",
+            "답글 달기",
+            "댓글을 남겨보세요",
+            "대화 참여하기"
+        )
     }
 
     private fun containsAnyLabel(node: AccessibilityNodeInfo?, keywords: List<String>): Boolean {
@@ -678,8 +1007,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "comments",
                 "comment",
                 "댓글",
-                "답글",
-                "reply",
                 "view comments",
                 "open comments"
             )
@@ -932,8 +1259,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun parseAndSaveCurrentWindow() {
+        val parseStartedAt = System.currentTimeMillis()
         val currentPackage = lastObservedPackage ?: run {
             Log.d(TAG, "lastObservedPackage is null")
+            return
+        }
+
+        if (currentPackage == YOUTUBE_PACKAGE && !isCommentPanelLikelyOpen(AutomationPlatform.YOUTUBE)) {
+            Log.d(TAG, "youtube comment panel is not open; skip parse/save")
+            return
+        }
+
+        if (currentPackage == INSTAGRAM_PACKAGE && !isInstagramCommentSurfaceOpenAcrossWindows()) {
+            Log.d(TAG, "instagram comment surface is not open; skip parse/save")
             return
         }
 
@@ -956,8 +1294,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
             TIKTOK_PACKAGE, TIKTOK_ALT_PACKAGE -> TiktokCommentExtractor.extractComments(nodes)
             else -> emptyList()
         }
+        val parseFinishedAt = System.currentTimeMillis()
+        val parseDurationMs = (parseFinishedAt - parseStartedAt).coerceAtLeast(1L)
+        val commentsPerSecond = comments.size * 1_000.0 / parseDurationMs
 
-        Log.d(TAG, "parsed comment count = ${comments.size}")
+        Log.d(
+            TAG,
+            "parsed comment count = ${comments.size}, parseDurationMs=$parseDurationMs, commentsPerSecond=$commentsPerSecond"
+        )
 
         if (currentPackage == INSTAGRAM_PACKAGE && comments.isEmpty()) {
             Log.d(TAG, "instagram filtered node count = ${nodes.size}")
@@ -997,6 +1341,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         val snapshot = ParseSnapshot(
             timestamp = now,
+            sourcePackage = currentPackage,
+            parseStartedAt = parseStartedAt,
+            parseFinishedAt = parseFinishedAt,
+            parseDurationMs = parseDurationMs,
+            visibleNodeCount = nodes.size,
+            parsedCommentCount = comments.size,
+            commentsPerSecond = commentsPerSecond,
             comments = comments
         )
 
@@ -1025,6 +1376,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun extractVisibleTextNodesFromInstagramWindows(): List<ParsedTextNode> {
+        if (!isInstagramCommentSurfaceOpenAcrossWindows()) return emptyList()
+
         val candidates = mutableListOf<WindowCandidate>()
 
         val activeRoot = rootInActiveWindow
@@ -1171,6 +1524,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (Regex("""^[\u200E\u200F\u202A-\u202E]*댓글\s*[\d,]+개$""").matches(trimmed)) return false
 
         if (instagramMode) {
+            if (isInstagramNonCommentUiText(trimmed)) return false
+            if (looksLikeCountOnlyText(trimmed)) return false
+
             if (
                 viewId.contains("news_tab") ||
                 viewId.contains("creation_tab") ||
@@ -1469,6 +1825,27 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 t.endsWith("일 전") ||
                 t.endsWith("주 전") ||
                 Regex("""^\d+월\s*\d+일$""").matches(t)
+    }
+
+    private fun looksLikeCountOnlyText(text: String): Boolean {
+        val t = text.trim()
+        return Regex("""^\d{1,3}(,\d{3})+$""").matches(t) ||
+                Regex("""^\d+(\.\d+)?[kKmM만천]?$""").matches(t)
+    }
+
+    private fun isInstagramNonCommentUiText(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        if (lower.isBlank()) return true
+        return lower.contains("님의 스토리") ||
+                lower.contains("읽지 않은 스토리") ||
+                lower.contains("게시했습니다") ||
+                (lower.contains("게시물") && lower.contains("태그했습니다")) ||
+                (lower.contains("님의 사진") && lower.contains("좋아요") && lower.contains("댓글")) ||
+                (lower.contains("님의 동영상") && lower.contains("좋아요") && lower.contains("댓글")) ||
+                (lower.contains("님의 carousel") && lower.contains("좋아요") && lower.contains("댓글")) ||
+                lower.contains("photo을(를) 게시") ||
+                lower.contains("video을(를) 게시") ||
+                lower.contains("carousel을(를) 게시")
     }
 
     private fun looksLikeUsername(text: String): Boolean {

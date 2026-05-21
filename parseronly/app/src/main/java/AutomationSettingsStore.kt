@@ -99,7 +99,7 @@ object AutomationSettingsStore {
         return when (getPlatformMode(context)) {
             PLATFORM_YOUTUBE -> "YouTube only"
             PLATFORM_TIKTOK -> "TikTok only"
-            PLATFORM_INSTAGRAM -> "Instagram only"
+            PLATFORM_INSTAGRAM -> "Instagram parse-only"
             else -> "All platforms"
         }
     }

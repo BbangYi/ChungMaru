@@ -45,12 +45,12 @@ class MainActivity : Activity() {
             packageNames = listOf(YOUTUBE_PACKAGE)
         )
 
-        val instagramButton = createStartButton(
-            text = "Start Instagram Only",
-            platformMode = AutomationSettingsStore.PLATFORM_INSTAGRAM,
-            platformLabel = "Instagram",
-            packageNames = listOf(INSTAGRAM_PACKAGE)
-        )
+        val instagramButton = Button(this).apply {
+            text = "Open Instagram Parse Only"
+            setOnClickListener {
+                startInstagramParseOnly()
+            }
+        }
 
         val tiktokButton = createStartButton(
             text = "Start TikTok Only",
@@ -138,6 +138,20 @@ class MainActivity : Activity() {
         renderAutomationStatus()
         launchFirstAvailable(packageNames, platformLabel)
         Toast.makeText(this, "$platformLabel-only automation started", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun startInstagramParseOnly() {
+        AutomationSettingsStore.saveRotationIntervalMinutes(
+            this,
+            intervalInput.text?.toString().orEmpty()
+        )
+        AutomationSettingsStore.savePlatformMode(this, AutomationSettingsStore.PLATFORM_INSTAGRAM)
+        AutomationSettingsStore.savePlatformIndex(this, 0)
+        AutomationSettingsStore.setEnabled(this, false)
+        AutomationSettingsStore.saveStatus(this, "Instagram parse-only mode: open comments manually")
+        renderAutomationStatus()
+        launchFirstAvailable(listOf(INSTAGRAM_PACKAGE), "Instagram")
+        Toast.makeText(this, "Instagram parse-only mode", Toast.LENGTH_SHORT).show()
     }
 
     private fun renderAutomationStatus() {

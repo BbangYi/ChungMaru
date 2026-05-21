@@ -17,6 +17,20 @@ function Pull-RemoteDir([string]$remotePath, [string]$localPath) {
     adb pull "$remotePath/." "$localPath" | Out-Null
 }
 
+function Pull-RemoteFlatJsonFiles([string]$remotePath, [string]$localPath) {
+    if (-not (Test-RemoteDir $remotePath)) {
+        return
+    }
+    New-Item -ItemType Directory -Path $localPath -Force | Out-Null
+    $files = adb shell "find '$remotePath' -maxdepth 1 -type f -name '*.json' 2>/dev/null"
+    foreach ($file in $files) {
+        $remoteFile = $file.Trim()
+        if ($remoteFile) {
+            adb pull "$remoteFile" "$localPath" | Out-Null
+        }
+    }
+}
+
 New-Item -ItemType Directory -Path $desktopBase -Force | Out-Null
 
 $platforms = @("youtube", "instagram", "tiktok", "unknown")
@@ -28,5 +42,6 @@ foreach ($platform in $platforms) {
 # Backward compatibility: old flat layout files
 Pull-RemoteDir "$deviceBase/rawjson" (Join-Path $desktopBase "legacy\rawjson")
 Pull-RemoteDir "$deviceBase/cleanedjson" (Join-Path $desktopBase "legacy\cleanedjson")
+Pull-RemoteFlatJsonFiles "$deviceBase" (Join-Path $desktopBase "legacy\cleanedjson")
 
 Write-Host "Pulled parser results to: $desktopBase"
