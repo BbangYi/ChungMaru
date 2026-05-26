@@ -17,6 +17,7 @@ from normalizer import (
     normalize,
     collapse_repeats,
     compose_jamo,
+    convert_fullwidth,
     expand_chosung,
     remove_inserted_chars,
     remove_inserted_emoji,
@@ -38,6 +39,36 @@ class TestInvisibleRemoval(unittest.TestCase):
 
     def test_soft_hyphen(self):
         self.assertEqual("병신", normalize("병­신"))
+
+
+class TestFullwidthConversion(unittest.TestCase):
+    """0.5단계: 전각→반각 변환"""
+
+    def test_fullwidth_lowercase(self):
+        self.assertEqual("abc", convert_fullwidth("ａｂｃ"))
+
+    def test_fullwidth_uppercase(self):
+        self.assertEqual("ABC", convert_fullwidth("ＡＢＣ"))
+
+    def test_fullwidth_digits(self):
+        self.assertEqual("012", convert_fullwidth("０１２"))
+
+    def test_fullwidth_symbols(self):
+        self.assertEqual("!@#", convert_fullwidth("！＠＃"))
+
+    def test_fullwidth_space(self):
+        self.assertEqual("a b", convert_fullwidth("ａ　ｂ"))
+
+    def test_fullwidth_qwerty_pipeline(self):
+        # ｔｌｑｋｆ → tlqkf → (inko 없으면 qwerty치환) → 시발
+        self.assertEqual("시발", normalize("ｔｌｑｋｆ"))
+
+    def test_fullwidth_ssibal_pipeline(self):
+        # ｓｓｉｂａｌ → ssibal → (qwerty 미등록, inko 없으면) 원문 유지
+        self.assertEqual("ssibal", normalize("ｓｓｉｂａｌ"))
+
+    def test_normal_ascii_unchanged(self):
+        self.assertEqual("hello", convert_fullwidth("hello"))
 
 
 class TestInsertedCharRemoval(unittest.TestCase):

@@ -3,6 +3,7 @@
 
 적용 순서:
   0. invisible 유니코드 문자 제거 (ZW Space, BOM, Soft Hyphen 등 SNS 우회 삽입)
+  0.5. 전각→반각 변환 (ａ-ｚ, Ａ-Ｚ, ０-９, 전각기호 → ASCII)
   1. 영타→한글 변환 (inko)
   2. 유니코드 NFC 정규화
   3. 이모지 끼워넣기 제거 (한글 사이 삽입형만, 독립 이모지는 유지)
@@ -154,6 +155,7 @@ def normalize(text: str) -> str:
         return text
 
     result = _RE_INVISIBLE.sub("", text)        # 0) invisible 제거
+    result = convert_fullwidth(result)           # 0.5) 전각→반각
     result = convert_engtypo(result)             # 1) 영타→한글
     result = unicodedata.normalize("NFC", result)# 2) NFC
     result = remove_inserted_emoji(result)       # 3) 이모지 삽입 제거
@@ -180,6 +182,24 @@ def normalize(text: str) -> str:
 # ---------------------------------------------------------------------------
 # 내부 처리 함수
 # ---------------------------------------------------------------------------
+
+def convert_fullwidth(text: str) -> str:
+    """전각 문자 → 반각(ASCII) 변환.
+
+    U+FF01-FF5E (전각 기호/영숫자) → U+0021-U+007E (ASCII 대응 문자, 0xFEE0 감산)
+    U+3000 (이상적 공백, 전각 스페이스) → U+0020 (공백)
+    """
+    result = []
+    for ch in text:
+        cp = ord(ch)
+        if 0xFF01 <= cp <= 0xFF5E:
+            result.append(chr(cp - 0xFEE0))
+        elif cp == 0x3000:
+            result.append(' ')
+        else:
+            result.append(ch)
+    return ''.join(result)
+
 
 def convert_engtypo(text: str) -> str:
     """영문 키보드로 잘못 입력된 한글을 변환 (inko 미설치 시 원문 반환)."""
