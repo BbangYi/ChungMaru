@@ -308,6 +308,12 @@ PROFANITY_SUPERVISED: frozenset = frozenset({
     # 이 소스의 profanity 신호를 학습에 포함하면 한국어 toxic 댓글에 FP 폭발
 })
 
+# jigsaw_toxic_relabeled: T 라벨 신뢰도 낮음 (Wikipedia 편집 분쟁 → SNS 독성과 이질적)
+# EDA 결과 T 비율 9.6% → 18.2% 과대계상. P/H만 사용.
+_T_MASKED_SOURCES: frozenset = frozenset({
+    "jigsaw_toxic_relabeled",
+})
+
 
 def get_label_mask(source: str) -> List[int]:
     """소스별 학습 마스크 [P_mask, T_mask, H_mask].
@@ -316,4 +322,5 @@ def get_label_mask(source: str) -> List[int]:
     1 = 정상 학습.
     """
     p = 1 if source in PROFANITY_SUPERVISED else 0
-    return [p, 1, 1]
+    t = 0 if source in _T_MASKED_SOURCES else 1
+    return [p, t, 1]
