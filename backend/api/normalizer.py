@@ -3,6 +3,8 @@
 - 영타→한글 변환 (inko)
 - 반복 문자 축약
 - 특수문자/숫자 끼워넣기 제거
+- 이모지 끼워넣기 제거 (한글 사이 삽입형만, 독립 이모지는 유지)
+- 일본어(히라가나/가타카나) 끼워넣기 제거 (한글 사이 삽입형만)
 - 초성 분리 처리
 """
 import re
@@ -14,106 +16,150 @@ try:
 except ImportError:
     _inko = None
 
-QWERTY_SIBAL_PATTERN = r"t(?:l|i|1)(?:q|a|g|4)k(?:f|q)?|11\s*k?t"
-LATIN_LEFT_BOUNDARY = r"(?<![A-Za-z0-9])"
-LATIN_RIGHT_BOUNDARY = r"(?![A-Za-z0-9])"
-ASCII_PROFANITY_MARKERS = re.compile(
-    LATIN_LEFT_BOUNDARY +
+
+# ---------------------------------------------------------------------------
+# 정규식 상수 (모듈 로드 시 1회 컴파일)
+# ---------------------------------------------------------------------------
+
+# 한글 완성형 + 자모 낱자
+_HANGUL = r"[가-힣ㄱ-ㅎㅏ-ㅣ]"
+
+# 이모지/기호 유니코드 범위
+# - U+1F300–U+1FAFF : SMP 이모지 (그림 기호, 감정, 교통 등)
+# - U+2600–U+27BF   : BMP 기타 기호 + 딩뱃 (☀♥✂ 등)
+# - U+FE0E\uFE0F    : 변형 선택자 (텍스트↔이모지 전환)
+# - U+200D          : ZWJ (Zero Width Joiner, 복합 이모지 결합자)
+# 수량자 +로 ZWJ 시퀀스·연속 이모지를 한 덩어리로 처리
+_EMOJI_BLOCK = (
     r"(?:"
-    r"s{1,2}[\W_]*(?:h[\W_]*)?i[\W_]*b[\W_]*a[\W_]*l|"
-    + QWERTY_SIBAL_PATTERN +
-    r"|"
-    r"q[\W_]*u[\W_]*d[\W_]*t[\W_]*l[\W_]*s|qudtkf|"
-    r"by[eou]+ng[\W_]*s?in|gae[\W_]*s(?:ae|e|a)[\W_]*k{1,2}i|rotori|"
-    r"jiral|wlfkf|jonna|whssk|michin|alcls|k{1,2}eoj(?:ye)?o|rjwu|"
-    r"f[\W_]*u[\W_]*c[\W_]*k|s[\W_]*h[\W_]*i[\W_]*t|"
-    r"b[\W_]*i[\W_]*t[\W_]*c[\W_]*h|bastard|asshole|"
-    r"dick|pussy|slut|whore|cunt|prick|twat|wanker|mother[\W_]*fucker|douchebag|"
-    r"puta|puto|mierda|joder|cabron|cabr[oó]n|pendejo|gilipollas|co[nñ]o|chingad[ao]|maric[oó]n|"
-    r"putain|merde|connard|salope|encul[eé]|ta[\W_]+gueule|nique[\W_]+ta[\W_]+m[eè]re|"
-    r"schei(?:ss|ß)e|arschloch|wichser|fotze|"
-    r"porra|caralho|viado|"
-    r"orospu|siktir|"
-    r"nigg(?:er|a)|faggot|retard"
-    r")" +
-    LATIN_RIGHT_BOUNDARY,
-    re.IGNORECASE,
-)
-NON_ASCII_PROFANITY_MARKERS = re.compile(
-    r"(?:"
-    r"くそ|クソ|馬鹿|バカ|死ね|"
-    r"操你妈|草你妈|傻逼|他妈的|去死|"
-    r"бля(?:дь|ть)?|сука|хуй|пизд[аеуы]?|еба(?:ть|н[а-я]*)|мудак|долбо[её]б|"
-    r"كسمك|كس امك|ابن الكلب"
-    r")",
-    re.IGNORECASE,
+    r"[\U0001F300-\U0001FAFF]"
+    r"|[\u2600-\u27BF]"
+    r"|[\uFE0E\uFE0F]"
+    r"|[\u200D]"
+    r")+"
 )
 
+# 히라가나: U+3041–U+3096, 가타카나: U+30A0–U+30FF
+# 수량자 +로 히라가나+가타카나 연속 삽입도 한 번에 처리
+_KANA_BLOCK = r"[\u3041-\u3096\u30A0-\u30FF]+"
+
+# 기존 특수문자/숫자 끼워넣기 패턴 (이모지·가나는 전용 함수에서 처리했으므로 제외)
+_INSERTED_MISC = (
+    r"[^가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z\s"
+    r"\U0001F300-\U0001FAFF"
+    r"\u2600-\u27BF"
+    r"\uFE0E\uFE0F\u200D"
+    r"\u3041-\u3096\u30A0-\u30FF"
+    r"]"
+)
+
+_RE_EMOJI_INSERT    = re.compile(rf"({_HANGUL}){_EMOJI_BLOCK}({_HANGUL})")
+_RE_KANA_INSERT     = re.compile(rf"({_HANGUL}){_KANA_BLOCK}({_HANGUL})")
+_RE_MISC_INSERT     = re.compile(rf"({_HANGUL}){_INSERTED_MISC}({_HANGUL})")
+_RE_COLLAPSE_REPEAT = re.compile(r"(.)\1{2,}")
+_RE_VOWEL_FILLER    = re.compile(r"([이으아어우오])\1+")
+_RE_WHITESPACE      = re.compile(r"\s+")
+
+
+# ---------------------------------------------------------------------------
+# 공개 API
+# ---------------------------------------------------------------------------
 
 def normalize(text: str) -> str:
-    """텍스트 정규화 파이프라인. 원문을 정규화된 텍스트로 변환."""
+    """텍스트 정규화 파이프라인. 원문을 정규화된 텍스트로 변환.
+
+    실행 순서:
+        1) 영타 → 한글 변환
+        2) 유니코드 NFC 정규화 (ZWJ 시퀀스 정합성 보장)
+        3) 이모지 끼워넣기 제거 (한글 사이 삽입형만)
+        4) 가나 끼워넣기 제거 (한글 사이 삽입형만)
+        5) 특수문자/숫자 끼워넣기 제거
+        6) 반복 문자 축약
+        7) 공백 정리
+    """
     result = text
 
-    # 1) 영타 → 한글 변환
     result = convert_engtypo(result)
-
-    # 2) 유니코드 정규화
     result = unicodedata.normalize("NFC", result)
-
-    # 3) 특수문자 끼워넣기 제거 (한글 사이의 ., !, *, 숫자 등)
+    result = remove_inserted_emoji(result)
+    result = remove_inserted_kana(result)
     result = remove_inserted_chars(result)
-
-    # 4) 반복 문자 축약 ("씨이이이발" → "씨발", "ㅋㅋㅋㅋ" → "ㅋㅋ")
     result = collapse_repeats(result)
-
-    # 5) 공백 정리
-    result = re.sub(r"\s+", " ", result).strip()
+    result = _RE_WHITESPACE.sub(" ", result).strip()
 
     return result
 
 
+# ---------------------------------------------------------------------------
+# 내부 처리 함수
+# ---------------------------------------------------------------------------
+
 def convert_engtypo(text: str) -> str:
-    """영문 키보드로 입력된 한글을 변환"""
+    """영문 키보드로 잘못 입력된 한글을 변환 (inko 미설치 시 원문 반환)."""
     if _inko is None:
         return text
-    if ASCII_PROFANITY_MARKERS.search(text or "") or NON_ASCII_PROFANITY_MARKERS.search(text or ""):
-        return text
-    converted = _inko.en2ko(text)
-    return converted
+    return _inko.en2ko(text)
+
+
+def remove_inserted_emoji(text: str) -> str:
+    """한글 글자 사이에 삽입된 이모지/기호 시퀀스를 제거.
+
+    제거: 한글(앞) + 이모지 1개 이상 + 한글(뒤)  →  병🖕신 → 병신
+    유지: 공백·구두점으로 분리된 독립 이모지 토큰  →  "좋아요 👍" 그대로
+
+    엣지케이스: ZWJ 복합 이모지(👨‍👩‍👧), 변형 선택자(☀️), 연속 이모지 모두 처리.
+    변경 없으면 조기 종료 (최대 4회).
+    """
+    result = text
+    for _ in range(4):
+        new = _RE_EMOJI_INSERT.sub(r"\1\2", result)
+        if new == result:
+            break
+        result = new
+    return result
+
+
+def remove_inserted_kana(text: str) -> str:
+    """한글 글자 사이에 삽입된 히라가나/가타카나를 제거.
+
+    제거: 한글(앞) + 가나 1자 이상 + 한글(뒤)  →  병バ신 → 병신
+    유지: 순수 일본어 댓글, 공백으로 분리된 가나   →  "バカ 진짜" 그대로
+
+    엣지케이스: 히라가나+가타카나 혼용(병ひカ신 → 병신), 연속 가나.
+    변경 없으면 조기 종료 (최대 4회).
+    """
+    result = text
+    for _ in range(4):
+        new = _RE_KANA_INSERT.sub(r"\1\2", result)
+        if new == result:
+            break
+        result = new
+    return result
 
 
 def remove_inserted_chars(text: str) -> str:
-    """한글 글자 사이에 끼워넣은 특수문자/숫자를 제거
-    예: 병.신 → 병신, 시1발 → 시발, 개★새끼 → 개새끼
+    """한글 글자 사이에 끼워넣은 특수문자/숫자를 제거.
+
+    이모지·가나는 전용 함수가 이미 처리했으므로 _INSERTED_MISC에서 제외.
+    변경 없으면 조기 종료 (최대 4회).
+
+    예: 병.신 → 병신, 시1발 → 시발, 개★새끼 → 개새끼, 병..신 → 병신
     """
-    # 한글 범위: 가-힣, 자음: ㄱ-ㅎ, 모음: ㅏ-ㅣ
-    hangul = r"[가-힣ㄱ-ㅎㅏ-ㅣ]"
-    # 한글 사이의 비한글/비공백 단일 문자 제거
-    result = re.sub(
-        f"({hangul})[^가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z\\s]({hangul})",
-        r"\1\2",
-        text
-    )
-    # 두 번 적용 (연속된 끼워넣기: 병..신)
-    result = re.sub(
-        f"({hangul})[^가-힣ㄱ-ㅎㅏ-ㅣa-zA-Z\\s]({hangul})",
-        r"\1\2",
-        result
-    )
+    result = text
+    for _ in range(4):
+        new = _RE_MISC_INSERT.sub(r"\1\2", result)
+        if new == result:
+            break
+        result = new
     return result
 
 
 def collapse_repeats(text: str) -> str:
-    """반복 문자 축약
-    - 동일 문자 3회 이상 → 2회로 (ㅋㅋㅋㅋ → ㅋㅋ)
-    - 모음 늘리기 축약 (씨이이발 → 씨발)
+    """반복 문자 축약.
+
+    - 동일 문자 3회 이상 → 1회 (ㅋㅋㅋㅋ → ㅋ)
+    - 한글 모음 늘리기 → 1회 (씨이이이발 → 씨이발)
     """
-    # 동일 문자 3회 이상 반복 → 1회로 (욕설 매칭을 위해)
-    result = re.sub(r"(.)\1{2,}", r"\1", text)
-
-    # 한글 모음 늘리기 제거: 씨이이발 → 씨발
-    # "이", "으", "아" 등이 반복 삽입된 경우
-    vowel_fillers = r"[이으아어우오]"
-    result = re.sub(f"({vowel_fillers})\\1+", r"\1", result)
-
+    result = _RE_COLLAPSE_REPEAT.sub(r"\1", text)
+    result = _RE_VOWEL_FILLER.sub(r"\1", result)
     return result
