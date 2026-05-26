@@ -49,9 +49,6 @@ class TestInsertedCharRemoval(unittest.TestCase):
     def test_number_between_hangul(self):
         self.assertEqual("시발", remove_inserted_chars("시1발"))
 
-    def test_star_between_hangul(self):
-        self.assertEqual("개새끼", remove_inserted_chars("개★새끼"))
-
     def test_consecutive_special(self):
         self.assertEqual("병신", remove_inserted_chars("병..신"))
 
@@ -68,6 +65,10 @@ class TestInsertedEmojiRemoval(unittest.TestCase):
 
     def test_multiple_emoji(self):
         self.assertEqual("병신", remove_inserted_emoji("병🖕💀신"))
+
+    def test_star_between_hangul(self):
+        # ★ (U+2605) 은 ☀-➿ 범위 → emoji 제거가 처리
+        self.assertEqual("개새끼", remove_inserted_emoji("개★새끼"))
 
     def test_standalone_emoji_preserved(self):
         # 독립 이모지는 유지

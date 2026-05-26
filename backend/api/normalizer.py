@@ -66,7 +66,7 @@ _RE_INVISIBLE = re.compile(
 
 _RE_EMOJI_INSERT    = re.compile(rf"({_HANGUL}){_EMOJI_BLOCK}({_HANGUL})")
 _RE_KANA_INSERT     = re.compile(rf"({_HANGUL}){_KANA_BLOCK}({_HANGUL})")
-_RE_MISC_INSERT     = re.compile(rf"({_HANGUL}){_INSERTED_MISC}({_HANGUL})")
+_RE_MISC_INSERT     = re.compile(rf"({_HANGUL}){_INSERTED_MISC}+({_HANGUL})")
 _RE_COLLAPSE_REPEAT = re.compile(r"(.)\1{2,}")
 _RE_VOWEL_FILLER    = re.compile(r"([이으아어우오])\1+")
 _RE_WHITESPACE      = re.compile(r"\s+")
