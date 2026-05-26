@@ -7,6 +7,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 OUTPUT_PATH = DATA_DIR / "site_intel_seed_massive.json"
+TARGET_TOTAL = 5000
+TARGET_CATEGORIES = [
+    "phishing",
+    "adult",
+    "corporate",
+    "gambling",
+    "malware",
+    "piracy",
+    "developer",
+    "community",
+    "education",
+    "finance",
+    "blog-platform",
+    "ugc-platform",
+]
+CATEGORY_ALIASES = {
+    "ai-service": "corporate",
+    "cloud": "developer",
+    "commerce": "corporate",
+    "news": "corporate",
+    "portal": "corporate",
+    "reference": "education",
+    "search": "corporate",
+    "security-service": "developer",
+    "video-platform": "corporate",
+}
 
 
 def load_existing_domains() -> set[str]:
@@ -85,6 +111,93 @@ def block_entry(domain: str, title: str, summary: str, category: str, region: st
         "indicators": indicators,
         "risk_types": risk_types,
     }
+
+
+def target_counts() -> dict[str, int]:
+    base = TARGET_TOTAL // len(TARGET_CATEGORIES)
+    remainder = TARGET_TOTAL % len(TARGET_CATEGORIES)
+    return {
+        category: base + (1 if idx < remainder else 0)
+        for idx, category in enumerate(TARGET_CATEGORIES)
+    }
+
+
+def normalize_category(entry: dict) -> None:
+    category = str(entry.get("category") or "").strip()
+    normalized = CATEGORY_ALIASES.get(category, category)
+    if normalized not in TARGET_CATEGORIES:
+        normalized = "community"
+    entry["category"] = normalized
+    tags = list(entry.get("tags") or [])
+    if normalized not in tags:
+        tags.insert(0, normalized)
+    entry["tags"] = tags
+
+
+def synthetic_entry(category: str, index: int) -> dict:
+    slug = category.replace("-", "")
+    padded = f"{index:04d}"
+    if category == "phishing":
+        brand = ["naver", "kakao", "toss", "coupang", "paypal", "google"][index % 6]
+        domain = f"{brand}-secure-check-{padded}.account"
+        return block_entry(domain, f"{brand.title()} Secure Check {padded}", "로그인·계정 확인을 사칭하는 피싱형 합성 시드 도메인.", category, "global", "multi", ["phishing", "credential", "synthetic-seed"], [brand, f"{brand} phishing"], ["credential harvesting", "brand impersonation"], ["phishing", "credential-theft"], True, False)
+    if category == "adult":
+        domain = f"adult-stream-{padded}.video"
+        return block_entry(domain, f"Adult Stream {padded}", "성인용 노골적 영상 또는 라이브 콘텐츠 접근을 유도하는 합성 시드 도메인.", category, "global", "en", ["adult", "explicit", "synthetic-seed"], [f"adult stream {padded}"], ["explicit adult content"], ["adult-content"], False, True)
+    if category == "corporate":
+        domain = f"official-service-{padded}.com"
+        return allow_entry(domain, f"Official Service {padded}", "일반 기업·서비스 공식 도메인 패턴으로 구성한 허용 합성 시드.", category, "global", "en", ["corporate", "official", "synthetic-seed"], [f"official service {padded}"], ["official service domain"])
+    if category == "gambling":
+        domain = f"bet-casino-{padded}.bet"
+        return block_entry(domain, f"Bet Casino {padded}", "온라인 베팅·카지노 참여를 유도하는 도박 합성 시드 도메인.", category, "global", "multi", ["gambling", "casino", "synthetic-seed"], [f"bet casino {padded}"], ["sports betting", "casino wagering"], ["gambling"], False, True)
+    if category == "malware":
+        domain = f"free-crack-loader-{padded}.download"
+        return block_entry(domain, f"Free Crack Loader {padded}", "크랙·키젠·비공식 설치 파일 배포를 가장한 악성코드 합성 시드 도메인.", category, "global", "en", ["malware", "crack", "synthetic-seed"], [f"crack loader {padded}"], ["malware distribution", "unofficial installer"], ["malware", "trojan-distribution"], True, False)
+    if category == "piracy":
+        domain = f"torrent-index-{padded}.site"
+        return warning_entry(domain, f"Torrent Index {padded}", "토렌트·비공식 배포 링크 접근을 유도하는 저작권 침해 우려 합성 시드.", category, "global", "en", ["piracy", "torrent", "synthetic-seed"], [f"torrent index {padded}"], ["torrent indexing", "piracy risk"], ["piracy"], True)
+    if category == "developer":
+        domain = f"dev-docs-{padded}.dev"
+        return allow_entry(domain, f"Developer Docs {padded}", "개발 문서·패키지·기술 서비스 도메인 패턴으로 구성한 허용 합성 시드.", category, "global", "en", ["developer", "docs", "synthetic-seed"], [f"developer docs {padded}"], ["developer documentation"])
+    if category == "community":
+        domain = f"open-community-{padded}.forum"
+        return warning_entry(domain, f"Open Community {padded}", "사용자 생성 콘텐츠와 게시판별 편차가 있는 커뮤니티 합성 시드.", category, "global", "multi", ["community", "ugc", "synthetic-seed"], [f"open community {padded}"], ["user generated content", "content variability"], ["harmful-content"], True)
+    if category == "education":
+        domain = f"learning-campus-{padded}.edu"
+        return allow_entry(domain, f"Learning Campus {padded}", "교육·강좌·대학 도메인 패턴으로 구성한 허용 합성 시드.", category, "global", "en", ["education", "learning", "synthetic-seed"], [f"learning campus {padded}"], ["education platform"])
+    if category == "finance":
+        domain = f"finance-service-{padded}.com"
+        return allow_entry(domain, f"Finance Service {padded}", "금융·결제·핀테크 공식 서비스 패턴으로 구성한 허용 합성 시드.", category, "global", "en", ["finance", "trusted", "synthetic-seed"], [f"finance service {padded}"], ["financial service domain"])
+    if category == "blog-platform":
+        domain = f"creator-blog-{padded}.blog"
+        return warning_entry(domain, f"Creator Blog {padded}", "작성자별 내용 편차가 큰 블로그 호스팅 합성 시드.", category, "global", "multi", ["blog-platform", "ugc", "synthetic-seed"], [f"creator blog {padded}"], ["user hosted page", "individual page variability"], [], False)
+    domain = f"ugc-channel-{padded}.social"
+    return warning_entry(domain, f"UGC Channel {padded}", "사용자 생성 콘텐츠 비중이 높아 개별 페이지 검증이 필요한 합성 시드.", category, "global", "multi", ["ugc-platform", "ugc", "synthetic-seed"], [f"ugc channel {padded}"], ["user generated content", "content variability"], ["harmful-content"], True)
+
+
+def balance_entries(entries: list[dict], seen: set[str]) -> None:
+    targets = target_counts()
+    buckets: dict[str, list[dict]] = {category: [] for category in TARGET_CATEGORIES}
+    for entry in entries:
+        normalize_category(entry)
+        category = str(entry["category"])
+        if len(buckets[category]) < targets[category]:
+            buckets[category].append(entry)
+
+    balanced: list[dict] = []
+    for category in TARGET_CATEGORIES:
+        balanced.extend(buckets[category])
+    entries[:] = balanced
+
+    counts = {category: len(buckets[category]) for category in TARGET_CATEGORIES}
+    for category in TARGET_CATEGORIES:
+        index = 1
+        while counts[category] < targets[category]:
+            before = len(entries)
+            push(entries, seen, synthetic_entry(category, index))
+            if len(entries) > before:
+                counts[category] += 1
+            index += 1
 
 
 def build_allow_entries(entries: list[dict], seen: set[str]) -> None:
@@ -298,7 +411,17 @@ def build_gambling_entries(entries: list[dict], seen: set[str]) -> None:
         ("safe-bet-korea.kr", "세이프벳 코리아"),
         ("score-premium-toto.kr", "스코어 프리미엄 토토"),
         ("power-casino-choice.kr", "파워 카지노 초이스"),
-        ("match-betting-king.kr", "매치 베팅킹")
+        ("match-betting-king.kr", "매치 베팅킹"),
+        ("mt-safe-toto.kr", "먹튀검증 세이프 토토"),
+        ("toto-major-choice.co.kr", "토토 메이저 초이스"),
+        ("private-sports-toto.kr", "프라이빗 스포츠 토토"),
+        ("live-score-toto365.kr", "라이브 스코어 토토365"),
+        ("black-market-toto.kr", "블랙마켓 토토"),
+        ("korea-powerball-toto.kr", "코리아 파워볼 토토"),
+        ("sureman-toto-pick.kr", "슈어맨 토토픽"),
+        ("toto-vip-room.kr", "토토 VIP 룸"),
+        ("safe-odds-toto.kr", "세이프 배당 토토"),
+        ("sports-toto-secret.kr", "스포츠 토토 시크릿")
     ]
     for domain, title in kr_examples:
         push(
@@ -335,7 +458,17 @@ def build_piracy_entries(entries: list[dict], seen: set[str]) -> None:
         ("pirateproxy.live", "Pirate Proxy Live"),
         ("magnetdl.com", "MagnetDL"),
         ("torlock.com", "Torlock"),
-        ("zooqle.com", "Zooqle")
+        ("zooqle.com", "Zooqle"),
+        ("newtoon-webtoon.kr", "뉴툰 웹툰"),
+        ("blacktoon-viewer.kr", "블랙툰 뷰어"),
+        ("copytoon-plus.kr", "카피툰 플러스"),
+        ("toonkor-mirror.kr", "툰코 미러"),
+        ("manatoki-archive.kr", "마나토끼 아카이브"),
+        ("webtoon-free-room.kr", "웹툰 무료방"),
+        ("toon-leak-hub.kr", "툰 리크 허브"),
+        ("illegal-toon-share.kr", "불법툰 공유"),
+        ("night-webtoon-view.kr", "야간 웹툰 보기"),
+        ("raw-manga-webtoon.kr", "원본 만화 웹툰")
     ]
     for domain, title in domains:
         push(
@@ -344,13 +477,13 @@ def build_piracy_entries(entries: list[dict], seen: set[str]) -> None:
             warning_entry(
                 domain,
                 title,
-                "토렌트 인덱싱, 불법 복제 소프트웨어 또는 비공식 배포 링크 접근을 유도하는 사이트로 분류된다.",
+                "토렌트, 불법 웹툰, 불법 복제 소프트웨어 또는 비공식 배포 링크 접근을 유도하는 사이트로 분류된다.",
                 "piracy",
                 "global",
-                "en",
-                ["torrent", "piracy", "download"],
+                "multi",
+                ["torrent", "piracy", "download", "illegal-webtoon"],
                 [title.lower()],
-                ["torrent indexing", "copyright infringement risk"],
+                ["torrent indexing", "illegal webtoon distribution", "copyright infringement risk"],
                 ["piracy"],
                 harmful=True,
             ),
@@ -720,6 +853,7 @@ def main() -> int:
     build_bulk_piracy_entries(entries, seen)
     build_phishing_entries(entries, seen)
     build_malware_entries(entries, seen)
+    balance_entries(entries, seen)
 
     OUTPUT_PATH.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
