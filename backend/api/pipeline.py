@@ -11,6 +11,7 @@
   Android App      → analyze_android_batch()           JSON + boundsInScreen 입력/출력
 """
 import os
+import re
 from difflib import SequenceMatcher
 
 from normalizer import normalize
@@ -50,6 +51,103 @@ def _build_norm_to_orig_map(original: str, normalized: str) -> list[int]:
             n2o[i] = last
 
     return n2o
+
+# ---------------------------------------------------------------------------
+# 직접 탐지용 상수 (모델 불필요)
+# ---------------------------------------------------------------------------
+
+# ASCII 욕설 패턴 집합: qwerty 오타 + 로마자 표기 (원문 직접 탐지에 사용)
+_ASCII_PROFANITY_SET: frozenset = frozenset({
+    "rotorrl", "tlqkfwk", "tlqkf", "qudtls", "wlfkf",
+    "alcls", "rjwu", "tnwjd", "ehfkdl", "whssk",
+    "ssibal", "ssibbal", "sibal", "shibal", "shiball",
+    "gaesaekki", "gaesaeki", "kaesaekki",
+    "byeongsin", "byungsin", "jiral", "michin",
+})
+
+# 한국어 욕설 사전 (정규화 텍스트 → 원문 위치 역매핑용), 긴 것 우선
+_KO_PROFANITY_DICT: tuple = tuple(sorted([
+    "개새끼", "씨발", "시발", "병신", "지랄",
+    "미쳤", "미친", "꺼져", "새끼", "존나", "닥쳐", "좆",
+], key=len, reverse=True))
+
+_RE_ASCII_WORD = re.compile(r"[a-zA-Z]+")
+
+
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein 편집 거리."""
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev = dp[:]
+        dp[0] = i
+        for j in range(1, n + 1):
+            dp[j] = prev[j - 1] if a[i - 1] == b[j - 1] else 1 + min(prev[j - 1], prev[j], dp[j - 1])
+    return dp[n]
+
+
+def _extract_original_direct_spans(text: str) -> list[dict]:
+    """원문에서 ASCII 욕설 토큰(qwerty/roman)을 직접 탐지.
+
+    1) _ASCII_PROFANITY_SET 과 정확히 일치(대소문자 무시)
+    2) 4-9자 단어에 한해 알려진 패턴과 편집 거리 1 이하인 경우
+    """
+    spans = []
+    for m in _RE_ASCII_WORD.finditer(text):
+        word = m.group()
+        wl = word.lower()
+        if wl in _ASCII_PROFANITY_SET:
+            spans.append({"text": word, "start": m.start(), "end": m.end(), "score": 1.0})
+            continue
+        if 4 <= len(wl) <= 9:
+            for known in _ASCII_PROFANITY_SET:
+                if abs(len(wl) - len(known)) <= 1 and _edit_distance(wl, known) <= 1:
+                    spans.append({"text": word, "start": m.start(), "end": m.end(), "score": 0.7})
+                    break
+    return spans
+
+
+def _extract_dictionary_spans(text: str, normalized: str, mapping: list) -> list[dict]:
+    """정규화 텍스트에서 알려진 한국어 욕설을 탐지, 원문 위치로 역매핑."""
+    spans = []
+    for word in _KO_PROFANITY_DICT:
+        pos = 0
+        while True:
+            idx = normalized.find(word, pos)
+            if idx == -1:
+                break
+            end = idx + len(word)
+            if mapping and idx < len(mapping) and end <= len(mapping):
+                orig_start = mapping[idx]
+                orig_end = mapping[end - 1] + 1
+            else:
+                orig_start, orig_end = idx, end
+            spans.append({
+                "text": text[orig_start:orig_end],
+                "start": orig_start,
+                "end": orig_end,
+                "score": 1.0,
+            })
+            pos = idx + 1
+    return spans
+
+
+def _merge_spans(spans: list[dict], text: str) -> list[dict]:
+    """겹치는 span을 병합하고 원문 순서로 반환."""
+    if not spans:
+        return []
+    ordered = sorted(spans, key=lambda s: s["start"])
+    merged = [dict(ordered[0])]
+    for s in ordered[1:]:
+        last = merged[-1]
+        if s["start"] < last["end"]:
+            if s["end"] > last["end"]:
+                last["end"] = s["end"]
+                last["text"] = text[last["start"]:last["end"]]
+        else:
+            merged.append(dict(s))
+    return merged
+
 
 # 모델 경로: 환경변수 > 기본값(backend/ 기준)
 BASE = os.environ.get("MODEL_BASE", os.path.join(os.path.dirname(__file__), ".."))

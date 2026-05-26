@@ -2,22 +2,24 @@
 텍스트 정규화 파이프라인 (v3 통합).
 
 적용 순서:
-  0. invisible 유니코드 문자 제거 (ZW Space, BOM, Soft Hyphen 등 SNS 우회 삽입)
+  0.   invisible 유니코드 문자 제거 (ZW Space, BOM, Soft Hyphen 등 SNS 우회 삽입)
   0.5. 전각→반각 변환 (ａ-ｚ, Ａ-Ｚ, ０-９, 전각기호 → ASCII)
-  1. 영타→한글 변환 (inko)
-  2. 유니코드 NFC 정규화
-  3. 이모지 끼워넣기 제거 (한글 사이 삽입형만, 독립 이모지는 유지)
-  4. 가나 끼워넣기 제거 (한글 사이 삽입형만)
-  5. 특수문자/숫자 끼워넣기 제거
-  6. 반복 문자 축약
-  7. 자모 조립 (ㅅㅣㅂㅏㄹ→시발, 공백 분리 자모도 처리)
-  8. 초성 전사 (ㅅㅂ→씨발, ㅂㅅ→병신, ㅈㄹ→지랄 등)
-  9. 공백 정리
+  0.8. 로마자 욕설 역변환 (ssibal→씨발, byeongsin→병신 등, inko 이전에 처리)
+  1.   영타→한글 변환 (inko)
+  2.   유니코드 NFC 정규화
+  3.   이모지 끼워넣기 제거 (한글 사이 삽입형만, 독립 이모지는 유지)
+  4.   가나 끼워넣기 제거 (한글 사이 삽입형만)
+  5.   특수문자/숫자 끼워넣기 제거
+  5.5. 자모+음절 혼합 패턴 정규화 (ㅅ발→씨발, 씨8→씨발 등)
+  6.   반복 문자 축약
+  7.   자모 조립 (ㅅㅣㅂㅏㄹ→시발, 공백 분리 자모도 처리)
+  8.   초성 전사 (ㅅㅂ→씨발, ㅂㅅ→병신, ㅈㄹ→지랄 등)
+  9.   공백 정리
   --- v3 추가 ---
- 10. 공백 삽입 우회 병합 (새 끼→새끼, 씨 발→씨발)
- 11. 복합 자모 초성 보완 (ㅄ→병신)
- 12. qwerty 욕설 단어 직접 치환 (tlqkf→시발, rotorrl→개새끼 등)
- 13. 변형 철자 → 표준형 (씨빨→씨발, 빙신→병신 등)
+ 10.   공백 삽입 우회 병합 (새 끼→새끼, 씨 발→씨발)
+ 11.   복합 자모 초성 보완 (ㅄ→병신)
+ 12.   qwerty 욕설 단어 직접 치환 (tlqkf→시발, rotorrl→개새끼 등)
+ 13.   변형 철자 → 표준형 (씨빨→씨발, 빙신→병신 등)
 
 train / inference 양쪽에서 동일하게 호출 필수.
 """
@@ -122,6 +124,38 @@ _QWERTY_PROFANITY_RE: list[tuple[re.Pattern, str]] = [
     (re.compile(r"rjwu(?![a-zA-Z])",    re.IGNORECASE), "꺼져"),
     (re.compile(r"tnwjd(?![a-zA-Z])",   re.IGNORECASE), "씨발"),
     (re.compile(r"ehfkdl(?![a-zA-Z])",  re.IGNORECASE), "도라이"),
+    (re.compile(r"whssk(?![a-zA-Z])",   re.IGNORECASE), "존나"),
+]
+
+# ── v3: 로마자 욕설 역변환 (step 0.8, inko 이전) ──────────────────────────
+# inko는 영타(qwerty)→한글 변환; 발음 기반 로마자(ssibal 등)는 별도 처리 필요.
+# inko 이전에 적용해야 로마자가 잘못된 한글로 변환되는 것을 방지.
+_ROMAN_PROFANITY_RE: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bgaesaek+[iy]\b",  re.I), "개새끼"),
+    (re.compile(r"\bkaesaek+[iy]\b",  re.I), "개새끼"),
+    (re.compile(r"\bssib+al\b",       re.I), "씨발"),
+    (re.compile(r"\bshib+al\b",       re.I), "씨발"),
+    (re.compile(r"\bsib+al\b",        re.I), "씨발"),
+    (re.compile(r"\bbyeongsh?in\b",   re.I), "병신"),
+    (re.compile(r"\bbyungsh?in\b",    re.I), "병신"),
+    (re.compile(r"\bjiral\b",         re.I), "지랄"),
+    (re.compile(r"\bmichin\b",        re.I), "미친"),
+    (re.compile(r"\bmichyeot\b",      re.I), "미쳤"),
+    (re.compile(r"\bkkeojyeo\b",      re.I), "꺼져"),
+    (re.compile(r"\bjonna\b",         re.I), "존나"),
+]
+
+# ── v3: 자모+음절 혼합 및 숫자 말미 대체 (step 5.5) ───────────────────────
+# remove_inserted_chars 후 남은 패턴 처리.
+# (예) ㅅ1발 → step5: ㅅ발 → step5.5: 씨발
+# (예) 씨8  → step5: 통과  → step5.5: 씨발 (8이 말미에서 발 대체)
+# FP 방지: 전체 음절로만 이어지는 패턴(ㅂ신용)은 제외하고 안전한 것만 추가.
+_PARTIAL_SYLLABLE_RE: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"ㅅ발"),                                "씨발"),
+    (re.compile(r"씨ㅂ"),                                "씨발"),
+    (re.compile(r"개ㅅ끼"),                              "개새끼"),
+    (re.compile(r"ㅈ랄"),                                "지랄"),
+    (re.compile(r"씨\s*8(?![가-힣ㄱ-ㅎㅏ-ㅣ\d])"),    "씨발"),
 ]
 
 # ── v3: 변형 철자 → 표준형 ───────────────────────────────────────────────
@@ -156,11 +190,15 @@ def normalize(text: str) -> str:
 
     result = _RE_INVISIBLE.sub("", text)        # 0) invisible 제거
     result = convert_fullwidth(result)           # 0.5) 전각→반각
+    for pat, rep in _ROMAN_PROFANITY_RE:        # 0.8) 로마자 욕설 역변환 (inko 이전)
+        result = pat.sub(rep, result)
     result = convert_engtypo(result)             # 1) 영타→한글
     result = unicodedata.normalize("NFC", result)# 2) NFC
     result = remove_inserted_emoji(result)       # 3) 이모지 삽입 제거
     result = remove_inserted_kana(result)        # 4) 가나 삽입 제거
     result = remove_inserted_chars(result)       # 5) 특수문자 삽입 제거
+    for pat, rep in _PARTIAL_SYLLABLE_RE:       # 5.5) 자모+음절 혼합 / 숫자 말미 대체
+        result = pat.sub(rep, result)
     result = collapse_repeats(result)            # 6) 반복 축약
     result = compose_jamo(result)                # 7) 자모 조립
     result = expand_chosung(result)              # 8) 초성 전사

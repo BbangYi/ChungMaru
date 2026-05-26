@@ -64,8 +64,8 @@ class TestFullwidthConversion(unittest.TestCase):
         self.assertEqual("시발", normalize("ｔｌｑｋｆ"))
 
     def test_fullwidth_ssibal_pipeline(self):
-        # ｓｓｉｂａｌ → ssibal → (qwerty 미등록, inko 없으면) 원문 유지
-        self.assertEqual("ssibal", normalize("ｓｓｉｂａｌ"))
+        # ｓｓｉｂａｌ → step0.5: ssibal → step0.8(roman): 씨발
+        self.assertEqual("씨발", normalize("ｓｓｉｂａｌ"))
 
     def test_normal_ascii_unchanged(self):
         self.assertEqual("hello", convert_fullwidth("hello"))
@@ -298,6 +298,65 @@ class TestFullPipeline(unittest.TestCase):
 
     def test_zero_width_space_bypass(self):
         self.assertEqual("병신", normalize("병​신"))
+
+
+class TestRomanProfanity(unittest.TestCase):
+    """0.8단계: 로마자 욕설 역변환 (inko 이전)"""
+
+    def test_ssibal(self):
+        self.assertEqual("씨발", normalize("ssibal"))
+
+    def test_sibal(self):
+        self.assertEqual("씨발", normalize("sibal"))
+
+    def test_shibal(self):
+        self.assertEqual("씨발", normalize("shibal"))
+
+    def test_gaesaekki(self):
+        self.assertEqual("개새끼", normalize("gaesaekki"))
+
+    def test_byeongsin(self):
+        self.assertEqual("병신", normalize("byeongsin"))
+
+    def test_jiral(self):
+        self.assertEqual("지랄", normalize("jiral"))
+
+    def test_michin(self):
+        self.assertEqual("미친", normalize("michin"))
+
+    def test_in_sentence(self):
+        self.assertEqual("진짜 씨발", normalize("진짜 ssibal"))
+
+    def test_case_insensitive(self):
+        self.assertEqual("씨발", normalize("SSIBAL"))
+
+    def test_fullwidth_then_roman(self):
+        # ｓｓｉｂａｌ → step0.5: ssibal → step0.8: 씨발
+        self.assertEqual("씨발", normalize("ｓｓｉｂａｌ"))
+
+
+class TestPartialSyllable(unittest.TestCase):
+    """5.5단계: 자모+음절 혼합 패턴 및 숫자 말미 대체"""
+
+    def test_jamo_syllable_sibal(self):
+        # ㅅ1발 → step5: ㅅ발 → step5.5: 씨발
+        self.assertEqual("씨발", normalize("ㅅ1발"))
+
+    def test_jamo_syllable_direct(self):
+        # ㅅ발 직접 입력
+        self.assertEqual("씨발", normalize("ㅅ발"))
+
+    def test_jamo_syllable_gaesaekki(self):
+        # 개ㅅ1끼 → step5: 개ㅅ끼 → step5.5: 개새끼
+        self.assertEqual("개새끼", normalize("개ㅅ1끼"))
+
+    def test_number_terminal(self):
+        # 씨8 — 8이 말미에서 발을 대체
+        self.assertEqual("씨발", normalize("씨8"))
+
+    def test_number_inserted_still_works(self):
+        # 씨8발 — 기존 remove_inserted_chars가 처리 (step5)
+        self.assertEqual("씨발", normalize("씨8발"))
 
 
 if __name__ == "__main__":
