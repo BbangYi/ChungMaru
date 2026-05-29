@@ -41,16 +41,20 @@ class CommentExtractorTest {
             )
         )
 
-        assertEquals(2, comments.size)
+        assertEquals(4, comments.size)
         assertEquals(
-            listOf(
-                "또 다시 보여줘야돼가\n내가 다시 보여줘야된다 이게 아니라\n하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서\n이게 존나 야마있네...",
-                "노래 뒤지게 좋네 ㅋㅋㅋㅋㅋㅋ 이건 진짜 들어도 안질린다\n십"
-            ),
-            comments.map { it.commentText }
+            "또 다시 보여줘야돼가\n내가 다시 보여줘야된다 이게 아니라\n하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서\n이게 존나 야마있네...",
+            comments[0].commentText
         )
+        assertEquals("하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서", comments[1].commentText)
+        assertEquals("이게 존나 야마있네...", comments[2].commentText)
+        assertEquals("노래 뒤지게 좋네 ㅋㅋㅋㅋㅋㅋ 이건 진짜 들어도 안질린다\n십", comments[3].commentText)
         assertEquals(BoundsRect(132, 1040, 992, 1240), comments.first().boundsInScreen)
+        assertEquals(BoundsRect(132, 1144, 992, 1188), comments[1].boundsInScreen)
+        assertEquals(BoundsRect(132, 1196, 892, 1240), comments[2].boundsInScreen)
         assertEquals("android-accessibility-comment:youtube:@cloudd9619", comments.first().authorId)
+        assertEquals("android-accessibility-comment:youtube:@cloudd9619:line:1144", comments[1].authorId)
+        assertEquals("android-accessibility-comment:youtube:@cloudd9619:line:1196", comments[2].authorId)
         assertEquals("android-accessibility-comment:youtube:@그랜드슬램1", comments.last().authorId)
     }
 

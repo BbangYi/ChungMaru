@@ -102,6 +102,9 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_ESTIMATED_ACCESSIBILITY_WIDTH_RATIO = 0.78f
     private const val MAX_ACCESSIBILITY_RANGE_WIDTH_PX = 180
     private const val MAX_ACCESSIBILITY_RANGE_HEIGHT_PX = 64
+    private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_TEXT_LENGTH = 32
+    private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_HEIGHT_PX = 96
+    private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_WIDTH_RATIO = 0.7f
     private const val MAX_COMMENT_ACCESSIBILITY_TEXT_LENGTH = 420
     private const val MAX_COMMENT_ACCESSIBILITY_HEIGHT_PX = 300
     private const val MAX_COMMENT_ACCESSIBILITY_LINE_COUNT = 8
@@ -265,7 +268,7 @@ object AndroidMaskOverlayPlanner {
         if (existingSpecs.isEmpty() || screenWidth <= 0 || screenHeight <= 0) return newSpecs
 
         val preserved = existingSpecs.filter { spec ->
-            isPreservablePreciseVisualSpec(spec) &&
+            isPreservableSpecAcrossRefresh(spec) &&
                 isPartiallyOnScreen(spec, screenWidth, screenHeight) &&
                 newSpecs.none { next -> overlapRatio(spec, next) >= PRESERVED_VISUAL_OVERLAP_RATIO }
         }
@@ -408,9 +411,16 @@ object AndroidMaskOverlayPlanner {
             value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
             value == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             value == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID ||
-            isCommentAccessibilityAuthor(value) ||
-            isAccessibilityCharRangeAuthor(value) ||
+            isLineLevelCommentAccessibilityAuthor(value) ||
+            isBrowserCompactAccessibilityAuthor(value) ||
+            (isAccessibilityCharRangeAuthor(value) && !isBrowserCharRangeAuthor(value)) ||
             isPreciseVisualAuthor(value)
+    }
+
+    private fun isPreservableSpecAcrossRefresh(
+        spec: MaskOverlaySpec
+    ): Boolean {
+        return isPreservablePreciseVisualSpec(spec)
     }
 
     private fun isPreservablePreciseVisualSpec(spec: MaskOverlaySpec): Boolean {
@@ -437,6 +447,9 @@ object AndroidMaskOverlayPlanner {
         authorId: String?
     ): Boolean {
         if (isLookaheadAccessibilityAuthor(authorId)) {
+            return false
+        }
+        if (isBrowserProvisionalLineAuthor(authorId)) {
             return false
         }
         val accessibilityAuthor = isAccessibilityAuthor(authorId)
@@ -511,7 +524,8 @@ object AndroidMaskOverlayPlanner {
         authorId: String?
     ): Boolean {
         if (authorId == "android-accessibility:user_input" ||
-            authorId == YOUTUBE_USER_INPUT_AUTHOR_ID
+            authorId == YOUTUBE_USER_INPUT_AUTHOR_ID ||
+            isBrowserUserInputAccessibilityAuthor(authorId)
         ) {
             return true
         }
@@ -522,8 +536,12 @@ object AndroidMaskOverlayPlanner {
             return hasStableYoutubeTitleGeometry(spec, originalLength, screenWidth)
         }
         if (isAccessibilityRangeAuthor(authorId)) {
-            return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
-                spec.height <= MAX_ACCESSIBILITY_RANGE_HEIGHT_PX
+            // android-accessibility-range is derived from proportional text
+            // estimation, not from real per-character bounds. Rendering it as a
+            // small word pill caused detached masks on browser/search result
+            // reflow and fast scroll. Keep it as analysis context only; direct
+            // overlay requires char-range or OCR geometry.
+            return false
         }
         if (isAccessibilityCharRangeAuthor(authorId)) {
             return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
@@ -531,6 +549,13 @@ object AndroidMaskOverlayPlanner {
         }
         if (isCommentAccessibilityAuthor(authorId)) {
             return hasStableCommentAccessibilityGeometry(
+                spec = spec,
+                originalLength = originalLength,
+                screenWidth = screenWidth
+            )
+        }
+        if (isBrowserCompactAccessibilityAuthor(authorId)) {
+            return hasStableBrowserCompactAccessibilityGeometry(
                 spec = spec,
                 originalLength = originalLength,
                 screenWidth = screenWidth
@@ -598,6 +623,21 @@ object AndroidMaskOverlayPlanner {
         return estimatedLineCount <= MAX_COMMENT_ACCESSIBILITY_LINE_COUNT
     }
 
+    private fun hasStableBrowserCompactAccessibilityGeometry(
+        spec: MaskOverlaySpec,
+        originalLength: Int,
+        screenWidth: Int
+    ): Boolean {
+        if (originalLength > MAX_BROWSER_COMPACT_ACCESSIBILITY_TEXT_LENGTH) return false
+        if (spec.height > MAX_BROWSER_COMPACT_ACCESSIBILITY_HEIGHT_PX) return false
+        if (spec.width > (screenWidth * MAX_BROWSER_COMPACT_ACCESSIBILITY_WIDTH_RATIO).roundToInt()) {
+            return false
+        }
+
+        val estimatedLineCount = estimateLineCount(spec.height, originalLength)
+        return estimatedLineCount <= 2
+    }
+
     private fun isYoutubeTitleAccessibilityAuthor(authorId: String?): Boolean {
         return authorId == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             authorId == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID
@@ -606,7 +646,13 @@ object AndroidMaskOverlayPlanner {
     private fun isPreciseVisualAuthor(authorId: String?): Boolean {
         val value = authorId ?: return false
         return value.startsWith("ocr:youtube-composite-card:") ||
-            value.startsWith("ocr:youtube-visible-band:")
+            value.startsWith("ocr:youtube-visible-band:") ||
+            value.startsWith("ocr:youtube-comment-panel:") ||
+            isBrowserTextNodePreciseVisualAuthor(value)
+    }
+
+    private fun isBrowserTextNodePreciseVisualAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("ocr:browser-text-node:") == true
     }
 
     private fun isSemanticVisualAuthor(authorId: String?): Boolean {
@@ -633,6 +679,7 @@ object AndroidMaskOverlayPlanner {
             value.startsWith("android-accessibility-range:") ||
             value.startsWith("android-accessibility-char-range:") ||
             value.startsWith("android-accessibility-browser:") ||
+            value.startsWith("android-accessibility-browser-compact:") ||
             value.startsWith(ACCESSIBILITY_COMMENT_PREFIX) ||
             value.startsWith("screen:accessibility_text:")
     }
@@ -649,12 +696,32 @@ object AndroidMaskOverlayPlanner {
         return authorId?.startsWith("android-accessibility-char-range:") == true
     }
 
+    private fun isBrowserCharRangeAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("android-accessibility-char-range:browser:") == true
+    }
+
     private fun isCommentAccessibilityAuthor(authorId: String?): Boolean {
         return authorId?.startsWith(ACCESSIBILITY_COMMENT_PREFIX) == true
     }
 
+    private fun isLineLevelCommentAccessibilityAuthor(authorId: String?): Boolean {
+        return isCommentAccessibilityAuthor(authorId) && authorId?.contains(":line:") == true
+    }
+
     private fun isBrowserAccessibilityAuthor(authorId: String?): Boolean {
         return authorId?.startsWith("android-accessibility-browser:") == true
+    }
+
+    private fun isBrowserCompactAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("android-accessibility-browser-compact:") == true
+    }
+
+    private fun isBrowserUserInputAccessibilityAuthor(authorId: String?): Boolean {
+        return authorId == "android-accessibility-browser:user_input"
+    }
+
+    private fun isBrowserProvisionalLineAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("android-accessibility-browser-provisional-line:") == true
     }
 
     private fun isGenericScreenAccessibilityAuthor(authorId: String?): Boolean {
@@ -746,6 +813,19 @@ object AndroidMaskOverlayPlanner {
 
         if (value == YOUTUBE_USER_INPUT_AUTHOR_ID) {
             return false
+        }
+
+        if (isBrowserUserInputAccessibilityAuthor(value)) {
+            return false
+        }
+
+        if (isBrowserTextNodePreciseVisualAuthor(value)) {
+            return false
+        }
+
+        if (isBrowserCharRangeAuthor(value)) {
+            val cutoff = min(TOP_CONTROL_REGION_MAX_PX, (screenHeight * TOP_CONTROL_REGION_RATIO).roundToInt())
+            return spec.top < cutoff
         }
 
         if (isAccessibilityCharRangeAuthor(value)) {
@@ -1562,6 +1642,7 @@ object AndroidMaskOverlayPlanner {
             .distinctBy { "${it.left}|${it.top}|${it.width}|${it.height}" }
             .sortedWith(
                 compareBy<MaskOverlaySpec> { it.top / MAX_SPAN_MASK_HEIGHT_PX }
+                    .thenBy { maskSuppressionPriority(it) }
                     .thenBy { it.width * it.height }
                     .thenBy { it.left }
                     .thenBy { it.top }
@@ -1575,6 +1656,17 @@ object AndroidMaskOverlayPlanner {
                 }
             }
         return kept
+    }
+
+    private fun maskSuppressionPriority(spec: MaskOverlaySpec): Int {
+        val source = spec.debugSource
+        return when {
+            source.startsWith("android-accessibility-char-range:") -> 0
+            isPreservablePreciseVisualSpec(spec) -> 1
+            isCommentAccessibilityAuthor(source.substringBefore(" span=", "")) -> 2
+            source.startsWith("android-accessibility-browser:") -> 3
+            else -> 4
+        }
     }
 
     private fun isNearDuplicateMask(left: MaskOverlaySpec, right: MaskOverlaySpec): Boolean {

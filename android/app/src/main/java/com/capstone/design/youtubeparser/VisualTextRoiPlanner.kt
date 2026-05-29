@@ -44,6 +44,23 @@ object VisualTextRoiPlanner {
     private const val SHORTS_THUMBNAIL_CARD_MAX_WIDTH_RATIO = 0.55f
     private const val SHORTS_THUMBNAIL_CARD_MIN_HEIGHT_PX = 360
     private const val SHORTS_THUMBNAIL_HEIGHT_RATIO = 0.82f
+    private const val COMMENT_PANEL_AUTHOR_MIN_TOP_RATIO = 0.18f
+    private const val COMMENT_PANEL_ROW_MAX_HEIGHT_PX = 260
+    private const val COMMENT_PANEL_ROW_MIN_HEIGHT_PX = 64
+    private const val COMMENT_PANEL_BODY_TOP_GAP_PX = 4
+    private const val COMMENT_PANEL_ROW_BOTTOM_GAP_PX = 18
+    private const val COMMENT_PANEL_LEFT_PADDING_PX = 8
+    private const val COMMENT_PANEL_RIGHT_PADDING_PX = 24
+    private const val COMMENT_PANEL_BOTTOM_GUARD_PX = 72
+    private const val MAX_COMMENT_PANEL_ROI_COUNT = 4
+    private const val BROWSER_TEXT_NODE_SOURCE = "browser-text-node"
+    private const val BROWSER_TEXT_ROI_HORIZONTAL_PADDING_PX = 12
+    private const val BROWSER_TEXT_ROI_VERTICAL_PADDING_PX = 10
+    private const val BROWSER_TEXT_ROI_MIN_WIDTH_PX = 80
+    private const val BROWSER_TEXT_NODE_MIN_HEIGHT_PX = 16
+    private const val BROWSER_TEXT_ROI_MIN_HEIGHT_PX = 40
+    private const val BROWSER_TEXT_ROI_MAX_HEIGHT_PX = 260
+    private const val BROWSER_TEXT_ROI_MAX_COUNT = 4
 
     fun planFromNodes(
         nodes: List<ParsedTextNode>,
@@ -65,11 +82,19 @@ object VisualTextRoiPlanner {
         val rawCandidates = nodes.mapNotNull { node ->
             toCandidate(node, screenWidth, screenHeight)
         }
+        val browserTextNodeRois = buildBrowserTextNodeRois(nodes, screenWidth, screenHeight)
+        val commentPanelRois = buildYoutubeCommentPanelRois(nodes, screenWidth, screenHeight)
         val fallbackCandidates =
-            buildYoutubeExpandedShortCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
+            browserTextNodeRois +
+                commentPanelRois +
+                buildYoutubeExpandedShortCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
                 buildYoutubeShortCardThumbnailRois(rawCandidates, screenWidth, screenHeight) +
                 buildYoutubeClippedTopCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
-                buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
+                if (commentPanelRois.isEmpty()) {
+                    buildYoutubeFallbackRois(nodes, screenWidth, screenHeight, rawCandidates)
+                } else {
+                    emptyList()
+                }
         val selectableRawCandidates = if (fallbackCandidates.isNotEmpty()) {
             rawCandidates.filterNot { candidate -> candidate.source == "generic-visual-region" }
         } else {
@@ -94,6 +119,111 @@ object VisualTextRoiPlanner {
             rois = selected,
             candidateCount = rawCandidates.size + fallbackCandidates.size
         )
+    }
+
+    private fun buildBrowserTextNodeRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<VisualTextRoi> {
+        return nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName in ACCESSIBILITY_FIRST_PACKAGES &&
+                    !node.text.isNullOrBlank()
+            }
+            .mapNotNull { node ->
+                val text = node.text
+                    ?.replace(Regex("\\s+"), " ")
+                    ?.trim()
+                    ?: return@mapNotNull null
+                val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(text)
+                if (ranges.isEmpty()) return@mapNotNull null
+                if (hasExactCharBoxCoverage(text, node.charBoxes, ranges)) return@mapNotNull null
+                if (looksLikeBrowserControlTextNode(node, text)) return@mapNotNull null
+
+                val clamped = clampBrowserTextBounds(
+                    BoundsRect(node.left, node.top, node.right, node.bottom),
+                    screenWidth,
+                    screenHeight
+                ) ?: return@mapNotNull null
+                val padded = padBrowserTextBounds(clamped, screenWidth, screenHeight) ?: return@mapNotNull null
+
+                VisualTextRoi(
+                    boundsInScreen = padded,
+                    source = BROWSER_TEXT_NODE_SOURCE,
+                    priority = -4,
+                    reason = "browser-accessibility-text-hit",
+                    sourceText = text.take(MAX_SOURCE_TEXT_LENGTH)
+                )
+            }
+            .sortedWith(
+                compareBy<VisualTextRoi> { it.boundsInScreen.top }
+                    .thenBy { it.boundsInScreen.left }
+            )
+            .take(BROWSER_TEXT_ROI_MAX_COUNT)
+            .toList()
+    }
+
+    private fun hasExactCharBoxCoverage(
+        text: String,
+        charBoxes: List<CharBox>,
+        ranges: List<VisualTextOcrCandidateFilter.CandidateRange>
+    ): Boolean {
+        if (charBoxes.isEmpty() || ranges.isEmpty()) return false
+
+        return ranges.any { range ->
+            val startCodePoint = text.codePointCount(0, range.start.coerceIn(0, text.length))
+            val endCodePoint = text.codePointCount(0, range.end.coerceIn(range.start, text.length))
+            if (endCodePoint <= startCodePoint) return@any false
+
+            charBoxes.any { box -> box.start <= startCodePoint && box.end > startCodePoint } &&
+                charBoxes.any { box -> box.start < endCodePoint && box.end >= endCodePoint }
+        }
+    }
+
+    private fun looksLikeBrowserControlTextNode(node: ParsedTextNode, text: String): Boolean {
+        val className = node.className.orEmpty()
+        val viewId = node.viewIdResourceName.orEmpty().lowercase()
+        val lower = text.lowercase()
+
+        if (className.contains("EditText", ignoreCase = true)) return true
+        if (className.contains("Button", ignoreCase = true)) return true
+        if (viewId.contains("url") || viewId.contains("omnibox") || viewId.contains("search_box")) return true
+        if (lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("www.")) return true
+        if (lower.contains("/search?q=") || lower.contains("?q=") || lower.contains("&q=")) return true
+
+        return false
+    }
+
+    private fun clampBrowserTextBounds(
+        bounds: BoundsRect,
+        screenWidth: Int,
+        screenHeight: Int
+    ): BoundsRect? {
+        val left = bounds.left.coerceIn(0, screenWidth)
+        val top = bounds.top.coerceIn(0, screenHeight)
+        val right = bounds.right.coerceIn(left, screenWidth)
+        val bottom = bounds.bottom.coerceIn(top, screenHeight)
+        if (right - left < BROWSER_TEXT_ROI_MIN_WIDTH_PX) return null
+        if (bottom - top < BROWSER_TEXT_NODE_MIN_HEIGHT_PX) return null
+        if (bottom - top > BROWSER_TEXT_ROI_MAX_HEIGHT_PX) return null
+        return BoundsRect(left, top, right, bottom)
+    }
+
+    private fun padBrowserTextBounds(
+        bounds: BoundsRect,
+        screenWidth: Int,
+        screenHeight: Int
+    ): BoundsRect? {
+        val left = max(0, bounds.left - BROWSER_TEXT_ROI_HORIZONTAL_PADDING_PX)
+        val top = max(0, bounds.top - BROWSER_TEXT_ROI_VERTICAL_PADDING_PX)
+        val right = min(screenWidth, bounds.right + BROWSER_TEXT_ROI_HORIZONTAL_PADDING_PX)
+        val bottom = min(screenHeight, bounds.bottom + BROWSER_TEXT_ROI_VERTICAL_PADDING_PX)
+        if (right - left < BROWSER_TEXT_ROI_MIN_WIDTH_PX) return null
+        if (bottom - top < BROWSER_TEXT_ROI_MIN_HEIGHT_PX) return null
+        return BoundsRect(left, top, right, bottom)
     }
 
     private fun toCandidate(
@@ -289,6 +419,155 @@ object VisualTextRoiPlanner {
         ).coerceAtLeast(1)
 
         return overlapArea.toFloat() / smallerArea.toFloat() >= OVERLAP_SUPPRESSION_RATIO
+    }
+
+    private fun buildYoutubeCommentPanelRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<VisualTextRoi> {
+        if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
+
+        val panelContentTop = commentPanelContentTop(nodes, screenHeight) ?: return emptyList()
+        val inputTop = commentPanelInputTop(nodes, screenHeight)
+        val panelBottom = min(inputTop, screenHeight - COMMENT_PANEL_BOTTOM_GUARD_PX)
+            .coerceAtLeast(panelContentTop)
+        val minAuthorTop = max(panelContentTop, (screenHeight * COMMENT_PANEL_AUTHOR_MIN_TOP_RATIO).toInt())
+
+        val authors = nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
+                    node.top >= minAuthorTop &&
+                    node.top < panelBottom &&
+                    looksLikeYoutubeCommentAuthor(node.displayText.orEmpty())
+            }
+            .sortedWith(compareBy<ParsedTextNode> { it.top }.thenBy { it.left })
+            .take(MAX_COMMENT_PANEL_ROI_COUNT + 1)
+            .toList()
+
+        if (authors.isEmpty()) return emptyList()
+
+        return authors
+            .take(MAX_COMMENT_PANEL_ROI_COUNT)
+            .mapIndexedNotNull { index, author ->
+                val nextAuthorTop = authors.getOrNull(index + 1)?.top ?: panelBottom
+                val top = max(panelContentTop, author.bottom + COMMENT_PANEL_BODY_TOP_GAP_PX)
+                val rowLimit = min(
+                    min(nextAuthorTop - COMMENT_PANEL_ROW_BOTTOM_GAP_PX, panelBottom),
+                    top + COMMENT_PANEL_ROW_MAX_HEIGHT_PX
+                )
+                if (rowLimit - top < COMMENT_PANEL_ROW_MIN_HEIGHT_PX) return@mapIndexedNotNull null
+
+                val left = max(0, author.left - COMMENT_PANEL_LEFT_PADDING_PX)
+                val right = min(screenWidth, screenWidth - COMMENT_PANEL_RIGHT_PADDING_PX)
+                if (right - left < MIN_WIDTH_PX) return@mapIndexedNotNull null
+
+                VisualTextRoi(
+                    boundsInScreen = BoundsRect(
+                        left = left,
+                        top = top,
+                        right = right,
+                        bottom = rowLimit
+                    ),
+                    source = YOUTUBE_COMMENT_PANEL_SOURCE,
+                    priority = -3,
+                    reason = "comment-panel-author-body-band",
+                    sourceText = author.displayText.orEmpty()
+                )
+            }
+    }
+
+    private fun commentPanelContentTop(nodes: List<ParsedTextNode>, screenHeight: Int): Int? {
+        val panelMarkers = nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
+                    node.top in (screenHeight * 0.16f).toInt()..(screenHeight * 0.92f).toInt() &&
+                    isYoutubeCommentPanelMarker(node.displayText.orEmpty())
+            }
+            .toList()
+
+        if (panelMarkers.isEmpty()) return null
+
+        val headerBottom = panelMarkers.maxOf { it.bottom }
+        val sortBottom = nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
+                    node.top >= headerBottom - SCREEN_EDGE_PADDING_PX &&
+                    node.top <= headerBottom + TOP_CONTROL_REGION_MAX_PX &&
+                    isYoutubeCommentSortControl(node.displayText.orEmpty())
+            }
+            .map { it.bottom }
+            .maxOrNull()
+
+        return max(headerBottom, sortBottom ?: headerBottom) + SCREEN_EDGE_PADDING_PX
+    }
+
+    private fun commentPanelInputTop(nodes: List<ParsedTextNode>, screenHeight: Int): Int {
+        return nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
+                    node.top > (screenHeight * 0.55f).toInt() &&
+                    isYoutubeCommentInput(node.displayText.orEmpty())
+            }
+            .map { it.top }
+            .minOrNull()
+            ?: screenHeight
+    }
+
+    private fun isYoutubeCommentPanelMarker(text: String): Boolean {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        val lower = normalized.lowercase()
+        return lower == "comments" ||
+            lower == "replies" ||
+            lower == "reply" ||
+            lower.matches(Regex("""^\d+\s+repl(?:y|ies)\b.*""")) ||
+            normalized == "댓글" ||
+            normalized.endsWith("개의 답글")
+    }
+
+    private fun isYoutubeCommentSortControl(text: String): Boolean {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        val lower = normalized.lowercase()
+        return lower == "top" ||
+            lower == "newest" ||
+            normalized == "인기순" ||
+            normalized == "최신순"
+    }
+
+    private fun isYoutubeCommentInput(text: String): Boolean {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        val lower = normalized.lowercase()
+        return lower.startsWith("reply") ||
+            lower.startsWith("share your thoughts") ||
+            lower.startsWith("reminds me of") ||
+            lower.startsWith("describe the vibe") ||
+            normalized.startsWith("답글")
+    }
+
+    private fun looksLikeYoutubeCommentAuthor(text: String): Boolean {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        if (!normalized.startsWith("@")) return false
+        if (normalized.length !in 2..96) return false
+
+        val lower = normalized.lowercase()
+        return Regex("""^@[^\s·•]{2,}""").containsMatchIn(normalized) &&
+            (
+                lower.contains(" ago") ||
+                    lower.contains("edited") ||
+                    lower.contains("전") ||
+                    lower.contains("개월") ||
+                    lower.contains("일") ||
+                    lower.contains("시간") ||
+                    normalized.count { it.isWhitespace() } <= 1
+                )
     }
 
     private fun buildYoutubeFallbackRois(
@@ -557,6 +836,7 @@ object VisualTextRoiPlanner {
     }
 
     private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
+    private const val YOUTUBE_COMMENT_PANEL_SOURCE = "youtube-comment-panel"
 
     private val ACCESSIBILITY_FIRST_PACKAGES = setOf(
         "com.android.chrome",

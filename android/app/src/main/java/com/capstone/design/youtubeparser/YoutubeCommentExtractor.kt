@@ -22,11 +22,23 @@ object YoutubeCommentExtractor {
             val bodyText = mergeBodyText(bodyNodes) ?: continue
             val bounds = unionBounds(bodyNodes)
 
+            val baseAuthorId = stableCommentAuthorId(authorText, author.top)
+
             result += ParsedComment(
                 commentText = bodyText,
                 boundsInScreen = bounds,
-                authorId = stableCommentAuthorId(authorText, author.top)
+                authorId = baseAuthorId
             )
+
+            result += bodyNodes.mapNotNull { node ->
+                val lineText = cleanBodyText(node.displayText.orEmpty()) ?: return@mapNotNull null
+                if (!VisualTextOcrCandidateFilter.shouldAnalyze(lineText)) return@mapNotNull null
+                ParsedComment(
+                    commentText = lineText,
+                    boundsInScreen = BoundsRect(node.left, node.top, node.right, node.bottom),
+                    authorId = "$baseAuthorId:line:${node.top}"
+                )
+            }
         }
 
         return result.distinctBy {

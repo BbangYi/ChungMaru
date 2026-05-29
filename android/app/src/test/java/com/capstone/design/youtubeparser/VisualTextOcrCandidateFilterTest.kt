@@ -164,6 +164,34 @@ class VisualTextOcrCandidateFilterTest {
     }
 
     @Test
+    fun visualTextOcrMetadataCodec_supportsYoutubeCommentPanelSource() {
+        val encoded = VisualTextOcrMetadataCodec.encode(
+            source = "youtube-comment-panel",
+            roiBoundsInScreen = BoundsRect(left = 80, top = 730, right = 1056, bottom = 912),
+            visualText = "씨발"
+        )
+        val decoded = VisualTextOcrMetadataCodec.decode(encoded)
+
+        assertEquals("youtube-comment-panel", decoded?.source)
+        assertEquals(BoundsRect(left = 80, top = 730, right = 1056, bottom = 912), decoded?.roiBoundsInScreen)
+        assertEquals("씨발", decoded?.visualText)
+    }
+
+    @Test
+    fun visualTextOcrMetadataCodec_supportsBrowserTextNodeSource() {
+        val encoded = VisualTextOcrMetadataCodec.encode(
+            source = "browser-text-node",
+            roiBoundsInScreen = BoundsRect(left = 24, top = 140, right = 680, bottom = 320),
+            visualText = "시발"
+        )
+        val decoded = VisualTextOcrMetadataCodec.decode(encoded)
+
+        assertEquals("browser-text-node", decoded?.source)
+        assertEquals(BoundsRect(left = 24, top = 140, right = 680, bottom = 320), decoded?.roiBoundsInScreen)
+        assertEquals("시발", decoded?.visualText)
+    }
+
+    @Test
     fun visualTextGeometryPolicy_keepsTopHeroYoutubeCompositeSeparateFromToolbarControls() {
         val heroAuthorId = VisualTextOcrMetadataCodec.encode(
             source = "youtube-composite-card",

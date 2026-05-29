@@ -65,13 +65,12 @@ internal object MaskOverlayEventPolicy {
         currentOverlayRevision: Long,
         isScrollStabilizing: Boolean,
         hasProvisionalMasks: Boolean = false,
-        isProvisionalPlan: Boolean = false,
-        allowProvisionalMasksOnEmpty: Boolean = false
+        isProvisionalPlan: Boolean = false
     ): Boolean {
         return hasActiveMasks &&
             snapshotOverlayRevision == currentOverlayRevision &&
             !isScrollStabilizing &&
-            (!hasProvisionalMasks || allowProvisionalMasksOnEmpty) &&
+            !hasProvisionalMasks &&
             !isProvisionalPlan
     }
 

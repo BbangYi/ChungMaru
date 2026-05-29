@@ -27,6 +27,7 @@ object ScreenTextCandidateExtractor {
     private const val MIN_WIDTH_PX = 16
     private const val MIN_HEIGHT_PX = 12
     private const val RANGE_HORIZONTAL_PADDING_PX = 6
+    private const val RANGE_VERTICAL_PADDING_PX = 5
     private const val RANGE_MIN_WIDTH_PX = 28
     private const val RANGE_MAX_COMPACT_WIDTH_PX = 112
     private const val RANGE_ESTIMATED_CHAR_WIDTH_PX = 14
@@ -37,6 +38,9 @@ object ScreenTextCandidateExtractor {
     private const val BROWSER_COMPACT_CONTROL_REGION_BOTTOM_PX = 340
     private const val BROWSER_TOP_CONTROL_REGION_BOTTOM_PX = 500
     private const val BROWSER_WIDE_SEARCH_MIN_WIDTH_PX = 720
+    private const val BROWSER_COMPACT_HARMFUL_MAX_TEXT_LENGTH = 32
+    private const val BROWSER_COMPACT_HARMFUL_MAX_WIDTH_PX = 480
+    private const val BROWSER_COMPACT_HARMFUL_MAX_HEIGHT_PX = 96
     private const val MAX_CREDIBLE_RANGE_SOURCE_HEIGHT_PX = 180
     private const val ROOT_LIKE_RANGE_SOURCE_WIDTH_PX = 1000
     private const val ROOT_LIKE_RANGE_SOURCE_HEIGHT_PX = 96
@@ -45,6 +49,7 @@ object ScreenTextCandidateExtractor {
     private const val ACCESSIBILITY_COMMENT_PREFIX = "android-accessibility-comment:"
     private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
     private const val ACCESSIBILITY_CHAR_RANGE_PREFIX = "android-accessibility-char-range:"
+    private const val ACCESSIBILITY_BROWSER_CHAR_RANGE_PREFIX = "android-accessibility-char-range:browser:"
 
     fun extractCandidates(
         packageName: String,
@@ -180,13 +185,18 @@ object ScreenTextCandidateExtractor {
         val role = inferRole(node, text)
         if (isBrowserTopControlCandidate(packageName, bounds, role, text)) return null
         if (!isUsefulGenericText(text, node, role)) return null
-        val source = if (needsGeometryRefinement(text, bounds)) {
+        val isCompactBrowserHarmfulText = isCompactBrowserHarmfulTextCandidate(packageName, bounds, role, text)
+        val source = if (!isCompactBrowserHarmfulText && needsGeometryRefinement(text, bounds)) {
             CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY
         } else {
             CandidateSource.ACCESSIBILITY_TEXT
         }
         val backendSourceId = if (packageName in BROWSER_PACKAGES) {
-            "android-accessibility-browser:${role.name.lowercase()}"
+            if (isCompactBrowserHarmfulText) {
+                "android-accessibility-browser-compact:${role.name.lowercase()}"
+            } else {
+                "android-accessibility-browser:${role.name.lowercase()}"
+            }
         } else {
             "android-accessibility:${role.name.lowercase()}"
         }
@@ -207,13 +217,13 @@ object ScreenTextCandidateExtractor {
 
     private fun supplementalKeyboardRangeCandidates(base: ScreenTextCandidate): List<ScreenTextCandidate> {
         val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(base.rawText)
-            .filter { range -> shouldAddKeyboardRangeCandidate(range) }
         if (ranges.isEmpty()) return emptyList()
 
         return ranges.mapNotNull { range ->
             supplementalExactCharRangeCandidate(base, range)?.let { exactCandidate ->
                 return@mapNotNull exactCandidate
             }
+            if (!shouldAddEstimatedRangeCandidate(range)) return@mapNotNull null
             if (!canBuildEstimatedSupplementalRangeCandidates(base)) return@mapNotNull null
 
             val rangeBounds = estimateRangeBounds(
@@ -240,7 +250,6 @@ object ScreenTextCandidateExtractor {
 
     private fun supplementalExactCharRangeCandidates(base: ScreenTextCandidate): List<ScreenTextCandidate> {
         val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(base.rawText)
-            .filter { range -> shouldAddKeyboardRangeCandidate(range) }
         if (ranges.isEmpty()) return emptyList()
 
         return ranges.mapNotNull { range ->
@@ -268,11 +277,22 @@ object ScreenTextCandidateExtractor {
             normalizedVariants = listOf(range.analysisText, range.visualText).distinct(),
             screenRect = bounds,
             sceneRevision = base.sceneRevision,
-            backendSourceId = "$ACCESSIBILITY_CHAR_RANGE_PREFIX${range.visualText}"
+            backendSourceId = accessibilityCharRangeSourceId(base, range.visualText)
         )
     }
 
-    private fun shouldAddKeyboardRangeCandidate(range: VisualTextOcrCandidateFilter.CandidateRange): Boolean {
+    private fun accessibilityCharRangeSourceId(
+        base: ScreenTextCandidate,
+        visualText: String
+    ): String {
+        return if (base.packageName in BROWSER_PACKAGES) {
+            "$ACCESSIBILITY_BROWSER_CHAR_RANGE_PREFIX${base.role.name.lowercase()}:$visualText"
+        } else {
+            "$ACCESSIBILITY_CHAR_RANGE_PREFIX$visualText"
+        }
+    }
+
+    private fun shouldAddEstimatedRangeCandidate(range: VisualTextOcrCandidateFilter.CandidateRange): Boolean {
         val visual = range.visualText.trim()
         if (visual.isBlank()) return false
         val hasLatin = visual.any { it in 'A'..'Z' || it in 'a'..'z' }
@@ -336,9 +356,9 @@ object ScreenTextCandidateExtractor {
 
         return BoundsRect(
             left = (left - RANGE_HORIZONTAL_PADDING_PX).coerceAtLeast(0),
-            top = top,
+            top = (top - RANGE_VERTICAL_PADDING_PX).coerceAtLeast(0),
             right = right + RANGE_HORIZONTAL_PADDING_PX,
-            bottom = bottom
+            bottom = bottom + RANGE_VERTICAL_PADDING_PX
         )
     }
 
@@ -351,11 +371,17 @@ object ScreenTextCandidateExtractor {
         if (packageName !in BROWSER_PACKAGES) return false
         if (bounds.top >= BROWSER_TOP_CONTROL_REGION_BOTTOM_PX) return false
 
-        if (bounds.top < TOP_CONTROL_REGION_BOTTOM_PX) return true
-        if (role == CandidateRole.USER_INPUT || role == CandidateRole.BUTTON_OR_NAVIGATION) return true
-
         val normalizedText = text.orEmpty().trim()
         if (normalizedText.isBlank()) return false
+        val lower = normalizedText.lowercase()
+
+        if (isUrlLikeText(normalizedText, lower)) return true
+        if (role == CandidateRole.BUTTON_OR_NAVIGATION) return true
+        if (role == CandidateRole.USER_INPUT) return false
+
+        if (bounds.top < TOP_CONTROL_REGION_BOTTOM_PX) {
+            return !VisualTextOcrCandidateFilter.shouldAnalyze(normalizedText)
+        }
 
         // Browser accessibility trees sometimes expose the omnibox/search box as
         // a generic TextView/heading. Keep actual page content below the toolbar,
@@ -366,12 +392,32 @@ object ScreenTextCandidateExtractor {
             normalizedText.length <= 16 &&
             VisualTextOcrCandidateFilter.shouldAnalyze(normalizedText)
         ) {
-            val width = bounds.right - bounds.left
-            return bounds.top < BROWSER_COMPACT_CONTROL_REGION_BOTTOM_PX ||
-                width >= BROWSER_WIDE_SEARCH_MIN_WIDTH_PX
+            return false
         }
 
         return false
+    }
+
+    private fun isCompactBrowserHarmfulTextCandidate(
+        packageName: String,
+        bounds: BoundsRect,
+        role: CandidateRole,
+        text: String
+    ): Boolean {
+        if (packageName !in BROWSER_PACKAGES) return false
+        if (role == CandidateRole.USER_INPUT || role == CandidateRole.BUTTON_OR_NAVIGATION) return false
+        if (!VisualTextOcrCandidateFilter.shouldAnalyze(text)) return false
+
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        if (normalized.length !in 2..BROWSER_COMPACT_HARMFUL_MAX_TEXT_LENGTH) return false
+
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        if (width !in MIN_WIDTH_PX..BROWSER_COMPACT_HARMFUL_MAX_WIDTH_PX) return false
+        if (height !in MIN_HEIGHT_PX..BROWSER_COMPACT_HARMFUL_MAX_HEIGHT_PX) return false
+        if (bounds.top < TOP_CONTROL_REGION_BOTTOM_PX) return false
+
+        return true
     }
 
     private fun selectGenericCandidates(candidates: List<ScreenTextCandidate>): List<ScreenTextCandidate> {

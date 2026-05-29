@@ -1,7 +1,7 @@
 package com.capstone.design.youtubeparser
 
 object ProvisionalAccessibilityMaskBuilder {
-    private const val MAX_PROVISIONAL_RESULT_COUNT = 12
+    private const val MAX_PROVISIONAL_RESULT_COUNT = 24
 
     fun buildResponse(
         candidates: List<ScreenTextCandidate>,
@@ -25,6 +25,7 @@ object ProvisionalAccessibilityMaskBuilder {
 
     private fun canRenderProvisionally(candidate: ScreenTextCandidate): Boolean {
         if (candidate.route.renderPolicy != CandidateRenderPolicy.DIRECT_OVERLAY) return false
+        if (candidate.route.geometryPolicy == CandidateGeometryPolicy.ACCESSIBILITY_ESTIMATED) return false
         if (candidate.route.geometryPolicy == CandidateGeometryPolicy.VISUAL_OCR_EXACT) return false
         if (candidate.route.geometryPolicy == CandidateGeometryPolicy.VISUAL_FALLBACK) return false
         if (candidate.route.geometryPolicy == CandidateGeometryPolicy.ACCESSIBILITY_LOOKAHEAD) return false
@@ -37,6 +38,8 @@ object ProvisionalAccessibilityMaskBuilder {
     private fun ScreenTextCandidate.toProvisionalResult(): AndroidAnalysisResultItem? {
         val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(rawText)
         if (ranges.isEmpty()) return null
+        val originalLength = rawText.codePointCount(0, rawText.length)
+        if (originalLength <= 0) return null
 
         return AndroidAnalysisResultItem(
             original = rawText,

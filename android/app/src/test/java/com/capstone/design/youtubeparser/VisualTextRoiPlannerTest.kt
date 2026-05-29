@@ -194,6 +194,80 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_addsBrowserTextNodeRoiForChromeHarmfulVisibleText() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = "많이 답답하시거나 화가 나는 일이 있으셨나요? 시발 문서 설명처럼 표현하셨을 텐데요.",
+                    left = 34,
+                    top = 150,
+                    right = 660,
+                    bottom = 310,
+                    packageName = "com.android.chrome"
+                )
+            ),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("browser-text-node", rois.single().source)
+        assertEquals("browser-accessibility-text-hit", rois.single().reason)
+        assertTrue(rois.single().boundsInScreen.left <= 34)
+        assertTrue(rois.single().boundsInScreen.bottom >= 310)
+    }
+
+    @Test
+    fun planFromNodes_skipsBrowserEditTextRoiBecauseAccessibilityHandlesInput() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = "시발",
+                    left = 80,
+                    top = 92,
+                    right = 610,
+                    bottom = 154,
+                    packageName = "com.android.chrome",
+                    className = "android.widget.EditText",
+                    viewIdResourceName = "com.android.chrome:id/search_box_text"
+                )
+            ),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        assertTrue(rois.isEmpty())
+    }
+
+    @Test
+    fun planFromNodes_skipsBrowserTextNodeRoiWhenExactCharBoxesCanMaskImmediately() {
+        val text = "시발의 어원과 용례에 대한 설명입니다."
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = text,
+                    left = 28,
+                    top = 240,
+                    right = 690,
+                    bottom = 330,
+                    packageName = "com.android.chrome",
+                    charBoxes = charBoxesFor(
+                        text = text,
+                        startLeft = 28,
+                        top = 240,
+                        charWidth = 26,
+                        height = 38
+                    )
+                )
+            ),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        assertTrue(rois.none { it.source == "browser-text-node" })
+    }
+
+    @Test
     fun planFromNodes_doesNotCreateGenericVisualRoisForGoogleAppPackages() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(
@@ -212,6 +286,27 @@ class VisualTextRoiPlannerTest {
         )
 
         assertTrue(rois.isEmpty())
+    }
+
+    @Test
+    fun planFromNodes_addsBrowserTextNodeRoiForGoogleAppHarmfulVisibleText() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = "시발의 어원과 용례에 대한 설명은 검색 결과 문서에서 확인할 수 있습니다.",
+                    left = 28,
+                    top = 240,
+                    right = 690,
+                    bottom = 370,
+                    packageName = "com.google.android.googlequicksearchbox"
+                )
+            ),
+            screenWidth = 720,
+            screenHeight = 1280
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("browser-text-node", rois.single().source)
     }
 
     @Test
@@ -390,6 +485,44 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_addsCompactCommentPanelRoisFromAuthorRows() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("Comments", 24, 420, 260, 492),
+                textNode("Top", 36, 548, 140, 612),
+                textNode("Newest", 160, 548, 320, 612),
+                textNode("@cloud9619 · 3mo ago (edited)", 88, 690, 520, 728),
+                textNode("@그랜드슬램1 · 4mo ago", 88, 930, 460, 968),
+                textNode("Reminds me of...", 24, 2228, 486, 2312)
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(2, rois.size)
+        assertTrue(rois.all { it.source == "youtube-comment-panel" })
+        assertEquals("comment-panel-author-body-band", rois.first().reason)
+        assertTrue(rois.first().boundsInScreen.left <= 88)
+        assertTrue(rois.first().boundsInScreen.top > 728)
+        assertTrue(rois.first().boundsInScreen.bottom < 930)
+        assertTrue(rois.first().boundsInScreen.right < 1080)
+    }
+
+    @Test
+    fun planFromNodes_doesNotAddCommentPanelRoisWithoutPanelMarker() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("@TLQKF-wh1", 210, 1360, 520, 1410),
+                textNode("61 subscribers", 210, 1420, 520, 1470)
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertTrue(rois.none { it.source == "youtube-comment-panel" })
+    }
+
+    @Test
     fun planFromNodes_deduplicatesOverlappingRegions() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(
@@ -464,21 +597,57 @@ class VisualTextRoiPlannerTest {
         left: Int,
         top: Int,
         right: Int,
-        bottom: Int
+        bottom: Int,
+        packageName: String = "com.google.android.youtube",
+        className: String = "android.widget.TextView",
+        viewIdResourceName: String? = null,
+        charBoxes: List<CharBox> = emptyList()
     ): ParsedTextNode {
         return ParsedTextNode(
-            packageName = "com.google.android.youtube",
+            packageName = packageName,
             text = displayText,
             contentDescription = null,
             displayText = displayText,
-            className = "android.widget.TextView",
-            viewIdResourceName = null,
+            className = className,
+            viewIdResourceName = viewIdResourceName,
             left = left,
             top = top,
             right = right,
             bottom = bottom,
             approxTop = top,
-            isVisibleToUser = true
+            isVisibleToUser = true,
+            charBoxes = charBoxes
         )
+    }
+
+    private fun charBoxesFor(
+        text: String,
+        startLeft: Int,
+        top: Int,
+        charWidth: Int,
+        height: Int
+    ): List<CharBox> {
+        val boxes = mutableListOf<CharBox>()
+        var charIndex = 0
+        var codePointIndex = 0
+        var left = startLeft
+        while (charIndex < text.length) {
+            val value = String(Character.toChars(Character.codePointAt(text, charIndex)))
+            boxes += CharBox(
+                start = codePointIndex,
+                end = codePointIndex + 1,
+                boundsInScreen = BoundsRect(
+                    left = left,
+                    top = top,
+                    right = left + charWidth,
+                    bottom = top + height
+                ),
+                text = value
+            )
+            charIndex += value.length
+            codePointIndex += 1
+            left += charWidth
+        }
+        return boxes
     }
 }

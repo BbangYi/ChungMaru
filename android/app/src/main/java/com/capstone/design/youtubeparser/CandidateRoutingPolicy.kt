@@ -88,7 +88,8 @@ object CandidateRoutingPolicy {
         }
 
         if (baseSourceId.startsWith("ocr:youtube-composite-card:") ||
-            baseSourceId.startsWith("ocr:youtube-visible-band:")
+            baseSourceId.startsWith("ocr:youtube-visible-band:") ||
+            baseSourceId.startsWith("ocr:youtube-comment-panel:")
         ) {
             return CandidateRoute(
                 surface = CandidateSurface.YOUTUBE_VISUAL_TEXT,
@@ -113,6 +114,24 @@ object CandidateRoutingPolicy {
                 geometryPolicy = CandidateGeometryPolicy.VISUAL_OCR_EXACT,
                 renderPolicy = CandidateRenderPolicy.DIRECT_OVERLAY,
                 reason = "ocr-exact-text-bounds"
+            )
+        }
+
+        if (baseSourceId == "android-accessibility-browser:user_input") {
+            return CandidateRoute(
+                surface = CandidateSurface.BROWSER_RESULT,
+                geometryPolicy = CandidateGeometryPolicy.ACCESSIBILITY_EXACT,
+                renderPolicy = CandidateRenderPolicy.DIRECT_OVERLAY,
+                reason = "browser-search-input-bounds"
+            )
+        }
+
+        if (baseSourceId.startsWith("android-accessibility-browser-compact:")) {
+            return CandidateRoute(
+                surface = CandidateSurface.BROWSER_RESULT,
+                geometryPolicy = CandidateGeometryPolicy.ACCESSIBILITY_EXACT,
+                renderPolicy = CandidateRenderPolicy.DIRECT_OVERLAY,
+                reason = "browser-compact-harmful-text-bounds"
             )
         }
 
@@ -208,7 +227,11 @@ object CandidateRoutingPolicy {
             }
         }
 
-        if (baseSourceId.startsWith("android-accessibility-browser:")) {
+        if (
+            baseSourceId.startsWith("android-accessibility-char-range:browser:") ||
+            baseSourceId.startsWith("android-accessibility-browser:") ||
+            baseSourceId.startsWith("android-accessibility-browser-compact:")
+        ) {
             return CandidateSurface.BROWSER_RESULT
         }
 
