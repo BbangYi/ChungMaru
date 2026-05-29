@@ -465,10 +465,13 @@ object AndroidAnalysisClient {
             sourceKey == "android-accessibility:youtube_shorts_title" ||
             sourceKey == "youtube-composite-description" ||
             sourceKey.startsWith("android-accessibility-comment:youtube") ||
+            sourceKey.startsWith("android-accessibility-browser-compact:") ||
             sourceKey.startsWith("android-accessibility-char-range:") ||
             sourceKey.startsWith("youtube-visual-range:") ||
             sourceKey.startsWith("ocr:youtube-composite-card:") ||
             sourceKey.startsWith("ocr:youtube-visible-band:") ||
+            sourceKey.startsWith("ocr:youtube-comment-panel:") ||
+            sourceKey.startsWith("ocr:browser-text-node:") ||
             sourceKey.startsWith("ocr:youtube-semantic-card:")
     }
 

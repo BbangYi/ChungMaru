@@ -593,6 +593,8 @@ internal object VisualTextOcrMetadataCodec {
         "youtube-composite-card",
         "generic-visual-region",
         "youtube-visible-band",
+        "youtube-comment-panel",
+        "browser-text-node",
         "youtube-semantic-card"
     )
 

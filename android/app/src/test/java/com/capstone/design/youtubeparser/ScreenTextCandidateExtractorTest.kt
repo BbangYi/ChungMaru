@@ -26,7 +26,7 @@ class ScreenTextCandidateExtractorTest {
         assertFalse(candidates.any { it.rawText == "전체" })
         assertFalse(candidates.any { it.rawText.startsWith("https://") })
         assertTrue(candidates.all { it.source == CandidateSource.ACCESSIBILITY_TEXT || it.source == CandidateSource.ACCESSIBILITY_TEXT_WITH_OCR_GEOMETRY })
-        assertTrue(candidates.all { it.backendSourceId.orEmpty().startsWith("android-accessibility-browser:") })
+        assertTrue(candidates.all { it.hasBrowserAccessibilitySource() })
     }
 
     @Test
@@ -59,6 +59,21 @@ class ScreenTextCandidateExtractorTest {
         assertFalse(candidates.any {
             it.backendSourceId.orEmpty().startsWith("android-accessibility-range")
         })
+    }
+
+    @Test
+    fun extractCandidates_routesCompactBrowserHarmfulTextAsDirectExactMask() {
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = CHROME_PACKAGE,
+            nodes = listOf(
+                node("씨발 (r1836 판)", 24, 540, 430, 610)
+            )
+        )
+
+        val candidate = candidates.single { it.rawText == "씨발 (r1836 판)" }
+        assertEquals("android-accessibility-browser-compact:title", candidate.backendSourceId)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, candidate.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, candidate.route.renderPolicy)
     }
 
     @Test
@@ -99,7 +114,7 @@ class ScreenTextCandidateExtractorTest {
     }
 
     @Test
-    fun extractCandidates_rejectsBrowserTopSearchEditTextEvenWhenItContainsHarmfulText() {
+    fun extractCandidates_keepsBrowserSearchEditTextWhenItContainsHarmfulText() {
         val candidates = ScreenTextCandidateExtractor.extractCandidates(
             packageName = CHROME_PACKAGE,
             nodes = listOf(
@@ -115,12 +130,16 @@ class ScreenTextCandidateExtractorTest {
             )
         )
 
-        assertFalse(candidates.any { it.role == CandidateRole.USER_INPUT })
+        assertTrue(candidates.any {
+            it.rawText == "시발" &&
+                it.role == CandidateRole.USER_INPUT &&
+                it.route.renderPolicy == CandidateRenderPolicy.DIRECT_OVERLAY
+        })
         assertTrue(candidates.any { it.rawText == "시발 진짜 심한 욕 아니야? : r/korea" })
     }
 
     @Test
-    fun extractCandidates_rejectsBrowserTopSearchTextWhenRoleIsMisclassified() {
+    fun extractCandidates_keepsTopVisibleBrowserContentWhenItLooksHarmful() {
         val candidates = ScreenTextCandidateExtractor.extractCandidates(
             packageName = CHROME_PACKAGE,
             nodes = listOf(
@@ -143,12 +162,12 @@ class ScreenTextCandidateExtractorTest {
             )
         )
 
-        assertFalse(candidates.any { it.rawText == "시발" && it.screenRect.top < 420 })
+        assertTrue(candidates.any { it.rawText == "시발" && it.screenRect.top < 420 })
         assertTrue(candidates.any { it.rawText.startsWith("시발은 많은 경우에") })
     }
 
     @Test
-    fun extractCandidates_rejectsLowerMobileChromeSearchBoxButKeepsFirstResult() {
+    fun extractCandidates_keepsLowerMobileChromeSearchBoxAndFirstResult() {
         val candidates = ScreenTextCandidateExtractor.extractCandidates(
             packageName = CHROME_PACKAGE,
             nodes = listOf(
@@ -171,7 +190,7 @@ class ScreenTextCandidateExtractorTest {
             )
         )
 
-        assertFalse(candidates.any { it.rawText == "씨발" && it.screenRect.top < 500 })
+        assertTrue(candidates.any { it.rawText == "씨발" && it.screenRect.top < 500 })
         assertTrue(candidates.any { it.rawText == "씨발 진짜 심한 욕 아니야? : r/korea" })
     }
 
@@ -296,6 +315,42 @@ class ScreenTextCandidateExtractorTest {
         assertTrue(candidates.any { it.rawText.startsWith("카필 시발") })
         assertTrue(candidates.any { it.rawText == "시발 - 위키낱말사전" })
         assertFalse(candidates.any { it.rawText == "시발" && it.backendSourceId.orEmpty().startsWith("android-accessibility-range") })
+    }
+
+    @Test
+    fun extractCandidates_addsExactKoreanRangeWhenAccessibilityProvidesCharBoxes() {
+        val text = "씨발 (r1836 판)"
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = CHROME_PACKAGE,
+            nodes = listOf(
+                node(
+                    text = text,
+                    left = 24,
+                    top = 540,
+                    right = 430,
+                    bottom = 610,
+                    charBoxes = charBoxesFor(
+                        text = text,
+                        startLeft = 24,
+                        top = 540,
+                        charWidth = 32,
+                        height = 42
+                    )
+                )
+            )
+        )
+
+        val exactRange = candidates.single {
+            it.backendSourceId.orEmpty().startsWith("android-accessibility-char-range:")
+        }
+
+        assertEquals("씨발", exactRange.rawText)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, exactRange.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, exactRange.route.renderPolicy)
+        assertEquals(18, exactRange.screenRect.left)
+        assertEquals(535, exactRange.screenRect.top)
+        assertEquals(94, exactRange.screenRect.right)
+        assertEquals(587, exactRange.screenRect.bottom)
     }
 
     @Test
@@ -458,6 +513,41 @@ class ScreenTextCandidateExtractorTest {
         assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, exactRange.route.renderPolicy)
         assertTrue(exactRange.screenRect.left in 118..140)
         assertTrue(exactRange.screenRect.right in 250..280)
+        assertEquals(515, exactRange.screenRect.top)
+        assertEquals(563, exactRange.screenRect.bottom)
+    }
+
+    @Test
+    fun extractCandidates_marksBrowserExactCharacterRangesAsNonStickyBrowserSource() {
+        val text = "씨발 (r1836 판)"
+        val candidates = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = CHROME_PACKAGE,
+            nodes = listOf(
+                node(
+                    text = text,
+                    left = 24,
+                    top = 540,
+                    right = 430,
+                    bottom = 610,
+                    packageName = CHROME_PACKAGE,
+                    charBoxes = charBoxesFor(
+                        text = text,
+                        startLeft = 24,
+                        top = 540,
+                        charWidth = 32,
+                        height = 42
+                    )
+                )
+            )
+        )
+
+        val exactRange = candidates.single {
+            it.backendSourceId.orEmpty().startsWith("android-accessibility-char-range:browser:")
+        }
+
+        assertEquals("씨발", exactRange.rawText)
+        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, exactRange.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, exactRange.route.renderPolicy)
     }
 
     @Test
@@ -572,6 +662,12 @@ class ScreenTextCandidateExtractorTest {
             left += charWidth
         }
         return boxes
+    }
+
+    private fun ScreenTextCandidate.hasBrowserAccessibilitySource(): Boolean {
+        val source = backendSourceId.orEmpty()
+        return source.startsWith("android-accessibility-browser:") ||
+            source.startsWith("android-accessibility-browser-compact:")
     }
 
     private fun contentDescriptionNode(

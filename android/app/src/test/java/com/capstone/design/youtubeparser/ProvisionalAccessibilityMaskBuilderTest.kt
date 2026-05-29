@@ -69,7 +69,7 @@ class ProvisionalAccessibilityMaskBuilderTest {
     }
 
     @Test
-    fun buildResponse_keepsEstimatedRangeCandidateWhenRouteAllowsDirectOverlay() {
+    fun buildResponse_excludesEstimatedRangeCandidateEvenWhenRouteAllowsDirectOverlay() {
         val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
             candidates = listOf(
                 candidate(
@@ -83,8 +83,7 @@ class ProvisionalAccessibilityMaskBuilderTest {
             timestamp = 123L
         )
 
-        assertNotNull(response)
-        assertEquals("android-accessibility-range:Tlqkf", response!!.results.single().authorId)
+        assertNull(response)
     }
 
     @Test
@@ -112,7 +111,7 @@ class ProvisionalAccessibilityMaskBuilderTest {
     }
 
     @Test
-    fun buildResponse_excludesBrowserAnalysisOnlyCandidate() {
+    fun buildResponse_excludesBrowserTitleWithoutExactCharacterGeometry() {
         val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
             candidates = listOf(
                 candidate(
@@ -127,6 +126,111 @@ class ProvisionalAccessibilityMaskBuilderTest {
         )
 
         assertNull(response)
+    }
+
+    @Test
+    fun buildResponse_excludesWideBrowserTitleWithoutExactCharacterGeometry() {
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = listOf(
+                candidate(
+                    packageName = "com.android.chrome",
+                    rawText = "씨발",
+                    role = CandidateRole.TITLE,
+                    bounds = BoundsRect(42, 139, 1042, 212),
+                    backendSourceId = "android-accessibility-browser:title"
+                )
+            ),
+            timestamp = 123L
+        )
+
+        assertNull(response)
+    }
+
+    @Test
+    fun buildResponse_excludesBrowserSnippetWithoutExactCharacterGeometry() {
+        val text = "시발은 많은 경우에 심각한 욕설이야, 상황에 따라 달라."
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = listOf(
+                candidate(
+                    packageName = "com.android.chrome",
+                    rawText = text,
+                    role = CandidateRole.SNIPPET,
+                    bounds = BoundsRect(80, 620, 820, 720),
+                    backendSourceId = "android-accessibility-browser:snippet"
+                )
+            ),
+            timestamp = 123L
+        )
+
+        assertNull(response)
+    }
+
+    @Test
+    fun buildResponse_createsProvisionalForBrowserExactCharacterRangeCandidate() {
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = listOf(
+                candidate(
+                    packageName = "com.android.chrome",
+                    rawText = "씨발",
+                    role = CandidateRole.TITLE,
+                    bounds = BoundsRect(18, 535, 94, 587),
+                    backendSourceId = "android-accessibility-char-range:씨발"
+                )
+            ),
+            timestamp = 123L
+        )
+
+        assertNotNull(response)
+        val result = response!!.results.single()
+        assertEquals("android-accessibility-char-range:씨발", result.authorId)
+        assertEquals("씨발", result.original)
+        assertEquals(0, result.evidenceSpans.single().start)
+        assertEquals(2, result.evidenceSpans.single().end)
+    }
+
+    @Test
+    fun buildResponse_createsProvisionalForCompactBrowserTextCandidate() {
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = listOf(
+                candidate(
+                    packageName = "com.android.chrome",
+                    rawText = "씨발 (r1836 판)",
+                    role = CandidateRole.TITLE,
+                    bounds = BoundsRect(24, 540, 430, 610),
+                    backendSourceId = "android-accessibility-browser-compact:title"
+                )
+            ),
+            timestamp = 123L
+        )
+
+        assertNotNull(response)
+        val result = response!!.results.single()
+        assertEquals("android-accessibility-browser-compact:title", result.authorId)
+        assertEquals("씨발 (r1836 판)", result.original)
+        assertEquals("씨발", result.evidenceSpans.single().text)
+        assertEquals(0, result.evidenceSpans.single().start)
+        assertEquals(2, result.evidenceSpans.single().end)
+    }
+
+    @Test
+    fun buildResponse_keepsUpToOverlayMaskBudgetForVisibleActionableCandidates() {
+        val candidates = (0 until 30).map { index ->
+            candidate(
+                packageName = "com.android.chrome",
+                rawText = "씨발 $index",
+                role = CandidateRole.TITLE,
+                bounds = BoundsRect(40, 520 + index * 48, 420, 560 + index * 48),
+                backendSourceId = "android-accessibility-char-range:씨발"
+            )
+        }
+
+        val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
+            candidates = candidates,
+            timestamp = 123L
+        )
+
+        assertNotNull(response)
+        assertEquals(24, response!!.results.size)
     }
 
     private fun candidate(

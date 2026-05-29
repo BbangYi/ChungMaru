@@ -207,7 +207,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_rejectsWideBrowserAccessibilityEstimatedMasks() {
+    fun buildSpecs_rejectsBrowserRowsWithoutExactGeometry() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -215,63 +215,82 @@ class MaskOverlayPlannerTest {
                 spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
                 original = "Tlqkf 발음",
                 authorId = "android-accessibility-browser:title"
-            )
-        )
-
-        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
-
-        assertTrue(specs.isEmpty())
-    }
-
-    @Test
-    fun buildSpecs_rejectsMediumWidthBrowserRowsWithoutExactGeometry() {
-        val response = responseOf(
+            ),
             resultOf(
                 offensive = true,
                 bounds = BoundsRect(24, 1080, 330, 1132),
                 spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
                 original = "Tlqkf 티셔츠",
                 authorId = "android-accessibility-browser:title"
-            )
-        )
-
-        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
-
-        assertTrue(specs.isEmpty())
-    }
-
-    @Test
-    fun buildSpecs_rejectsLooseBrowserSnippetBoundsWithoutExactGeometry() {
-        val response = responseOf(
+            ),
             resultOf(
                 offensive = true,
-                bounds = BoundsRect(24, 540, 190, 588),
-                spans = listOf(EvidenceSpan("시발", 0, 2, 0.99)),
-                original = "시발",
-                authorId = "android-accessibility-browser:snippet"
-            )
-        )
-
-        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
-
-        assertTrue(specs.isEmpty())
-    }
-
-    @Test
-    fun buildSpecs_rejectsCompactBrowserAccessibilityTextMasksWithoutExactGeometry() {
-        val response = responseOf(
-            resultOf(
-                offensive = true,
-                bounds = BoundsRect(80, 520, 188, 566),
-                spans = listOf(EvidenceSpan("개새끼", 0, 3, 0.99)),
-                original = "개새끼",
+                bounds = BoundsRect(42, 758, 1005, 887),
+                spans = listOf(EvidenceSpan("시발", 18, 20, 0.99)),
+                original = "키보드를 한영 전환하지 않고 '시발'을 입력했을 때 나오는 글자",
                 authorId = "android-accessibility-browser:title"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(42, 2275, 1042, 2339),
+                spans = listOf(EvidenceSpan("시발", 8, 10, 0.99)),
+                original = "우리나라 욕 중 시발을 쿼티 키보드에서 영어로 입력하면 생성되는 이다.",
+                authorId = "android-accessibility-browser:snippet"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(80, 520, 680, 582),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 1.0)),
+                original = "씨발 진짜 심한 욕 아니야? : r/korea",
+                authorId = "android-accessibility-browser-provisional-line:title"
             )
         )
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
 
         assertTrue(specs.isEmpty())
+    }
+
+    @Test
+    fun buildSpecs_keepsBrowserSearchInputDirectMask() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(80, 70, 430, 122),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발",
+                authorId = "android-accessibility-browser:user_input"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
+
+        assertEquals(1, specs.size)
+        val spec = specs.single()
+        assertEquals(80, spec.left)
+        assertEquals(80, spec.top)
+        assertTrue(spec.width <= 120)
+        assertFalse(spec.allowScrollTranslation)
+    }
+
+    @Test
+    fun buildSpecs_keepsCompactBrowserTextDirectMask() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(24, 540, 430, 610),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발 (r1836 판)",
+                authorId = "android-accessibility-browser-compact:title"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().debugSource.startsWith("android-accessibility-browser-compact:"))
+        assertTrue(specs.single().width <= 120)
+        assertTrue(specs.single().allowScrollTranslation)
     }
 
     @Test
@@ -292,7 +311,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_keepsCompactAccessibilityRangeGeometry() {
+    fun buildSpecs_rejectsEstimatedAccessibilityRangeGeometry() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -305,9 +324,7 @@ class MaskOverlayPlannerTest {
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
 
-        assertEquals(1, specs.size)
-        assertFalse(specs.single().allowScrollTranslation)
-        assertTrue("spec=${specs.single()}", specs.single().width <= 84)
+        assertTrue(specs.isEmpty())
     }
 
     @Test
@@ -468,6 +485,68 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun mergeWithPreservedPreciseVisualSpecs_dropsBrowserProvisionalLineDuringBackendRefresh() {
+        val backendTitleSpec = MaskOverlaySpec(
+            left = 42,
+            top = 758,
+            width = 963,
+            height = 129,
+            label = "***",
+            allowScrollTranslation = false,
+            debugSource = "android-accessibility-browser:title span=시발 rect=42,758,1005,887 text=키보드를 한영 전환하지 않고"
+        )
+        val provisionalSnippetSpec = MaskOverlaySpec(
+            left = 42,
+            top = 1811,
+            width = 1000,
+            height = 163,
+            label = "***",
+            allowScrollTranslation = false,
+            debugSource = "android-accessibility-browser-provisional-line:snippet span=시발 rect=42,1811,1042,1974 text=우리나라 욕 중 시발을"
+        )
+
+        val merged = AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+            newSpecs = listOf(backendTitleSpec),
+            existingSpecs = listOf(provisionalSnippetSpec),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(listOf(backendTitleSpec), merged)
+    }
+
+    @Test
+    fun mergeWithPreservedPreciseVisualSpecs_doesNotCarryBrowserProvisionalLineByDefault() {
+        val nextProvisionalSpec = MaskOverlaySpec(
+            left = 42,
+            top = 490,
+            width = 1000,
+            height = 163,
+            label = "***",
+            allowScrollTranslation = true,
+            debugSource = "android-accessibility-browser-provisional-line:snippet span=시발 rect=42,490,1042,653 text=다음 화면"
+        )
+        val oldProvisionalSpec = MaskOverlaySpec(
+            left = 42,
+            top = 840,
+            width = 1000,
+            height = 163,
+            label = "***",
+            allowScrollTranslation = true,
+            debugSource = "android-accessibility-browser-provisional-line:snippet span=시발 rect=42,840,1042,1002 text=이전 화면"
+        )
+
+        val merged = AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+            newSpecs = listOf(nextProvisionalSpec),
+            existingSpecs = listOf(oldProvisionalSpec),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(listOf(nextProvisionalSpec), merged)
+    }
+
+    @Test
     fun buildSpecs_suppressesNearDuplicateOverlappingMasks() {
         val response = responseOf(
             resultOf(
@@ -511,6 +590,31 @@ class MaskOverlayPlannerTest {
         assertEquals(1, specs.size)
         assertTrue(specs.single().left <= 48)
         assertTrue("spec=${specs.single()}", specs.single().width <= 96)
+    }
+
+    @Test
+    fun buildSpecs_prefersExactCharacterRangeOverBrowserLineMaskOnOverlap() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(42, 560, 1042, 634),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발",
+                authorId = "android-accessibility-browser:title"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(42, 570, 118, 622),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발",
+                authorId = "android-accessibility-char-range:씨발"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().debugSource.startsWith("android-accessibility-char-range:"))
     }
 
     @Test
@@ -987,24 +1091,47 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_doesNotDragEstimatedAccessibilityRangeMasksDuringScroll() {
+    fun buildSpecs_doesNotDragBrowserCharacterRangeMasksDuringScroll() {
         val response = responseOf(
             resultOf(
                 offensive = true,
-                bounds = BoundsRect(24, 900, 106, 935),
-                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
-                original = "tlqkf",
-                authorId = "android-accessibility-range:Tlqkf"
+                bounds = BoundsRect(118, 520, 262, 558),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발",
+                authorId = "android-accessibility-char-range:browser:title:씨발"
             )
         )
 
-        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
         assertEquals(1, specs.size)
         assertFalse(specs.single().allowScrollTranslation)
 
         val translated = AndroidMaskOverlayPlanner.translateSpecs(
             specs = specs,
+            deltaX = 0,
+            deltaY = -120,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertTrue(translated.isEmpty())
+    }
+
+    @Test
+    fun translateSpecs_doesNotDragEstimatedAccessibilityRangeMasksDuringScroll() {
+        val translated = AndroidMaskOverlayPlanner.translateSpecs(
+            specs = listOf(
+                MaskOverlaySpec(
+                    left = 24,
+                    top = 900,
+                    width = 82,
+                    height = 35,
+                    label = "***",
+                    allowScrollTranslation = false,
+                    debugSource = "android-accessibility-range:Tlqkf"
+                )
+            ),
             deltaX = 0,
             deltaY = -24,
             screenWidth = 720,
@@ -1271,7 +1398,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_keepsPlatformCommentMasksDuringScrollRecaptureGap() {
+    fun translateSpecs_dropsMergedPlatformCommentMasksDuringScrollRecaptureGap() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -1279,6 +1406,34 @@ class MaskOverlayPlannerTest {
                 spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
                 original = "tlqkf 뭐냐 진짜",
                 authorId = "android-accessibility-comment:youtube"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertFalse(specs.single().allowScrollTranslation)
+
+        val translated = AndroidMaskOverlayPlanner.translateSpecs(
+            specs = specs,
+            deltaX = 0,
+            deltaY = -24,
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertTrue(translated.isEmpty())
+    }
+
+    @Test
+    fun translateSpecs_keepsLineLevelPlatformCommentMasksDuringScrollRecaptureGap() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 540, 940, 620),
+                spans = listOf(EvidenceSpan("tlqkf", 0, 5, 0.99)),
+                original = "tlqkf 뭐냐 진짜",
+                authorId = "android-accessibility-comment:youtube:@user:line:540"
             )
         )
 
