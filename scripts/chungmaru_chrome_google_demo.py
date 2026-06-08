@@ -1198,7 +1198,15 @@ def capture_frame(page: CdpWebSocket, output: Path) -> None:
     output.write_bytes(base64.b64decode(data))
 
 
-def build_video(frames_dir: Path, output: Path, fps: int) -> None:
+def build_video(
+    frames_dir: Path,
+    output: Path,
+    fps: int,
+    *,
+    crf: int = 16,
+    preset: str = "slow",
+    pix_fmt: str = "yuv420p",
+) -> None:
     command = [
         "ffmpeg",
         "-y",
@@ -1210,8 +1218,14 @@ def build_video(frames_dir: Path, output: Path, fps: int) -> None:
         "scale=trunc(iw/2)*2:trunc(ih/2)*2",
         "-c:v",
         "libx264",
+        "-preset",
+        str(preset),
+        "-crf",
+        str(crf),
         "-pix_fmt",
-        "yuv420p",
+        str(pix_fmt),
+        "-movflags",
+        "+faststart",
         str(output),
     ]
     subprocess.run(command, check=True)
@@ -3191,6 +3205,9 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
         "viewport": f"{args.viewport[0]}x{args.viewport[1]}",
         "fps": args.fps,
         "capture_fps": args.capture_fps,
+        "video_crf": args.video_crf,
+        "video_preset": args.video_preset,
+        "video_pix_fmt": args.video_pix_fmt,
         "max_hover_probes": args.max_hover_probes,
         "scroll_return": bool(args.scroll_return),
         "youtube_post_mask_scroll": bool(args.youtube_post_mask_scroll),
@@ -3611,7 +3628,14 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
             recorder.hold(args.target_duration_seconds - current_duration, "final evidence review")
 
         output_video = args.output_dir / "chungmaru-google-demo.mp4"
-        build_video(frames_dir, output_video, args.fps)
+        build_video(
+            frames_dir,
+            output_video,
+            args.fps,
+            crf=args.video_crf,
+            preset=args.video_preset,
+            pix_fmt=args.video_pix_fmt,
+        )
         metadata["video"] = str(output_video)
         metadata["video_path"] = str(output_video)
         metadata["output_dir"] = str(args.output_dir)
@@ -3673,6 +3697,9 @@ def run_demo(args: argparse.Namespace) -> None:
         "viewport": f"{args.viewport[0]}x{args.viewport[1]}",
         "fps": args.fps,
         "capture_fps": args.capture_fps,
+        "video_crf": args.video_crf,
+        "video_preset": args.video_preset,
+        "video_pix_fmt": args.video_pix_fmt,
         "output_policy": "archive" if args.archive_video else "latest-overwrite",
         "archive_video": bool(args.archive_video),
         "seconds_per_scene": args.seconds_per_scene,
@@ -3785,7 +3812,14 @@ def run_demo(args: argparse.Namespace) -> None:
             metadata["scenes"].append(scene_meta)
 
         output_video = args.output_dir / "chungmaru-google-demo.mp4"
-        build_video(frames_dir, output_video, args.fps)
+        build_video(
+            frames_dir,
+            output_video,
+            args.fps,
+            crf=args.video_crf,
+            preset=args.video_preset,
+            pix_fmt=args.video_pix_fmt,
+        )
         metadata["video"] = str(output_video)
         metadata["frame_count"] = frame_index
         metadata["actual_capture_count"] = actual_capture_count
@@ -3839,6 +3873,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--viewport", type=parse_viewport, default=(1440, 900))
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--capture-fps", type=int, default=30)
+    parser.add_argument("--video-crf", type=int, default=16)
+    parser.add_argument("--video-preset", default="slow")
+    parser.add_argument("--video-pix-fmt", choices=["yuv420p", "yuv444p"], default="yuv420p")
     parser.add_argument("--seconds-per-scene", type=float, default=5)
     parser.add_argument("--target-duration-seconds", type=float, default=105.0)
     parser.add_argument("--settings-hold-seconds", type=float, default=8.0)
