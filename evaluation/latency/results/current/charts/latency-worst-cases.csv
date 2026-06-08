@@ -1,41 +1,41 @@
-rank,source_file,source_group,row_number,run_id,scenario,scene_type,query,total_ms,total_basis,visible_first_mask_ms,candidate_collect_ms,parser_ms,backend_ms,mask_apply_ms,post_backend_ms
-1,android-e2e-samples.csv,android-pipeline-benchmark,2,mac-android-smoke-20260606T1735KST,pipeline-01-02-03-04-05,,pipeline-01-02-03-04-05,2253.0,total_to_mask_ms,,2253.0,,389.0,111.0,388.0
-2,chungmaru-latency-samples.csv,extension-lastStats,1933,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,2161.0,total_to_mask_ms,,1.0,,2158.0,,
-3,chungmaru-latency-samples.csv,chrome-quick-qa,1225,chrome-quick-qa-moderation-speed-20260607T125700,speed-hate-age-slur,,틀딱들은 버스에서 내려라,903.0,total_to_mask_ms,903.0,397.0,1.0,482.0,0.0,0.0
-4,chungmaru-latency-samples.csv,extension-lastStats,1932,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,830.0,total_to_mask_ms,,1.0,,828.0,,
-5,chungmaru-latency-samples.csv,chrome-quick-qa,1221,chrome-quick-qa-moderation-speed-20260607T125700,core-profanity-direct,,병신아 꺼져,808.0,total_to_mask_ms,0.0,366.0,38.0,384.0,0.0,0.0
-6,chungmaru-latency-samples.csv,chrome-quick-qa,1034,chrome-quick-qa-offscreen-settings-20260606T2215,sensitivity-60,,차별금지법 기사,722.0,total_to_mask_ms,,,,424.0,,
-7,chungmaru-latency-samples.csv,chrome-quick-qa,1116,chrome-quick-qa-local-preflight-20260606T2320,sensitivity-60,,출장 일정 안내,720.0,total_to_mask_ms,,46.0,5.0,655.0,0.0,0.0
-8,chungmaru-latency-samples.csv,chrome-quick-qa,1014,chrome-quick-qa-settings-20260606T2145,sensitivity-60,,차별금지법 기사,578.0,total_to_mask_ms,,,,258.0,,
-9,chrome-demo-latency.csv,chrome-demo:google-search,2,chrome-google-demo-20260606T202222,,google-search,ㅅ ㅂ 뜻,504.0,total_to_mask_ms,,88.0,2.0,402.0,0.0,0.0
-10,chungmaru-latency-samples.csv,extension-lastStats,1610,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,484.0,total_to_mask_ms,,1.0,,481.0,,
-11,chungmaru-latency-samples.csv,extension-lastStats,2049,chrome-10k-fixture-20260607T2314,profanity,,http://127.0.0.1:8877/,467.0,total_to_mask_ms,,1.0,,465.0,,
-12,chungmaru-latency-samples.csv,extension-lastStats,6130,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,456.0,total_to_mask_ms,,,,456.0,,
-13,chungmaru-latency-samples.csv,chrome-quick-qa,1127,chrome-quick-qa-full-diverse-20260607T1000,adult-commerce,,콜걸성인마사지,451.0,total_to_mask_ms,,96.0,1.0,325.0,0.0,0.0
-14,chungmaru-latency-samples.csv,extension-lastStats,4549,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,448.0,total_to_mask_ms,,1.0,,447.0,,
-15,chungmaru-latency-samples.csv,extension-lastStats,5146,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,445.0,total_to_mask_ms,,1.0,,444.0,,
-16,chrome-demo-latency.csv,chrome-demo:google-search,35,chrome-google-adult-commerce-regression-extra-20260606T2115,,google-search,콜걸성인마사지,444.0,total_to_mask_ms,,79.0,14.0,333.0,0.0,0.0
-17,chungmaru-latency-samples.csv,extension-lastStats,1931,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,438.0,total_to_mask_ms,,1.0,,437.0,,
-18,chungmaru-latency-samples.csv,extension-lastStats,4193,chrome-10k-fixture-20260607T2314,search-result,,http://127.0.0.1:8877/,431.0,total_to_mask_ms,,1.0,,429.0,,
-19,chrome-demo-latency.csv,chrome-demo:youtube-watch-comments,102,chrome-google-youtube-demo-20260608-final,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,421.0,total_to_mask_ms,,44.0,7.0,370.0,0.0,0.0
-20,chungmaru-latency-samples.csv,extension-lastStats,3131,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,418.0,total_to_mask_ms,,1.0,,417.0,,
-21,chungmaru-latency-samples.csv,extension-lastStats,4188,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,413.0,total_to_mask_ms,,1.0,,412.0,,
-22,chungmaru-latency-samples.csv,extension-lastStats,4774,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,409.0,total_to_mask_ms,,1.0,,408.0,,
-23,chrome-demo-latency.csv,chrome-demo:google-search,58,chrome-demo-current-20260606T2300,,google-search,차별금지법 기사,407.0,total_to_mask_ms,,37.0,2.0,353.0,0.0,0.0
-24,chrome-demo-latency.csv,chrome-demo:google-search,53,chrome-demo-current-20260606T2245,,google-search,차별금지법 기사,401.0,total_to_mask_ms,,243.0,112.0,1.0,0.0,0.0
-25,chungmaru-latency-samples.csv,extension-lastStats,4383,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,395.0,total_to_mask_ms,,1.0,,394.0,,
-26,chrome-demo-latency.csv,chrome-demo:google-search,52,chrome-demo-current-20260606T2245,,google-search,차별금지법 기사,395.0,total_to_mask_ms,,241.0,112.0,1.0,0.0,0.0
-27,chungmaru-latency-samples.csv,extension-lastStats,2135,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,386.0,total_to_mask_ms,,1.0,,385.0,,
-28,chrome-demo-latency.csv,chrome-demo:google-search,26,chrome-google-demo-20260606T202920,,google-search,차별금지법 기사,381.0,total_to_mask_ms,,26.0,2.0,341.0,0.0,0.0
-29,chungmaru-latency-samples.csv,extension-lastStats,4546,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,378.0,total_to_mask_ms,,1.0,,377.0,,
-30,chrome-demo-latency.csv,chrome-demo:google-search,5,chrome-google-demo-20260606T202222,,google-search,ㅈ ㄴ 짜증,376.0,total_to_mask_ms,,67.0,2.0,292.0,0.0,0.0
-31,chungmaru-latency-samples.csv,chrome-quick-qa,1019,chrome-quick-qa-settings-20260606T2145,sensitivity-20,,차별금지법 기사,371.0,total_to_mask_ms,,,,21.0,,
-32,chungmaru-latency-samples.csv,extension-lastStats,4776,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,366.0,total_to_mask_ms,,1.0,,364.0,,
-33,chungmaru-latency-samples.csv,extension-lastStats,4942,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,360.0,total_to_mask_ms,,1.0,,359.0,,
-34,chungmaru-latency-samples.csv,extension-lastStats,3889,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,352.0,total_to_mask_ms,,1.0,,351.0,,
-35,chungmaru-latency-samples.csv,chrome-quick-qa,1044,chrome-quick-qa-readable-csv-20260606T2225,sensitivity-60,,차별금지법 기사,349.0,total_to_mask_ms,,,,12.0,,
-36,chrome-demo-latency.csv,chrome-demo:youtube-watch-comments,163,chrome-google-youtube-demo-20260608-final6,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,345.0,total_to_mask_ms,,43.0,8.0,293.0,0.0,0.0
-37,chrome-demo-attempt-latency.csv,chrome-demo-attempt:youtube-watch-comments,16,chrome-google-youtube-demo-20260608-final6,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,345.0,total_to_mask_ms,,43.0,8.0,293.0,0.0,0.0
-38,chungmaru-latency-samples.csv,extension-lastStats,4560,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,341.0,total_to_mask_ms,,1.0,,340.0,,
-39,chungmaru-latency-samples.csv,extension-lastStats,4570,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,341.0,total_to_mask_ms,,,,340.0,,
-40,chungmaru-latency-samples.csv,extension-lastStats,4344,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,338.0,total_to_mask_ms,,1.0,,336.0,,
+rank,source_file,source_group,row_number,run_id,scenario,scene_type,query,total_ms,total_basis,visible_first_mask_ms,dominant_stage,cause_hint,batch_size,requested_text_count,backend_request_count,backend_request_duration_max_ms,backend_internal_model_max_ms,candidate_collect_ms,parser_ms,backend_ms,mask_apply_ms,post_backend_ms
+1,android-e2e-samples.csv,android-pipeline-benchmark,2,mac-android-smoke-20260606T1735KST,pipeline-01-02-03-04-05,,pipeline-01-02-03-04-05,2253.0,total_to_mask_ms,,candidate,candidate/node collection dominated,14,,,1559,,2253.0,,389.0,111.0,388.0
+2,chungmaru-latency-samples.csv,extension-lastStats,1933,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,2161.0,total_to_mask_ms,,backend,backend multi-request accumulation,16,10,5,736.0,730.286,1.0,,2158.0,,
+3,chungmaru-latency-samples.csv,chrome-quick-qa,1225,chrome-quick-qa-moderation-speed-20260607T125700,speed-hate-age-slur,,틀딱들은 버스에서 내려라,903.0,total_to_mask_ms,903.0,backend,backend round-trip spike,1,1,1,,,397.0,1.0,482.0,0.0,0.0
+4,chungmaru-latency-samples.csv,extension-lastStats,1932,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,830.0,total_to_mask_ms,,backend,backend multi-request accumulation,8,5,2,592.0,251.037,1.0,,828.0,,
+5,chungmaru-latency-samples.csv,chrome-quick-qa,1221,chrome-quick-qa-moderation-speed-20260607T125700,core-profanity-direct,,병신아 꺼져,808.0,total_to_mask_ms,0.0,pre_backend,pre-backend candidate preparation,2,2,2,,,366.0,38.0,384.0,0.0,0.0
+6,chungmaru-latency-samples.csv,chrome-quick-qa,1034,chrome-quick-qa-offscreen-settings-20260606T2215,sensitivity-60,,차별금지법 기사,722.0,total_to_mask_ms,,backend,backend multi-request accumulation,2,2,2,,,,,424.0,,
+7,chungmaru-latency-samples.csv,chrome-quick-qa,1116,chrome-quick-qa-local-preflight-20260606T2320,sensitivity-60,,출장 일정 안내,720.0,total_to_mask_ms,,backend,backend multi-request accumulation,2,2,2,,,46.0,5.0,655.0,0.0,0.0
+8,chungmaru-latency-samples.csv,chrome-quick-qa,1014,chrome-quick-qa-settings-20260606T2145,sensitivity-60,,차별금지법 기사,578.0,total_to_mask_ms,,backend,backend multi-request accumulation,2,2,2,,,,,258.0,,
+9,chrome-demo-latency.csv,chrome-demo:google-search,2,chrome-google-demo-20260606T202222,,google-search,ㅅ ㅂ 뜻,504.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,88.0,2.0,402.0,0.0,0.0
+10,chungmaru-latency-samples.csv,extension-lastStats,1610,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,484.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,380.0,96.836,1.0,,481.0,,
+11,chungmaru-latency-samples.csv,extension-lastStats,2049,chrome-10k-fixture-20260607T2314,profanity,,http://127.0.0.1:8877/,467.0,total_to_mask_ms,,backend,backend multi-request accumulation,8,8,2,396.0,97.695,1.0,,465.0,,
+12,chungmaru-latency-samples.csv,extension-lastStats,6130,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,456.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,382.0,272.958,,,456.0,,
+13,chungmaru-latency-samples.csv,chrome-quick-qa,1127,chrome-quick-qa-full-diverse-20260607T1000,adult-commerce,,콜걸성인마사지,451.0,total_to_mask_ms,,backend,backend round-trip spike,1,1,1,,,96.0,1.0,325.0,0.0,0.0
+14,chungmaru-latency-samples.csv,extension-lastStats,4549,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,448.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,286.0,156.804,1.0,,447.0,,
+15,chungmaru-latency-samples.csv,extension-lastStats,5146,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,445.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,295.0,145.731,1.0,,444.0,,
+16,chrome-demo-latency.csv,chrome-demo:google-search,35,chrome-google-adult-commerce-regression-extra-20260606T2115,,google-search,콜걸성인마사지,444.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,79.0,14.0,333.0,0.0,0.0
+17,chungmaru-latency-samples.csv,extension-lastStats,1931,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,438.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,372.0,267.172,1.0,,437.0,,
+18,chungmaru-latency-samples.csv,extension-lastStats,4193,chrome-10k-fixture-20260607T2314,search-result,,http://127.0.0.1:8877/,431.0,total_to_mask_ms,,backend,backend multi-request accumulation,8,5,2,223.0,60.333,1.0,,429.0,,
+19,chrome-demo-latency.csv,chrome-demo:youtube-watch-comments,102,chrome-google-youtube-demo-20260608-final,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,421.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,44.0,7.0,370.0,0.0,0.0
+20,chungmaru-latency-samples.csv,extension-lastStats,3131,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,418.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,359.0,269.754,1.0,,417.0,,
+21,chungmaru-latency-samples.csv,extension-lastStats,4188,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,413.0,total_to_mask_ms,,backend,backend round-trip spike,16,2,1,410.0,89.207,1.0,,412.0,,
+22,chungmaru-latency-samples.csv,extension-lastStats,4774,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,409.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,287.0,123.138,1.0,,408.0,,
+23,chrome-demo-latency.csv,chrome-demo:google-search,58,chrome-demo-current-20260606T2300,,google-search,차별금지법 기사,407.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,37.0,2.0,353.0,0.0,0.0
+24,chrome-demo-latency.csv,chrome-demo:google-search,53,chrome-demo-current-20260606T2245,,google-search,차별금지법 기사,401.0,total_to_mask_ms,,pre_backend,pre-backend candidate preparation,,,,,,243.0,112.0,1.0,0.0,0.0
+25,chungmaru-latency-samples.csv,extension-lastStats,4383,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,395.0,total_to_mask_ms,,backend,backend multi-request accumulation,16,5,2,230.0,158.613,1.0,,394.0,,
+26,chrome-demo-latency.csv,chrome-demo:google-search,52,chrome-demo-current-20260606T2245,,google-search,차별금지법 기사,395.0,total_to_mask_ms,,pre_backend,pre-backend candidate preparation,,,,,,241.0,112.0,1.0,0.0,0.0
+27,chungmaru-latency-samples.csv,extension-lastStats,2135,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,386.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,382.0,273.57,1.0,,385.0,,
+28,chrome-demo-latency.csv,chrome-demo:google-search,26,chrome-google-demo-20260606T202920,,google-search,차별금지법 기사,381.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,26.0,2.0,341.0,0.0,0.0
+29,chungmaru-latency-samples.csv,extension-lastStats,4546,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,378.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,254.0,119.819,1.0,,377.0,,
+30,chrome-demo-latency.csv,chrome-demo:google-search,5,chrome-google-demo-20260606T202222,,google-search,ㅈ ㄴ 짜증,376.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,67.0,2.0,292.0,0.0,0.0
+31,chungmaru-latency-samples.csv,chrome-quick-qa,1019,chrome-quick-qa-settings-20260606T2145,sensitivity-20,,차별금지법 기사,371.0,total_to_mask_ms,,backend,backend multi-request accumulation,2,2,2,,,,,21.0,,
+32,chungmaru-latency-samples.csv,extension-lastStats,4776,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,366.0,total_to_mask_ms,,backend,backend multi-request accumulation,16,5,2,230.0,130.407,1.0,,364.0,,
+33,chungmaru-latency-samples.csv,extension-lastStats,4942,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,360.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,255.0,110.934,1.0,,359.0,,
+34,chungmaru-latency-samples.csv,extension-lastStats,3889,chrome-10k-fixture-20260607T2314,mixed,,http://127.0.0.1:8877/,352.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,267.0,128.337,1.0,,351.0,,
+35,chungmaru-latency-samples.csv,chrome-quick-qa,1044,chrome-quick-qa-readable-csv-20260606T2225,sensitivity-60,,차별금지법 기사,349.0,total_to_mask_ms,,backend,backend multi-request accumulation,2,2,2,,,,,12.0,,
+36,chrome-demo-latency.csv,chrome-demo:youtube-watch-comments,163,chrome-google-youtube-demo-20260608-final6,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,345.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,43.0,8.0,293.0,0.0,0.0
+37,chrome-demo-attempt-latency.csv,chrome-demo-attempt:youtube-watch-comments,16,chrome-google-youtube-demo-20260608-final6,youtube-comment-profanity,youtube-watch-comments,시발 또 다시 보여줘야해?,345.0,total_to_mask_ms,,backend,backend round-trip spike,,,,,,43.0,8.0,293.0,0.0,0.0
+38,chungmaru-latency-samples.csv,extension-lastStats,4560,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,341.0,total_to_mask_ms,,backend,backend multi-request accumulation,16,5,2,221.0,111.693,1.0,,340.0,,
+39,chungmaru-latency-samples.csv,extension-lastStats,4570,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,341.0,total_to_mask_ms,,backend,backend multi-request accumulation,4,5,2,241.0,103.896,,,340.0,,
+40,chungmaru-latency-samples.csv,extension-lastStats,4344,chrome-10k-fixture-20260607T2314,bypass,,http://127.0.0.1:8877/,338.0,total_to_mask_ms,,backend,backend multi-request accumulation,16,5,2,241.0,90.433,1.0,,336.0,,

@@ -24,20 +24,20 @@ Generated from CSV files in `evaluation/latency/results/current`.
 
 ## Worst Cases
 
-| Rank | Source | Query / Scenario | Total ms | Basis | Backend ms | Candidate ms | Parser ms | Mask ms |
-| ---: | --- | --- | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | android-pipeline-benchmark | pipeline-01-02-03-04-05 | 2253.0 | total_to_mask_ms | 389.0 | 2253.0 |  | 111.0 |
-| 2 | extension-lastStats | http://127.0.0.1:8877/ | 2161.0 | total_to_mask_ms | 2158.0 | 1.0 |  |  |
-| 3 | chrome-quick-qa | 틀딱들은 버스에서 내려라 | 903.0 | total_to_mask_ms | 482.0 | 397.0 | 1.0 | 0.0 |
-| 4 | extension-lastStats | http://127.0.0.1:8877/ | 830.0 | total_to_mask_ms | 828.0 | 1.0 |  |  |
-| 5 | chrome-quick-qa | 병신아 꺼져 | 808.0 | total_to_mask_ms | 384.0 | 366.0 | 38.0 | 0.0 |
-| 6 | chrome-quick-qa | 차별금지법 기사 | 722.0 | total_to_mask_ms | 424.0 |  |  |  |
-| 7 | chrome-quick-qa | 출장 일정 안내 | 720.0 | total_to_mask_ms | 655.0 | 46.0 | 5.0 | 0.0 |
-| 8 | chrome-quick-qa | 차별금지법 기사 | 578.0 | total_to_mask_ms | 258.0 |  |  |  |
-| 9 | chrome-demo:google-search | ㅅ ㅂ 뜻 | 504.0 | total_to_mask_ms | 402.0 | 88.0 | 2.0 | 0.0 |
-| 10 | extension-lastStats | http://127.0.0.1:8877/ | 484.0 | total_to_mask_ms | 481.0 | 1.0 |  |  |
-| 11 | extension-lastStats | http://127.0.0.1:8877/ | 467.0 | total_to_mask_ms | 465.0 | 1.0 |  |  |
-| 12 | extension-lastStats | http://127.0.0.1:8877/ | 456.0 | total_to_mask_ms | 456.0 |  |  |  |
+| Rank | Source | Query / Scenario | Total ms | Dominant | Cause | Requests | Backend max | Model max | Candidate ms |
+| ---: | --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: |
+| 1 | android-pipeline-benchmark | pipeline-01-02-03-04-05 | 2253.0 | candidate | candidate/node collection dominated |  | 1559 |  | 2253.0 |
+| 2 | extension-lastStats | http://127.0.0.1:8877/ | 2161.0 | backend | backend multi-request accumulation | 5 | 736.0 | 730.286 | 1.0 |
+| 3 | chrome-quick-qa | 틀딱들은 버스에서 내려라 | 903.0 | backend | backend round-trip spike | 1 |  |  | 397.0 |
+| 4 | extension-lastStats | http://127.0.0.1:8877/ | 830.0 | backend | backend multi-request accumulation | 2 | 592.0 | 251.037 | 1.0 |
+| 5 | chrome-quick-qa | 병신아 꺼져 | 808.0 | pre_backend | pre-backend candidate preparation | 2 |  |  | 366.0 |
+| 6 | chrome-quick-qa | 차별금지법 기사 | 722.0 | backend | backend multi-request accumulation | 2 |  |  |  |
+| 7 | chrome-quick-qa | 출장 일정 안내 | 720.0 | backend | backend multi-request accumulation | 2 |  |  | 46.0 |
+| 8 | chrome-quick-qa | 차별금지법 기사 | 578.0 | backend | backend multi-request accumulation | 2 |  |  |  |
+| 9 | chrome-demo:google-search | ㅅ ㅂ 뜻 | 504.0 | backend | backend round-trip spike |  |  |  | 88.0 |
+| 10 | extension-lastStats | http://127.0.0.1:8877/ | 484.0 | backend | backend multi-request accumulation | 2 | 380.0 | 96.836 | 1.0 |
+| 11 | extension-lastStats | http://127.0.0.1:8877/ | 467.0 | backend | backend multi-request accumulation | 2 | 396.0 | 97.695 | 1.0 |
+| 12 | extension-lastStats | http://127.0.0.1:8877/ | 456.0 | backend | backend multi-request accumulation | 2 | 382.0 | 272.958 |  |
 
 ## Source Summary
 

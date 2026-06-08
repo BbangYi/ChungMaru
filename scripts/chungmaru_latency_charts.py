@@ -223,7 +223,7 @@ def fmt_ms(value: float) -> str:
 def write_csv(path: Path, rows: list[dict[str, object]], fields: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row.get(field, "") for field in fields})
@@ -293,6 +293,23 @@ def build_worst_cases(rows: list[LatencyRow], limit: int) -> list[dict[str, obje
     worst = sorted(display_rows, key=lambda row: row.total_ms, reverse=True)[:limit]
     output: list[dict[str, object]] = []
     for rank, row in enumerate(worst, start=1):
+        dominant_stage = ""
+        if row.stages:
+            dominant_stage = max(row.stages.items(), key=lambda item: item[1])[0]
+        backend_request_count = row.raw.get("backend_request_count", "")
+        requested_text_count = row.raw.get("requested_text_count", "")
+        backend_duration_max = row.raw.get("backend_request_duration_max_ms", "")
+        backend_model_max = row.raw.get("backend_model_max_ms", "")
+        if dominant_stage == "candidate":
+            cause_hint = "candidate/node collection dominated"
+        elif dominant_stage == "backend" and number(backend_request_count) and number(backend_request_count) > 1:
+            cause_hint = "backend multi-request accumulation"
+        elif dominant_stage == "backend":
+            cause_hint = "backend round-trip spike"
+        elif dominant_stage in {"pre_backend", "local_preflight"}:
+            cause_hint = "pre-backend candidate preparation"
+        else:
+            cause_hint = dominant_stage or "unclassified"
         output.append(
             {
                 "rank": rank,
@@ -306,6 +323,13 @@ def build_worst_cases(rows: list[LatencyRow], limit: int) -> list[dict[str, obje
                 "total_ms": fmt_ms(row.total_ms),
                 "total_basis": row.total_basis,
                 "visible_first_mask_ms": "" if row.visible_first_mask_ms is None else fmt_ms(row.visible_first_mask_ms),
+                "dominant_stage": dominant_stage,
+                "cause_hint": cause_hint,
+                "batch_size": row.raw.get("batch_size", ""),
+                "requested_text_count": requested_text_count,
+                "backend_request_count": backend_request_count,
+                "backend_request_duration_max_ms": backend_duration_max,
+                "backend_internal_model_max_ms": backend_model_max,
                 "candidate_collect_ms": fmt_ms(row.stages.get("candidate", 0.0)) if "candidate" in row.stages else "",
                 "parser_ms": fmt_ms(row.stages.get("parser", 0.0)) if "parser" in row.stages else "",
                 "backend_ms": fmt_ms(row.stages.get("backend", 0.0)) if "backend" in row.stages else "",
@@ -546,14 +570,15 @@ def write_report(path: Path, rows: list[LatencyRow], source_summary: list[dict[s
         "",
         "## Worst Cases",
         "",
-        "| Rank | Source | Query / Scenario | Total ms | Basis | Backend ms | Candidate ms | Parser ms | Mask ms |",
-        "| ---: | --- | --- | ---: | --- | ---: | ---: | ---: | ---: |",
+        "| Rank | Source | Query / Scenario | Total ms | Dominant | Cause | Requests | Backend max | Model max | Candidate ms |",
+        "| ---: | --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: |",
     ]
     for row in worst[:12]:
         query = html.escape(str(row["query"]))
         lines.append(
             f"| {row['rank']} | {html.escape(str(row['source_group']))} | {query} | {row['total_ms']} | "
-            f"{row['total_basis']} | {row['backend_ms']} | {row['candidate_collect_ms']} | {row['parser_ms']} | {row['mask_apply_ms']} |"
+            f"{row['dominant_stage']} | {html.escape(str(row['cause_hint']))} | {row['backend_request_count']} | "
+            f"{row['backend_request_duration_max_ms']} | {row['backend_internal_model_max_ms']} | {row['candidate_collect_ms']} |"
         )
     lines.extend(
         [
@@ -632,6 +657,13 @@ def render(args: argparse.Namespace) -> int:
             "total_ms",
             "total_basis",
             "visible_first_mask_ms",
+            "dominant_stage",
+            "cause_hint",
+            "batch_size",
+            "requested_text_count",
+            "backend_request_count",
+            "backend_request_duration_max_ms",
+            "backend_internal_model_max_ms",
             "candidate_collect_ms",
             "parser_ms",
             "backend_ms",
