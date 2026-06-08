@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="528" viewBox="0 0 1200 528">
+<rect width="100%" height="100%" fill="#fafaf7"/>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#242424}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.muted{fill:#6f7478}.axis{stroke:#d4d1c8;stroke-width:1}.barbg{fill:#ece9df}.accent{fill:#2f7667}.warn{fill:#d58c55}.bad{fill:#c94f45}.line{fill:none;stroke:#2f7667;stroke-width:2}.dot{fill:#2f7667}.dot-warn{fill:#d58c55}.dot-bad{fill:#c94f45}</style>
+<text x="72" y="36" font-size="24" font-weight="750">Average stage breakdown</text>
+<text x="72" y="58" font-size="13" class="muted">stacked from measured stage columns; missing stages are left blank</text>
+<rect x="72" y="78" width="14" height="14" fill="#89a6a0"/>
+<text x="92" y="90" font-size="12" class="muted">candidate</text>
+<rect x="190" y="78" width="14" height="14" fill="#afc4d6"/>
+<text x="210" y="90" font-size="12" class="muted">parser</text>
+<rect x="308" y="78" width="14" height="14" fill="#c9b99b"/>
+<text x="328" y="90" font-size="12" class="muted">pre_backend</text>
+<rect x="426" y="78" width="14" height="14" fill="#d58c55"/>
+<text x="446" y="90" font-size="12" class="muted">backend</text>
+<rect x="544" y="78" width="14" height="14" fill="#7e8b6b"/>
+<text x="564" y="90" font-size="12" class="muted">decision</text>
+<rect x="662" y="78" width="14" height="14" fill="#2f7667"/>
+<text x="682" y="90" font-size="12" class="muted">mask_apply</text>
+<rect x="780" y="78" width="14" height="14" fill="#c94f45"/>
+<text x="800" y="90" font-size="12" class="muted">post_backend</text>
+<text x="72" y="139" font-size="14" class="mono">android-pipeline-benchmark</text>
+<rect x="390" y="118" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="118" width="262.3" height="24" fill="#89a6a0"><title>candidate: 271.8ms</title></rect>
+<rect x="652.3" y="118" width="262.3" height="24" fill="#c9b99b"><title>pre_backend: 271.8ms</title></rect>
+<rect x="914.5" y="118" width="57.8" height="24" fill="#d58c55"><title>backend: 59.9ms</title></rect>
+<rect x="972.3" y="118" width="43.3" height="24" fill="#7e8b6b"><title>decision: 44.9ms</title></rect>
+<rect x="1015.6" y="118" width="11.0" height="24" fill="#2f7667"><title>mask_apply: 11.4ms</title></rect>
+<rect x="1026.7" y="118" width="43.3" height="24" fill="#c94f45"><title>post_backend: 44.9ms</title></rect>
+<text x="1088" y="137" font-size="13">704.7ms</text>
+<text x="72" y="183" font-size="14" class="mono">chrome-demo-attempt:youtube-watch-comments</text>
+<rect x="390" y="162" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="162" width="41.5" height="24" fill="#89a6a0"><title>candidate: 43.0ms</title></rect>
+<rect x="431.5" y="162" width="7.7" height="24" fill="#afc4d6"><title>parser: 8.0ms</title></rect>
+<rect x="439.2" y="162" width="50.2" height="24" fill="#c9b99b"><title>pre_backend: 52.0ms</title></rect>
+<rect x="489.4" y="162" width="282.7" height="24" fill="#d58c55"><title>backend: 293.0ms</title></rect>
+<text x="1088" y="181" font-size="13">396.0ms</text>
+<text x="72" y="227" font-size="14" class="mono">chrome-demo:youtube-watch-comments</text>
+<rect x="390" y="206" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="206" width="52.4" height="24" fill="#89a6a0"><title>candidate: 54.3ms</title></rect>
+<rect x="442.4" y="206" width="7.4" height="24" fill="#afc4d6"><title>parser: 7.6ms</title></rect>
+<rect x="449.8" y="206" width="60.6" height="24" fill="#c9b99b"><title>pre_backend: 62.8ms</title></rect>
+<rect x="510.3" y="206" width="88.8" height="24" fill="#d58c55"><title>backend: 92.1ms</title></rect>
+<text x="1088" y="225" font-size="13">216.8ms</text>
+<text x="72" y="271" font-size="14" class="mono">chrome-demo:google-search</text>
+<rect x="390" y="250" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="250" width="51.9" height="24" fill="#89a6a0"><title>candidate: 53.8ms</title></rect>
+<rect x="441.9" y="250" width="3.7" height="24" fill="#afc4d6"><title>parser: 3.9ms</title></rect>
+<rect x="445.6" y="250" width="72.5" height="24" fill="#c9b99b"><title>pre_backend: 75.1ms</title></rect>
+<rect x="518.1" y="250" width="68.3" height="24" fill="#d58c55"><title>backend: 70.7ms</title></rect>
+<text x="1088" y="269" font-size="13">203.5ms</text>
+<text x="72" y="315" font-size="14" class="mono">chrome-demo:google-mode-showcase</text>
+<rect x="390" y="294" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="294" width="64.7" height="24" fill="#89a6a0"><title>candidate: 67.0ms</title></rect>
+<rect x="454.7" y="294" width="1.0" height="24" fill="#afc4d6"><title>parser: 0.0ms</title></rect>
+<rect x="455.7" y="294" width="73.3" height="24" fill="#c9b99b"><title>pre_backend: 76.0ms</title></rect>
+<rect x="529.0" y="294" width="21.6" height="24" fill="#d58c55"><title>backend: 22.3ms</title></rect>
+<text x="1088" y="313" font-size="13">165.4ms</text>
+<text x="72" y="359" font-size="14" class="mono">chrome-quick-qa</text>
+<rect x="390" y="338" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="338" width="36.9" height="24" fill="#89a6a0"><title>candidate: 38.3ms</title></rect>
+<rect x="426.9" y="338" width="1.0" height="24" fill="#afc4d6"><title>parser: 0.9ms</title></rect>
+<rect x="427.9" y="338" width="52.3" height="24" fill="#c9b99b"><title>pre_backend: 54.2ms</title></rect>
+<rect x="480.3" y="338" width="66.9" height="24" fill="#d58c55"><title>backend: 69.3ms</title></rect>
+<rect x="547.2" y="338" width="1.0" height="24" fill="#7e8b6b"><title>decision: 0.0ms</title></rect>
+<rect x="548.2" y="338" width="1.0" height="24" fill="#2f7667"><title>mask_apply: 0.0ms</title></rect>
+<rect x="549.2" y="338" width="1.0" height="24" fill="#c94f45"><title>post_backend: 0.0ms</title></rect>
+<text x="1088" y="357" font-size="13">162.8ms</text>
+<text x="72" y="403" font-size="14" class="mono">chrome-demo-attempt:google-search</text>
+<rect x="390" y="382" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="382" width="39.1" height="24" fill="#89a6a0"><title>candidate: 40.5ms</title></rect>
+<rect x="429.1" y="382" width="58.9" height="24" fill="#c9b99b"><title>pre_backend: 61.0ms</title></rect>
+<rect x="487.9" y="382" width="50.7" height="24" fill="#d58c55"><title>backend: 52.5ms</title></rect>
+<text x="1088" y="401" font-size="13">154.0ms</text>
+<text x="72" y="447" font-size="14" class="mono">extension-lastStats</text>
+<rect x="390" y="426" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="426" width="1.1" height="24" fill="#89a6a0"><title>candidate: 1.2ms</title></rect>
+<rect x="391.1" y="426" width="1.4" height="24" fill="#c9b99b"><title>pre_backend: 1.5ms</title></rect>
+<rect x="392.5" y="426" width="74.6" height="24" fill="#d58c55"><title>backend: 77.3ms</title></rect>
+<rect x="467.1" y="426" width="1.0" height="24" fill="#7e8b6b"><title>decision: 1.0ms</title></rect>
+<rect x="468.1" y="426" width="1.0" height="24" fill="#c94f45"><title>post_backend: 1.0ms</title></rect>
+<text x="1088" y="445" font-size="13">81.9ms</text>
+<text x="72" y="491" font-size="14" class="mono">chrome-demo-attempt:google-mode-showcase</text>
+<rect x="390" y="470" width="680" height="24" class="barbg"/>
+<rect x="390.0" y="470" width="11.6" height="24" fill="#89a6a0"><title>candidate: 12.0ms</title></rect>
+<rect x="401.6" y="470" width="19.3" height="24" fill="#c9b99b"><title>pre_backend: 20.0ms</title></rect>
+<rect x="420.9" y="470" width="1.0" height="24" fill="#d58c55"><title>backend: 1.0ms</title></rect>
+<text x="1088" y="489" font-size="13">33.0ms</text>
+</svg>

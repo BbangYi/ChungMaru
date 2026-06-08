@@ -212,7 +212,6 @@ function getEditableInterventionMode(settings) {
 function shouldUseFixedEditableTokenOverlay(element, settings) {
   const interventionMode = getEditableInterventionMode(settings);
   return (
-    interventionMode !== "hide" &&
     interventionMode !== "remove" &&
     shouldUseHardEditableConcealment(element)
   );

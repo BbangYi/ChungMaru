@@ -1,0 +1,12 @@
+source_file,source_group,rows,display_rows,avg_ms,median_ms,p90_ms,p95_ms,max_ms,stddev_ms,display_avg_ms,display_p95_ms,display_max_ms
+android-e2e-samples.csv,android-pipeline-benchmark,1,1,2253.0,2253.0,2253.0,2253.0,2253.0,0.0,2253.0,2253.0,2253.0
+chrome-demo-attempt-latency.csv,chrome-demo-attempt:google-mode-showcase,8,8,38.8,43.0,47.0,47.0,47.0,10.5,38.8,47.0,47.0
+chrome-demo-attempt-latency.csv,chrome-demo-attempt:google-search,6,6,77.5,65.0,123.5,151.8,180.0,46.9,77.5,151.8,180.0
+chrome-demo-attempt-latency.csv,chrome-demo-attempt:youtube-watch-comments,1,1,345.0,345.0,345.0,345.0,345.0,0.0,345.0,345.0,345.0
+chrome-demo-latency.csv,chrome-demo:google-mode-showcase,24,24,100.5,47.5,215.4,238.1,253.0,82.8,100.5,238.1,253.0
+chrome-demo-latency.csv,chrome-demo:google-search,124,124,121.4,93.5,227.9,368.8,504.0,98.5,121.4,368.8,504.0
+chrome-demo-latency.csv,chrome-demo:youtube-watch-comments,14,14,155.1,84.0,336.0,371.6,421.0,116.6,155.1,371.6,421.0
+chungmaru-latency-samples.csv,android-pipeline-benchmark,8,8,24.9,27.0,32.1,38.0,44.0,10.1,24.9,38.0,44.0
+chungmaru-latency-samples.csv,backend-direct,1000,0,78.3,56.7,134.3,220.8,578.2,82.2,0.0,0.0,0.0
+chungmaru-latency-samples.csv,chrome-quick-qa,539,460,145.2,52.0,174.0,253.0,4120.9,495.5,84.2,199.1,903.0
+chungmaru-latency-samples.csv,extension-lastStats,10000,10000,78.4,68.0,130.0,203.0,2161.0,56.3,78.4,203.0,2161.0

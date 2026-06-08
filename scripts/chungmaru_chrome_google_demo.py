@@ -782,6 +782,7 @@ DEFAULT_QUERIES = [item["query"] for item in QUERY_SCENARIOS if DEFAULT_QUERY_SE
 DEFAULT_WARNING_URL = "https://adult-webtoon-plus.kr/"
 DEFAULT_YOUTUBE_QUERY = "시발 또 다시 보여줘야해?"
 DEFAULT_YOUTUBE_TARGET_HINTS = "식케이,Sik-K,다시 보여줘야해,보여줘야해"
+DEFAULT_MODE_SHOWCASE_QUERY = "병신아 꺼져"
 DEFAULT_LATEST_OUTPUT_DIR = Path("evaluation/latency/results/current")
 DEFAULT_ARCHIVE_OUTPUT_ROOT = Path("/private/tmp/chungmaru-chrome-demo-archive")
 DEFAULT_APPEND_LATENCY_CSV = Path("evaluation/latency/results/current/chrome-demo-latency.csv")
@@ -1687,6 +1688,16 @@ def hover_first_mask(
     return probe
 
 
+def can_record_hover_probe(args: argparse.Namespace) -> bool:
+    max_probes = max(0, int(getattr(args, "max_hover_probes", 0)))
+    used = int(getattr(args, "_hover_probe_count", 0))
+    return used < max_probes
+
+
+def mark_hover_probe_recorded(args: argparse.Namespace) -> None:
+    setattr(args, "_hover_probe_count", int(getattr(args, "_hover_probe_count", 0)) + 1)
+
+
 def collect_render_diagnostics(page: CdpWebSocket) -> dict[str, Any]:
     script = r"""
 (() => {
@@ -2570,7 +2581,7 @@ def record_google_mode_showcase(
     latency_rows: list[dict[str, Any]],
     start_index: int,
 ) -> int:
-    query = str(args.mode_showcase_query or "ㅈ댄다 진짜")
+    query = str(args.mode_showcase_query or DEFAULT_MODE_SHOWCASE_QUERY)
     next_index = int(start_index)
 
     off_settings = build_mode_demo_settings(base_settings, enabled=False)
@@ -2656,13 +2667,14 @@ def record_google_mode_showcase(
         recorder.hold(args.mode_showcase_result_hold_seconds, f"mode showcase: result {mode}")
         pipeline_video_end = round(recorder.video_seconds, 3)
         hover_probe: dict[str, Any] = {"ok": False, "reason": "DISABLED_OR_NO_MASK"}
-        if mode != "remove" and not args.no_hover_probe and effective_masks > 0:
+        if mode == "mask" and not args.no_hover_probe and effective_masks > 0 and can_record_hover_probe(args):
             hover_probe = hover_first_mask(
                 page,
                 recorder,
                 label=f"mode showcase: hover {mode}",
                 hold_seconds=min(args.hover_hold_seconds, args.mode_showcase_hover_hold_seconds),
             )
+            mark_hover_probe_recorded(args)
         scene = {
             "type": "google-mode-showcase",
             "index": next_index,
@@ -3162,6 +3174,7 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
     options_page: CdpWebSocket | None = None
     recorder: FrameRecorder | None = None
     latency_rows: list[dict[str, Any]] = []
+    args._hover_probe_count = 0
     metadata: dict[str, Any] = {
         "run_id": args.run_id,
         "mode": "interactive",
@@ -3178,6 +3191,9 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
         "viewport": f"{args.viewport[0]}x{args.viewport[1]}",
         "fps": args.fps,
         "capture_fps": args.capture_fps,
+        "max_hover_probes": args.max_hover_probes,
+        "scroll_return": bool(args.scroll_return),
+        "youtube_post_mask_scroll": bool(args.youtube_post_mask_scroll),
         "target_duration_seconds": args.target_duration_seconds,
         "output_dir": str(args.output_dir),
         "output_policy": "archive" if args.archive_video else "latest-overwrite",
@@ -3333,17 +3349,29 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
             recorder.hold(args.masked_hold_seconds, f"search {search_index}: masked results: {query}")
             pipeline_video_end = round(recorder.video_seconds, 3)
             hover_probe: dict[str, Any] = {"ok": False, "reason": "DISABLED_OR_NO_MASK"}
-            if not args.no_hover_probe and effective_masks > 0:
+            if not args.no_hover_probe and effective_masks > 0 and can_record_hover_probe(args):
                 hover_probe = hover_first_mask(
                     page,
                     recorder,
                     label=f"search {search_index}: hover mask evidence: {query}",
                     hold_seconds=args.hover_hold_seconds,
                 )
+                mark_hover_probe_recorded(args)
             down = smooth_scroll(page, recorder, label=f"search {search_index}", direction="down", steps=args.scroll_steps)
-            recorder.hold(args.scroll_hold_seconds, f"search {search_index}: after scroll: {query}")
-            up = smooth_scroll(page, recorder, label=f"search {search_index}", direction="up", steps=max(8, args.scroll_steps // 2))
+            scroll_refresh_pipeline = run_pipeline_for_google_scene(
+                worker,
+                settings,
+                settings_write_ok,
+                reason=f"interactive-demo-google-search-{search_index}-after-scroll",
+                force_settings_snapshot=args.force_settings_snapshot,
+                attempts=1,
+            )
             diagnostics_after_scroll = collect_render_diagnostics(page)
+            recorder.hold(args.scroll_hold_seconds, f"search {search_index}: after scroll: {query}")
+            if args.scroll_return:
+                up = smooth_scroll(page, recorder, label=f"search {search_index}", direction="up", steps=max(8, args.scroll_steps // 2))
+            else:
+                up = {"ok": False, "reason": "DISABLED_BY_DEFAULT"}
             scene = {
                 "type": "google-search",
                 "index": scene_index,
@@ -3352,6 +3380,7 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
                 "url": page_location(page),
                 "typed": typed,
                 "pipeline": pipeline,
+                "scroll_refresh_pipeline": scroll_refresh_pipeline,
                 "scroll_down": down,
                 "scroll_up": up,
                 "first_frame": scene_first_frame,
@@ -3461,22 +3490,26 @@ def run_interactive_demo(args: argparse.Namespace) -> None:
             recorder.hold(args.youtube_masked_hold_seconds, "youtube: masked comments")
             pipeline_video_end = round(recorder.video_seconds, 3)
             hover_probe: dict[str, Any] = {"ok": False, "reason": "DISABLED_OR_NO_MASK"}
-            if not args.no_hover_probe and effective_masks > 0:
+            if not args.no_hover_probe and effective_masks > 0 and can_record_hover_probe(args):
                 hover_probe = hover_first_mask(
                     page,
                     recorder,
                     label="youtube: hover mask evidence",
                     hold_seconds=args.hover_hold_seconds,
                 )
-            comments_scroll_after = smooth_scroll(
-                page,
-                recorder,
-                label="youtube comments",
-                direction="down",
-                steps=max(8, args.youtube_scroll_steps // 2),
-                fraction=0.9,
-            )
-            recorder.hold(args.scroll_hold_seconds, "youtube: after comment scroll")
+                mark_hover_probe_recorded(args)
+            if args.youtube_post_mask_scroll:
+                comments_scroll_after = smooth_scroll(
+                    page,
+                    recorder,
+                    label="youtube comments",
+                    direction="down",
+                    steps=max(8, args.youtube_scroll_steps // 2),
+                    fraction=0.9,
+                )
+                recorder.hold(args.scroll_hold_seconds, "youtube: after comment scroll")
+            else:
+                comments_scroll_after = {"ok": False, "reason": "DISABLED_BY_DEFAULT"}
             scene = {
                 "type": "youtube-watch-comments",
                 "index": youtube_scene_index,
@@ -3816,11 +3849,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--analysis-hold-seconds", type=float, default=1.2)
     parser.add_argument("--masked-hold-seconds", type=float, default=7.0)
     parser.add_argument("--hover-hold-seconds", type=float, default=2.5)
+    parser.add_argument("--max-hover-probes", type=int, default=2)
     parser.add_argument("--no-hover-probe", action="store_true")
     parser.add_argument("--scroll-hold-seconds", type=float, default=2.0)
     parser.add_argument("--initial-wait", type=float, default=1.6)
     parser.add_argument("--post-trigger-wait", type=float, default=2.4)
-    parser.add_argument("--scroll-steps", type=int, default=26)
+    parser.add_argument("--scroll-steps", type=int, default=16)
+    parser.add_argument("--scroll-return", action="store_true")
     parser.add_argument("--warning-url", default=DEFAULT_WARNING_URL)
     parser.add_argument("--warning-hold-seconds", type=float, default=8.0)
     parser.add_argument("--force-settings-snapshot", action="store_true")
@@ -3830,7 +3865,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--queries", nargs="+", default=None)
     parser.add_argument("--no-mode-showcase", dest="include_mode_showcase", action="store_false")
     parser.set_defaults(include_mode_showcase=True)
-    parser.add_argument("--mode-showcase-query", default="ㅈ댄다 진짜")
+    parser.add_argument("--mode-showcase-query", default=DEFAULT_MODE_SHOWCASE_QUERY)
     parser.add_argument("--mode-showcase-initial-wait", type=float, default=0.9)
     parser.add_argument("--mode-showcase-raw-hold-seconds", type=float, default=2.0)
     parser.add_argument("--mode-showcase-apply-hold-seconds", type=float, default=0.7)
@@ -3847,7 +3882,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--youtube-watch-hold-seconds", type=float, default=1.0)
     parser.add_argument("--youtube-comments-hold-seconds", type=float, default=3.0)
     parser.add_argument("--youtube-masked-hold-seconds", type=float, default=5.0)
-    parser.add_argument("--youtube-scroll-steps", type=int, default=24)
+    parser.add_argument("--youtube-scroll-steps", type=int, default=18)
+    parser.add_argument("--youtube-post-mask-scroll", action="store_true")
     parser.add_argument("--youtube-pipeline-attempts", type=int, default=3)
     parser.add_argument("--clean-profile", action="store_true", default=True)
     parser.add_argument("--keep-frames", action="store_true")
