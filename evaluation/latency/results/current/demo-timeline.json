@@ -1,0 +1,686 @@
+[
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: open options",
+    "first_frame": 1,
+    "last_frame": 240,
+    "start_seconds": 0.0,
+    "end_seconds": 8.0,
+    "duration_seconds": 8.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: open developer tools",
+    "first_frame": 241,
+    "last_frame": 300,
+    "start_seconds": 8.0,
+    "end_seconds": 10.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: enable backend",
+    "first_frame": 301,
+    "last_frame": 360,
+    "start_seconds": 10.0,
+    "end_seconds": 12.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: check backend connection",
+    "first_frame": 361,
+    "last_frame": 420,
+    "start_seconds": 12.0,
+    "end_seconds": 14.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: run site policy",
+    "first_frame": 421,
+    "last_frame": 480,
+    "start_seconds": 14.0,
+    "end_seconds": 16.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: apply wellbeing override",
+    "first_frame": 481,
+    "last_frame": 540,
+    "start_seconds": 16.0,
+    "end_seconds": 18.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "settings: clear wellbeing override",
+    "first_frame": 541,
+    "last_frame": 600,
+    "start_seconds": 18.0,
+    "end_seconds": 20.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "Google home",
+    "first_frame": 601,
+    "last_frame": 720,
+    "start_seconds": 20.0,
+    "end_seconds": 24.0,
+    "duration_seconds": 4.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: protection off raw screen",
+    "first_frame": 721,
+    "last_frame": 780,
+    "start_seconds": 24.0,
+    "end_seconds": 26.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: apply mask",
+    "first_frame": 781,
+    "last_frame": 801,
+    "start_seconds": 26.0,
+    "end_seconds": 26.7,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: result mask",
+    "first_frame": 802,
+    "last_frame": 873,
+    "start_seconds": 26.7,
+    "end_seconds": 29.1,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: hover mask",
+    "first_frame": 874,
+    "last_frame": 909,
+    "start_seconds": 29.1,
+    "end_seconds": 30.3,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: apply blur",
+    "first_frame": 910,
+    "last_frame": 930,
+    "start_seconds": 30.3,
+    "end_seconds": 31.0,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: result blur",
+    "first_frame": 931,
+    "last_frame": 1002,
+    "start_seconds": 31.0,
+    "end_seconds": 33.4,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: hover blur",
+    "first_frame": 1003,
+    "last_frame": 1038,
+    "start_seconds": 33.4,
+    "end_seconds": 34.6,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: apply hide",
+    "first_frame": 1039,
+    "last_frame": 1059,
+    "start_seconds": 34.6,
+    "end_seconds": 35.3,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: result hide",
+    "first_frame": 1060,
+    "last_frame": 1131,
+    "start_seconds": 35.3,
+    "end_seconds": 37.7,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: hover hide",
+    "first_frame": 1132,
+    "last_frame": 1167,
+    "start_seconds": 37.7,
+    "end_seconds": 38.9,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: apply remove",
+    "first_frame": 1168,
+    "last_frame": 1188,
+    "start_seconds": 38.9,
+    "end_seconds": 39.6,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "mode showcase: result remove",
+    "first_frame": 1189,
+    "last_frame": 1260,
+    "start_seconds": 39.6,
+    "end_seconds": 42.0,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ",
+    "first_frame": 1261,
+    "last_frame": 1261,
+    "start_seconds": 42.0,
+    "end_seconds": 42.033,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ댄",
+    "first_frame": 1262,
+    "last_frame": 1262,
+    "start_seconds": 42.033,
+    "end_seconds": 42.067,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ댄다",
+    "first_frame": 1263,
+    "last_frame": 1263,
+    "start_seconds": 42.067,
+    "end_seconds": 42.1,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ댄다 ",
+    "first_frame": 1264,
+    "last_frame": 1264,
+    "start_seconds": 42.1,
+    "end_seconds": 42.133,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ댄다 진",
+    "first_frame": 1265,
+    "last_frame": 1265,
+    "start_seconds": 42.133,
+    "end_seconds": 42.167,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: type ㅈ댄다 진짜",
+    "first_frame": 1266,
+    "last_frame": 1266,
+    "start_seconds": 42.167,
+    "end_seconds": 42.2,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: typed query: ㅈ댄다 진짜",
+    "first_frame": 1267,
+    "last_frame": 1341,
+    "start_seconds": 42.2,
+    "end_seconds": 44.7,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: result loaded: ㅈ댄다 진짜",
+    "first_frame": 1342,
+    "last_frame": 1401,
+    "start_seconds": 44.7,
+    "end_seconds": 46.7,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: analysis request: ㅈ댄다 진짜",
+    "first_frame": 1402,
+    "last_frame": 1437,
+    "start_seconds": 46.7,
+    "end_seconds": 47.9,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: masked results: ㅈ댄다 진짜",
+    "first_frame": 1438,
+    "last_frame": 1647,
+    "start_seconds": 47.9,
+    "end_seconds": 54.9,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: hover mask evidence: ㅈ댄다 진짜",
+    "first_frame": 1648,
+    "last_frame": 1722,
+    "start_seconds": 54.9,
+    "end_seconds": 57.4,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: scroll-down",
+    "first_frame": 1723,
+    "last_frame": 1740,
+    "start_seconds": 57.4,
+    "end_seconds": 58.0,
+    "duration_seconds": 0.6
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: after scroll: ㅈ댄다 진짜",
+    "first_frame": 1741,
+    "last_frame": 1800,
+    "start_seconds": 58.0,
+    "end_seconds": 60.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 1: scroll-up",
+    "first_frame": 1801,
+    "last_frame": 1809,
+    "start_seconds": 60.0,
+    "end_seconds": 60.3,
+    "duration_seconds": 0.3
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: type 한",
+    "first_frame": 1810,
+    "last_frame": 1810,
+    "start_seconds": 60.3,
+    "end_seconds": 60.333,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: type 한남",
+    "first_frame": 1811,
+    "last_frame": 1811,
+    "start_seconds": 60.333,
+    "end_seconds": 60.367,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: type 한남충",
+    "first_frame": 1812,
+    "last_frame": 1812,
+    "start_seconds": 60.367,
+    "end_seconds": 60.4,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: type 한남충 ",
+    "first_frame": 1813,
+    "last_frame": 1813,
+    "start_seconds": 60.4,
+    "end_seconds": 60.433,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: type 한남충 뜻",
+    "first_frame": 1814,
+    "last_frame": 1814,
+    "start_seconds": 60.433,
+    "end_seconds": 60.467,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: typed query: 한남충 뜻",
+    "first_frame": 1815,
+    "last_frame": 1889,
+    "start_seconds": 60.467,
+    "end_seconds": 62.967,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: result loaded: 한남충 뜻",
+    "first_frame": 1890,
+    "last_frame": 1949,
+    "start_seconds": 62.967,
+    "end_seconds": 64.967,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: analysis request: 한남충 뜻",
+    "first_frame": 1950,
+    "last_frame": 1985,
+    "start_seconds": 64.967,
+    "end_seconds": 66.167,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: masked results: 한남충 뜻",
+    "first_frame": 1986,
+    "last_frame": 2195,
+    "start_seconds": 66.167,
+    "end_seconds": 73.167,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: hover mask evidence: 한남충 뜻",
+    "first_frame": 2196,
+    "last_frame": 2270,
+    "start_seconds": 73.167,
+    "end_seconds": 75.667,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: scroll-down",
+    "first_frame": 2271,
+    "last_frame": 2288,
+    "start_seconds": 75.667,
+    "end_seconds": 76.267,
+    "duration_seconds": 0.6
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: after scroll: 한남충 뜻",
+    "first_frame": 2289,
+    "last_frame": 2348,
+    "start_seconds": 76.267,
+    "end_seconds": 78.267,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 2: scroll-up",
+    "first_frame": 2349,
+    "last_frame": 2357,
+    "start_seconds": 78.267,
+    "end_seconds": 78.567,
+    "duration_seconds": 0.3
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽",
+    "first_frame": 2358,
+    "last_frame": 2358,
+    "start_seconds": 78.567,
+    "end_seconds": 78.6,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여",
+    "first_frame": 2359,
+    "last_frame": 2359,
+    "start_seconds": 78.6,
+    "end_seconds": 78.633,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버",
+    "first_frame": 2360,
+    "last_frame": 2360,
+    "start_seconds": 78.633,
+    "end_seconds": 78.667,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴",
+    "first_frame": 2361,
+    "last_frame": 2361,
+    "start_seconds": 78.667,
+    "end_seconds": 78.7,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴거",
+    "first_frame": 2362,
+    "last_frame": 2362,
+    "start_seconds": 78.7,
+    "end_seconds": 78.733,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴거야",
+    "first_frame": 2363,
+    "last_frame": 2363,
+    "start_seconds": 78.733,
+    "end_seconds": 78.767,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴거야 ",
+    "first_frame": 2364,
+    "last_frame": 2364,
+    "start_seconds": 78.767,
+    "end_seconds": 78.8,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴거야 협",
+    "first_frame": 2365,
+    "last_frame": 2365,
+    "start_seconds": 78.8,
+    "end_seconds": 78.833,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: type 죽여버릴거야 협박",
+    "first_frame": 2366,
+    "last_frame": 2366,
+    "start_seconds": 78.833,
+    "end_seconds": 78.867,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: typed query: 죽여버릴거야 협박",
+    "first_frame": 2367,
+    "last_frame": 2441,
+    "start_seconds": 78.867,
+    "end_seconds": 81.367,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: result loaded: 죽여버릴거야 협박",
+    "first_frame": 2442,
+    "last_frame": 2501,
+    "start_seconds": 81.367,
+    "end_seconds": 83.367,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: analysis request: 죽여버릴거야 협박",
+    "first_frame": 2502,
+    "last_frame": 2537,
+    "start_seconds": 83.367,
+    "end_seconds": 84.567,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: masked results: 죽여버릴거야 협박",
+    "first_frame": 2538,
+    "last_frame": 2747,
+    "start_seconds": 84.567,
+    "end_seconds": 91.567,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: hover mask evidence: 죽여버릴거야 협박",
+    "first_frame": 2748,
+    "last_frame": 2822,
+    "start_seconds": 91.567,
+    "end_seconds": 94.067,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: scroll-down",
+    "first_frame": 2823,
+    "last_frame": 2840,
+    "start_seconds": 94.067,
+    "end_seconds": 94.667,
+    "duration_seconds": 0.6
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: after scroll: 죽여버릴거야 협박",
+    "first_frame": 2841,
+    "last_frame": 2900,
+    "start_seconds": 94.667,
+    "end_seconds": 96.667,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "search 3: scroll-up",
+    "first_frame": 2901,
+    "last_frame": 2909,
+    "start_seconds": 96.667,
+    "end_seconds": 96.967,
+    "duration_seconds": 0.3
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: search results: 시발 또 다시 보여줘야해?",
+    "first_frame": 2910,
+    "last_frame": 2969,
+    "start_seconds": 96.967,
+    "end_seconds": 98.967,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: watch page loaded",
+    "first_frame": 2970,
+    "last_frame": 2999,
+    "start_seconds": 98.967,
+    "end_seconds": 99.967,
+    "duration_seconds": 1.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: scroll-to-comments",
+    "first_frame": 3000,
+    "last_frame": 3023,
+    "start_seconds": 99.967,
+    "end_seconds": 100.767,
+    "duration_seconds": 0.8
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: comments visible",
+    "first_frame": 3024,
+    "last_frame": 3113,
+    "start_seconds": 100.767,
+    "end_seconds": 103.767,
+    "duration_seconds": 3.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: analysis request",
+    "first_frame": 3114,
+    "last_frame": 3149,
+    "start_seconds": 103.767,
+    "end_seconds": 104.967,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: masked comments",
+    "first_frame": 3150,
+    "last_frame": 3299,
+    "start_seconds": 104.967,
+    "end_seconds": 109.967,
+    "duration_seconds": 5.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: hover mask evidence",
+    "first_frame": 3300,
+    "last_frame": 3374,
+    "start_seconds": 109.967,
+    "end_seconds": 112.467,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube comments: scroll-down",
+    "first_frame": 3375,
+    "last_frame": 3386,
+    "start_seconds": 112.467,
+    "end_seconds": 112.867,
+    "duration_seconds": 0.4
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "youtube: after comment scroll",
+    "first_frame": 3387,
+    "last_frame": 3446,
+    "start_seconds": 112.867,
+    "end_seconds": 114.867,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "site warning: before navigation",
+    "first_frame": 3447,
+    "last_frame": 3506,
+    "start_seconds": 114.867,
+    "end_seconds": 116.867,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "site warning",
+    "first_frame": 3507,
+    "last_frame": 3746,
+    "start_seconds": 116.867,
+    "end_seconds": 124.867,
+    "duration_seconds": 8.0
+  },
+  {
+    "run_id": "chrome-google-youtube-demo-20260608-final6",
+    "label": "final evidence review",
+    "first_frame": 3747,
+    "last_frame": 4500,
+    "start_seconds": 124.867,
+    "end_seconds": 150.0,
+    "duration_seconds": 25.133
+  }
+]

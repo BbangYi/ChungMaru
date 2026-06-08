@@ -173,7 +173,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 
 | 모델 | 구조 | 용도 |
 |------|------|------|
-| 분류 모델 (v2) | XLM-RoBERTa-base (278M params) | 문장 수준 유해성 판정 |
+| 분류 모델 (v3) | mDeBERTa encoder + head.pt | 문장 수준 유해성 판정 |
 | Span 모델 | XLM-RoBERTa-large + CRF (560M params) | 욕설 단어 위치 추출 |
 
 ## 환경 변수
@@ -181,7 +181,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000 --reload
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
 | `MODEL_BASE` | `backend/` | 모델 루트 디렉토리 |
-| `MODEL_CLASSIFIER_PATH` | `{MODEL_BASE}/models/v2` | 분류 모델 경로 |
+| `MODEL_CLASSIFIER_PATH` | `{MODEL_BASE}/v3` | 분류 모델 경로 |
 | `MODEL_SPAN_PATH` | `{MODEL_BASE}/models/span_large_combined_crf` | Span 모델 경로 |
 | `OPENAI_API_KEY` | 없음 | LangGraph Agent 실행용 API 키 |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Agent에 사용할 OpenAI 모델명 |

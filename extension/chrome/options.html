@@ -4,164 +4,441 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>청마루 설정</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
     <main class="layout">
       <header class="title-wrap">
         <p class="eyebrow">청마루</p>
-        <h1>상세 설정</h1>
+        <h1>설정</h1>
+        <p class="lead">웹페이지 유해 표현 감지, 사이트 보호, 사용량 위젯을 조정합니다.</p>
       </header>
 
-      <section class="card">
-        <h2>사용자 단어 설정</h2>
-        <label for="blockWords">추가 차단 단어 (쉼표 구분)</label>
-        <textarea id="blockWords" rows="3" placeholder="예: 나쁜말1, 나쁜말2"></textarea>
-
-        <label for="allowWords">예외 단어 (쉼표 구분)</label>
-        <textarea id="allowWords" rows="3" placeholder="예: 오탐단어1, 오탐단어2"></textarea>
-      </section>
-
-      <section class="card">
-        <div class="json-header-row">
-          <h2>백엔드 연결</h2>
-          <button id="checkConnectionButton" class="btn ghost" type="button">연결 확인</button>
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">화면 표시</p>
+            <h2>위젯과 마스킹</h2>
+          </div>
         </div>
 
-        <label for="backendApiBaseUrl">API 주소</label>
-        <input
-          id="backendApiBaseUrl"
-          type="url"
-          inputmode="url"
-          placeholder="예: http://127.0.0.1:8000"
-        />
+        <div class="setting-list">
+          <label class="switch-row">
+            <span>
+              <strong>인터넷 사용량 위젯</strong>
+              <small>오늘의 웹 사용량과 현재 페이지 탐지 상태를 표시합니다.</small>
+            </span>
+            <input id="showWellbeingWidgetToggle" type="checkbox" />
+          </label>
 
-        <label for="requestTimeoutMs">요청 타임아웃 (ms)</label>
-        <input id="requestTimeoutMs" type="number" min="1000" max="30000" step="500" />
+          <label class="field" for="wellbeingWidgetStyle">
+            <span>위젯 스타일</span>
+            <select id="wellbeingWidgetStyle">
+              <option value="soft">부드럽게</option>
+              <option value="bold">선명하게</option>
+              <option value="minimal">미니멀</option>
+            </select>
+          </label>
 
-        <p id="connectionStatusText" class="subtle-status">아직 연결 확인 전</p>
+          <label class="field" for="interventionModeSelect">
+            <span>마스킹 방식</span>
+            <select id="interventionModeSelect">
+              <option value="mask">가리기</option>
+              <option value="blur">흐리기</option>
+              <option value="hide">숨기기</option>
+              <option value="remove">삭제</option>
+            </select>
+          </label>
+
+          <div class="field-grid" aria-label="위젯 단계 설정">
+            <label class="field compact" for="wellbeingAgeStageCount">
+              <span>늙는 변화 단계</span>
+              <input id="wellbeingAgeStageCount" type="number" min="1" max="10" step="1" />
+            </label>
+            <label class="field compact" for="wellbeingAgeMinutesPerStage">
+              <span>늙는 단계 간격(분)</span>
+              <input id="wellbeingAgeMinutesPerStage" type="number" min="5" max="240" step="5" />
+            </label>
+            <label class="field compact" for="wellbeingAngerStageCount">
+              <span>화남 변화 단계</span>
+              <input id="wellbeingAngerStageCount" type="number" min="1" max="10" step="1" />
+            </label>
+            <label class="field compact" for="wellbeingAngerDetectionsPerStage">
+              <span>화남 단계 간격(개)</span>
+              <input id="wellbeingAngerDetectionsPerStage" type="number" min="1" max="50" step="1" />
+            </label>
+          </div>
+
+          <label class="switch-row">
+            <span>
+              <strong>마스킹 이유 표시</strong>
+              <small>가려진 표현 위에 한 줄 설명을 함께 보여줍니다.</small>
+            </span>
+            <input id="showReasonToggle" type="checkbox" />
+          </label>
+
+          <label class="switch-row">
+            <span>
+              <strong>위험 사이트 보호</strong>
+              <small>사이트 위험도를 확인하고 접속 전 경고 흐름에 연결합니다.</small>
+            </span>
+            <input id="siteProtectionEnabledToggle" type="checkbox" />
+          </label>
+
+          <label class="switch-row">
+            <span>
+              <strong>접속 전 경고 페이지</strong>
+              <small>유해 사이트로 이동하기 전에 청마루 경고 화면을 먼저 표시합니다.</small>
+            </span>
+            <input id="siteNavigationWarningEnabledToggle" type="checkbox" />
+          </label>
+
+          <label class="switch-row">
+            <span>
+              <strong>검색 결과 보호</strong>
+              <small>유해 사이트 판정 또는 차단/경고 도메인이 검색 결과에 보이면 결과 카드도 가립니다.</small>
+            </span>
+            <input id="searchResultProtectionEnabledToggle" type="checkbox" />
+          </label>
+        </div>
       </section>
 
-      <section class="card inline">
-        <h2>표시 설정</h2>
-        <label class="line">
-          <input id="showReasonToggle" type="checkbox" />
-          왜 가려졌는지 한 줄 설명 표시
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">차단 기준</p>
+            <h2>단어와 사이트</h2>
+          </div>
+        </div>
+
+        <label class="field" for="blockWords">
+          <span>추가 차단 단어</span>
+          <textarea id="blockWords" rows="3" placeholder="예: 나쁜말1, 나쁜말2"></textarea>
         </label>
-        <label class="line">
-          <input id="siteProtectionEnabledToggle" type="checkbox" />
-          사이트 접속 전 위험도 경고 사용
+
+        <label class="field" for="allowWords">
+          <span>예외 단어</span>
+          <textarea id="allowWords" rows="3" placeholder="예: 오탐단어1, 오탐단어2"></textarea>
+        </label>
+
+        <label class="field" for="blockedDomains">
+          <span>항상 차단할 도메인</span>
+          <textarea
+            id="blockedDomains"
+            rows="3"
+            placeholder="예: adult-webtoon-plus.kr, vip-toto-365.kr, naver-secure-login.kr"
+          ></textarea>
+        </label>
+
+        <label class="field" for="warnDomains">
+          <span>항상 경고할 도메인</span>
+          <textarea
+            id="warnDomains"
+            rows="3"
+            placeholder="예: community.example, driver-update-korea.kr, account-verify.example"
+          ></textarea>
         </label>
       </section>
 
-      <section class="card stats">
-        <h2>세션 통계</h2>
-        <div class="stat-grid">
-          <article>
-            <p>총 차단</p>
-            <strong id="statBlocked">0</strong>
-          </article>
-          <article>
-            <p>오탐 신고</p>
-            <strong id="statFalsePositive">0</strong>
-          </article>
-          <article>
-            <p>평균 지연</p>
-            <strong id="statLatency">0ms</strong>
-          </article>
-          <article>
-            <p>총 분석</p>
-            <strong id="statAnalyzed">0</strong>
-          </article>
-        </div>
+      <details id="diagnosticsPanel" class="diagnostics" hidden>
+        <summary>
+          <span>개발 진단</span>
+          <small>개발 확인용 로그와 랩 전용 self-test</small>
+        </summary>
 
-        <h2 class="diagnostic-title">최근 실시간 진단</h2>
-        <div class="stat-grid">
-          <article>
-            <p>첫 마스크 지연</p>
-            <strong id="diagFirstMask">-</strong>
-          </article>
-          <article>
-            <p>foreground 백엔드</p>
-            <strong id="diagHotPath">-</strong>
-          </article>
-          <article>
-            <p>foreground 상태</p>
-            <strong id="diagHotPathState">-</strong>
-          </article>
-          <article>
-            <p>foreground 오류</p>
-            <strong id="diagHotPathError">-</strong>
-          </article>
-          <article>
-            <p>foreground source</p>
-            <strong id="diagWorkerInit">-</strong>
-          </article>
-          <article>
-            <p>백엔드 후속 확인</p>
-            <strong id="diagBackendReconcile">-</strong>
-          </article>
-          <article>
-            <p>마스킹 span 수</p>
-            <strong id="diagMaskedSpans">0</strong>
-          </article>
-          <article>
-            <p>로컬 캐시 hit</p>
-            <strong id="diagWorkerCacheHit">0</strong>
-          </article>
-          <article>
-            <p>backend cache hit</p>
-            <strong id="diagBackendCacheHit">0</strong>
-          </article>
-          <article>
-            <p>visible batch</p>
-            <strong id="diagVisibleBatch">0</strong>
-          </article>
-          <article>
-            <p>reconcile queue</p>
-            <strong id="diagReconcileQueue">0</strong>
-          </article>
-          <article>
-            <p>판정 출처</p>
-            <strong id="diagDecisionSource">-</strong>
-          </article>
-        </div>
-      </section>
+        <section class="diagnostic-block">
+          <h2>세션 통계</h2>
+          <div class="stat-grid">
+            <article>
+              <p>총 차단</p>
+              <strong id="statBlocked">0</strong>
+            </article>
+            <article>
+              <p>오탐 신고</p>
+              <strong id="statFalsePositive">0</strong>
+            </article>
+            <article>
+              <p>평균 지연</p>
+              <strong id="statLatency">0ms</strong>
+            </article>
+            <article>
+              <p>총 분석</p>
+              <strong id="statAnalyzed">0</strong>
+            </article>
+          </div>
+        </section>
 
-      <section class="card json-preview">
-        <div class="json-header-row">
-          <h2>최근 JSON 미리보기</h2>
-          <button id="refreshJsonButton" class="btn ghost" type="button">새로고침</button>
-        </div>
+        <section class="diagnostic-block">
+          <h2>최근 실시간 진단</h2>
+          <div class="stat-grid compact-grid">
+            <article>
+              <p>첫 마스크 지연</p>
+              <strong id="diagFirstMask">-</strong>
+            </article>
+            <article>
+              <p>foreground 백엔드</p>
+              <strong id="diagHotPath">-</strong>
+            </article>
+            <article>
+              <p>foreground 상태</p>
+              <strong id="diagHotPathState">-</strong>
+            </article>
+            <article>
+              <p>foreground 오류</p>
+              <strong id="diagHotPathError">-</strong>
+            </article>
+            <article>
+              <p>foreground source</p>
+              <strong id="diagWorkerInit">-</strong>
+            </article>
+            <article>
+              <p>백엔드 후속 확인</p>
+              <strong id="diagBackendReconcile">-</strong>
+            </article>
+            <article>
+              <p>마스킹 span 수</p>
+              <strong id="diagMaskedSpans">0</strong>
+            </article>
+            <article>
+              <p>로컬 캐시 hit</p>
+              <strong id="diagWorkerCacheHit">0</strong>
+            </article>
+            <article>
+              <p>backend cache hit</p>
+              <strong id="diagBackendCacheHit">0</strong>
+            </article>
+            <article>
+              <p>visible batch</p>
+              <strong id="diagVisibleBatch">0</strong>
+            </article>
+            <article>
+              <p>reconcile queue</p>
+              <strong id="diagReconcileQueue">0</strong>
+            </article>
+            <article>
+              <p>판정 출처</p>
+              <strong id="diagDecisionSource">-</strong>
+            </article>
+          </div>
+        </section>
 
-        <label for="payloadPreview">최근 payload 미리보기</label>
-        <textarea id="payloadPreview" rows="10" readonly></textarea>
+        <section class="diagnostic-block">
+          <div class="section-head">
+            <h2>최근 JSON 미리보기</h2>
+            <button id="refreshJsonButton" class="btn ghost" type="button">새로고침</button>
+          </div>
 
-        <label for="decisionPreview">최근 decision 미리보기</label>
-        <textarea id="decisionPreview" rows="8" readonly></textarea>
-      </section>
+          <label class="field" for="payloadPreview">
+            <span>최근 payload 미리보기</span>
+            <textarea id="payloadPreview" rows="10" readonly></textarea>
+          </label>
 
-      <section class="card json-preview">
-        <div class="json-header-row">
-          <h2>현재 탭 self-test</h2>
-          <button id="runSelfTestButton" class="btn ghost" type="button">self-test 실행</button>
-        </div>
+          <label class="field" for="decisionPreview">
+            <span>최근 decision 미리보기</span>
+            <textarea id="decisionPreview" rows="8" readonly></textarea>
+          </label>
+        </section>
 
-        <label for="selfTestPreview">최근 self-test 결과</label>
-        <textarea id="selfTestPreview" rows="10" readonly></textarea>
+        <section class="diagnostic-block">
+          <div class="section-head">
+            <h2>최근 런타임 로그</h2>
+            <div class="button-row">
+              <button id="refreshRuntimeLogButton" class="btn ghost" type="button">새로고침</button>
+              <button id="copyRuntimeLogButton" class="btn ghost" type="button">JSON 복사</button>
+              <button id="copyRuntimeLogReportButton" class="btn ghost" type="button">Notion용 복사</button>
+              <button id="clearRuntimeLogButton" class="btn ghost danger" type="button">삭제</button>
+            </div>
+          </div>
 
-        <label for="selfTestHistoryPreview">최근 self-test 이력</label>
-        <textarea id="selfTestHistoryPreview" rows="8" readonly></textarea>
-      </section>
+          <label class="field" for="runtimeLogPreview">
+            <span>백엔드 연결, 사이트 판정, 유해표현 분석 이벤트</span>
+            <textarea id="runtimeLogPreview" rows="10" readonly></textarea>
+          </label>
+
+          <div class="runtime-note-box">
+            <label class="field" for="runtimeManualNote">
+              <span>재현 메모 추가</span>
+              <textarea
+                id="runtimeManualNote"
+                rows="3"
+                placeholder="예: Google 검색결과에서 dcinside 결과 카드가 가려지지 않음. 검색어: 디시인사이드"
+              ></textarea>
+            </label>
+            <div class="button-row runtime-note-actions">
+              <button id="addRuntimeNoteButton" class="btn ghost" type="button">메모 로그 추가</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="diagnostic-block">
+          <div class="section-head">
+            <h2>필터 랩 self-test</h2>
+            <button id="runSelfTestButton" class="btn ghost" type="button">랩 self-test 실행</button>
+          </div>
+
+          <label class="field" for="selfTestPreview">
+            <span>최근 self-test 결과</span>
+            <textarea id="selfTestPreview" rows="10" readonly></textarea>
+          </label>
+
+          <label class="field" for="selfTestHistoryPreview">
+            <span>최근 self-test 이력</span>
+            <textarea id="selfTestHistoryPreview" rows="8" readonly></textarea>
+          </label>
+        </section>
+      </details>
+
+      <details class="diagnostics developer-panel">
+        <summary>
+          <span>개발자 테스트</span>
+          <small>위젯 단계, 시간대, 이미지 매핑 시뮬레이션</small>
+        </summary>
+
+        <section id="developerLockSection" class="diagnostic-block">
+          <label class="field compact" for="developerPassword">
+            <span>개발자 비밀번호</span>
+            <input id="developerPassword" type="password" autocomplete="off" />
+          </label>
+          <button id="unlockDeveloperButton" class="btn ghost" type="button">개발자 모드 열기</button>
+        </section>
+
+        <section id="developerToolsSection" class="diagnostic-block" hidden>
+          <div class="policy-test-box">
+            <div class="section-head">
+              <div>
+                <h2>분석 서버</h2>
+                <small>평소에는 꺼두고, 백엔드 모델 검증이 필요할 때만 켭니다.</small>
+              </div>
+              <button id="checkConnectionButton" class="btn ghost" type="button">연결 확인</button>
+            </div>
+
+            <label class="inline-check" for="backendEnabledToggle">
+              <input id="backendEnabledToggle" type="checkbox" />
+              <span>백엔드 연동 켜기</span>
+            </label>
+
+            <label class="field" for="backendApiBaseUrl">
+              <span>API 주소</span>
+              <input
+                id="backendApiBaseUrl"
+                type="url"
+                inputmode="url"
+                placeholder="예: http://127.0.0.1:8000"
+              />
+            </label>
+
+            <label class="field compact" for="requestTimeoutMs">
+              <span>요청 타임아웃</span>
+              <input id="requestTimeoutMs" type="number" min="1000" max="30000" step="500" />
+            </label>
+
+            <p id="connectionStatusText" class="subtle-status">백엔드 연동 꺼짐</p>
+          </div>
+
+          <div class="field-grid">
+            <label class="field compact" for="debugSimulatedHour">
+              <span>시뮬레이션 시간대</span>
+              <input id="debugSimulatedHour" type="number" min="0" max="23" step="1" />
+            </label>
+            <label class="field compact" for="debugUsageMinutes">
+              <span>누적 사용 시간(분)</span>
+              <input id="debugUsageMinutes" type="number" min="0" max="1440" step="5" value="150" />
+            </label>
+            <label class="field compact" for="debugProfanityCount">
+              <span>욕설 탐지 개수</span>
+              <input id="debugProfanityCount" type="number" min="0" max="999" step="1" value="12" />
+            </label>
+            <label class="field compact" for="debugHarmfulCount">
+              <span>유해표현 탐지 개수</span>
+              <input id="debugHarmfulCount" type="number" min="0" max="999" step="1" value="12" />
+            </label>
+          </div>
+
+          <label class="field compact" for="debugPolicyVerdict">
+            <span>사이트 판정 시뮬레이션</span>
+            <select id="debugPolicyVerdict">
+              <option value="allow">안전</option>
+              <option value="warning">주의</option>
+              <option value="block">차단 권장</option>
+            </select>
+          </label>
+
+          <div class="policy-test-box">
+            <div class="section-head">
+              <div>
+                <h2>사이트 판정 확인</h2>
+                <small>접속 전에 어떤 판정이 나오는지 URL만 넣고 확인합니다.</small>
+              </div>
+              <button id="copySmokeChecklistButton" class="btn ghost" type="button">체크리스트 복사</button>
+            </div>
+
+            <label class="field" for="policyTestUrl">
+              <span>테스트 URL</span>
+              <input id="policyTestUrl" type="url" inputmode="url" placeholder="https://adult-webtoon-plus.kr/" />
+            </label>
+
+            <label class="inline-check" for="policyTestForceRefresh">
+              <input id="policyTestForceRefresh" type="checkbox" />
+              <span>캐시 무시하고 다시 판정</span>
+            </label>
+
+            <div class="button-row policy-test-actions">
+              <button id="runPolicyTestButton" class="btn ghost" type="button">사이트 판정 실행</button>
+            </div>
+
+            <label class="field" for="policyTestPreview">
+              <span>사이트 판정 결과</span>
+              <textarea id="policyTestPreview" rows="7" readonly></textarea>
+            </label>
+          </div>
+
+          <div class="avatar-upload-panel">
+            <div class="avatar-upload-row">
+              <label class="field compact" for="avatarImageSlot">
+                <span>이미지 적용 단계</span>
+                <select id="avatarImageSlot">
+                  <option value="default">기본</option>
+                </select>
+              </label>
+              <div class="avatar-upload-actions">
+                <button id="chooseAvatarImageButton" class="btn ghost" type="button">이미지 선택</button>
+                <button id="clearAvatarImageButton" class="btn ghost danger" type="button">선택 단계 삭제</button>
+                <input id="avatarImageFile" type="file" accept="image/*" hidden />
+              </div>
+            </div>
+            <div
+              id="avatarPasteZone"
+              class="avatar-paste-zone"
+              role="button"
+              tabindex="0"
+              aria-label="단계 이미지 붙여넣기"
+            >
+              <strong>이미지 붙여넣기</strong>
+              <span id="avatarPasteTargetText">기본 단계에 이미지 복사/붙여넣기 또는 드롭</span>
+            </div>
+            <div id="avatarImagePreviewList" class="avatar-preview-list" aria-live="polite"></div>
+          </div>
+
+          <label class="field" for="wellbeingAvatarImages">
+            <span>위젯 이미지 매핑</span>
+            <small>URL 또는 local:단계 형식만 저장합니다. 이미지 파일 본문은 위 붙여넣기 영역을 사용하세요.</small>
+            <textarea
+              id="wellbeingAvatarImages"
+              rows="7"
+              placeholder="예:&#10;default=https://example.com/base.png&#10;age1=https://example.com/age-1.png&#10;age5=https://example.com/age-5.png&#10;anger1=https://example.com/anger-1.png&#10;anger5=https://example.com/anger-5.png"
+            ></textarea>
+          </label>
+
+          <div class="footer-actions inline-actions">
+            <button id="resetWellbeingStateButton" class="btn ghost danger" type="button">위젯 통계 초기화</button>
+            <button id="clearDebugOverrideButton" class="btn ghost" type="button">테스트 해제</button>
+            <button id="applyDebugOverrideButton" class="btn primary" type="button">테스트 적용</button>
+          </div>
+        </section>
+      </details>
 
       <footer class="footer-actions">
-        <button id="runNowButton" class="btn ghost" type="button">현재 탭 즉시 분석</button>
+        <button id="runNowButton" class="btn ghost" type="button">현재 탭 검사</button>
         <button id="saveOptionsButton" class="btn primary" type="button">설정 저장</button>
       </footer>
       <p id="optionsStatus" class="status" aria-live="polite"></p>

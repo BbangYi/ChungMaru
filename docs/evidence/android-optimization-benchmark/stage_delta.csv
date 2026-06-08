@@ -1,0 +1,5 @@
+stage,isolated_mode,isolated_total_ms,cumulative_before,cumulative_before_ms,cumulative_after,cumulative_after_ms,delta_ms
+02 backend,s2_backend_only,,s1_collect_only,,s12_collect_backend,519.3,
+03 OCR ROI,s3_ocr_roi_only,,s12_collect_backend,519.3,s123_collect_backend_ocr,643.6,124.3
+04 coordinate,s4_coord_only,,s123_collect_backend_ocr,643.6,s1234_collect_backend_ocr_coord,,
+05 overlay gate,s5_overlay_only,,s1234_collect_backend_ocr_coord,,s12345_full,755.4,

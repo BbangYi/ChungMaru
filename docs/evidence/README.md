@@ -10,6 +10,10 @@
 | `chungmaru-progress-log.jsonl` | 한 줄이 하나의 실패, 실험, 개선, 회귀, 검증, 의사결정입니다. |
 | `chungmaru-progress-index.md` | JSONL에서 생성되는 사람이 읽는 인덱스입니다. 직접 편집하지 않습니다. |
 | `evidence-matrix.md` | 심사 대응 To-do-list를 모델/파서/통합 흐름 증거판으로 재구성한 추적 문서입니다. |
+| `android-performance-ppt-evidence.md` | Android 성능/좌표/OCR 개선을 PPT에 바로 옮길 수 있도록 정리한 근거 카드입니다. |
+| `android-demo-capture-guide.md` | Android 반응속도, 마스킹 품질, 데모 영상, JSON/logcat 증거를 수집하는 실행 가이드입니다. |
+| `android-pipeline-benchmark/` | 실제 `pipeline_experiment_mode` 토글 기반 단계별 CSV와 PPT용 표가 생성되는 폴더입니다. |
+| `android-emulator-batch-results.md` | 에뮬레이터 반복 측정 배치가 생성하는 feature-set별 latency/quality 집계표입니다. |
 | `model-evaluation-snapshot.md` | 현재 모델 성능, FP/FN, topic-bias, score bucket을 보고서용으로 축약한 문서입니다. |
 | `parser-extractor-before-after.md` | raw JSONL과 cleaned JSONL의 before/after 표와 정제 규칙 증거입니다. |
 

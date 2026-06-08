@@ -15,7 +15,8 @@ if str(API_DIR) not in sys.path:
 
 def has_model_weights() -> bool:
     return (
-        (BACKEND_DIR / "models" / "v2" / "model.safetensors").exists()
+        (BACKEND_DIR / "v3" / "model.safetensors").exists()
+        and (BACKEND_DIR / "v3" / "head.pt").exists()
         and (BACKEND_DIR / "models" / "span_large_combined_crf" / "extra_weights.pt").exists()
         and (BACKEND_DIR / "models" / "span_large_combined_crf" / "encoder" / "model.safetensors").exists()
     )

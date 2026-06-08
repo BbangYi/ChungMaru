@@ -104,11 +104,20 @@ class ScreenTextCandidateExtractorTest {
                     bottom = 92,
                     className = "android.widget.EditText"
                 ),
+                node(
+                    text = "10.0.2.2:4191/index.html?case=s12345_full-run-2",
+                    left = 210,
+                    top = 71,
+                    right = 670,
+                    bottom = 202,
+                    className = "android.widget.EditText"
+                ),
                 node("시발 뭐하는 거야", 80, 520, 620, 590)
             )
         )
 
         assertFalse(candidates.any { it.rawText.contains("google.com/search") })
+        assertFalse(candidates.any { it.rawText.contains("10.0.2.2:4191") })
         assertEquals(listOf("시발 뭐하는 거야"), candidates.map { it.rawText })
         assertEquals(CandidateRole.TITLE, candidates.single().role)
     }
@@ -427,6 +436,34 @@ class ScreenTextCandidateExtractorTest {
         )
 
         assertEquals(listOf("개새끼 뭐하는 거야"), candidates.map { it.rawText })
+    }
+
+    @Test
+    fun extractAllVisibleTextCandidates_keepsBroadBaselineNodesThatOptimizedExtractorDrops() {
+        val nodes = listOf(
+            node("전체", 20, 100, 100, 150),
+            node("https://www.google.com/search?q=tlqkf", 20, 170, 720, 220),
+            node("8.4K", 20, 240, 120, 290),
+            node("개새끼 뭐하는 거야", 20, 350, 620, 420),
+            node("숨겨진 텍스트", 20, 440, 420, 500, isVisibleToUser = false)
+        )
+
+        val optimized = ScreenTextCandidateExtractor.extractCandidates(
+            packageName = CHROME_PACKAGE,
+            nodes = nodes
+        )
+        val broadBaseline = ScreenTextCandidateExtractor.extractAllVisibleTextCandidates(
+            packageName = CHROME_PACKAGE,
+            nodes = nodes
+        )
+
+        assertEquals(listOf("개새끼 뭐하는 거야"), optimized.map { it.rawText })
+        assertEquals(
+            listOf("전체", "https://www.google.com/search?q=tlqkf", "8.4K", "개새끼 뭐하는 거야"),
+            broadBaseline.map { it.rawText }
+        )
+        assertTrue(broadBaseline.all { it.backendSourceId.orEmpty().startsWith("baseline-all-visible-node:") })
+        assertFalse(broadBaseline.any { it.rawText == "숨겨진 텍스트" })
     }
 
     @Test

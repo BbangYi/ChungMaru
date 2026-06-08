@@ -75,6 +75,24 @@ object ScreenTextCandidateExtractor {
         }
     }
 
+    fun extractAllVisibleTextCandidates(
+        packageName: String,
+        nodes: List<ParsedTextNode>,
+        sceneRevision: Long = 0L
+    ): List<ScreenTextCandidate> {
+        return nodes
+            .asSequence()
+            .mapIndexedNotNull { index, node ->
+                toUnoptimizedVisibleTextCandidate(
+                    packageName = packageName,
+                    node = node,
+                    sceneRevision = sceneRevision,
+                    index = index
+                )
+            }
+            .toList()
+    }
+
     private fun ParsedComment.toCandidate(
         packageName: String,
         sceneRevision: Long
@@ -163,6 +181,39 @@ object ScreenTextCandidateExtractor {
             }
 
         return selectGenericCandidates(candidates)
+    }
+
+    private fun toUnoptimizedVisibleTextCandidate(
+        packageName: String,
+        node: ParsedTextNode,
+        sceneRevision: Long,
+        index: Int
+    ): ScreenTextCandidate? {
+        if (!node.isVisibleToUser) return null
+        val text = node.displayText
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?: return null
+        val bounds = BoundsRect(node.left, node.top, node.right, node.bottom)
+        val width = bounds.right - bounds.left
+        val height = bounds.bottom - bounds.top
+        if (text.length < 2) return null
+        if (width < MIN_WIDTH_PX || height < MIN_HEIGHT_PX) return null
+
+        val rawText = text.take(MAX_TEXT_LENGTH)
+
+        return ScreenTextCandidate(
+            id = stableId(packageName, "$index:$rawText", bounds),
+            packageName = packageName,
+            source = CandidateSource.ACCESSIBILITY_TEXT,
+            role = inferRole(node, text),
+            rawText = rawText,
+            normalizedVariants = normalizedVariantsFor(rawText),
+            screenRect = bounds,
+            charBoxes = emptyList(),
+            sceneRevision = sceneRevision,
+            backendSourceId = "baseline-all-visible-node:$index"
+        )
     }
 
     private fun List<ScreenTextCandidate>.withExactCharRangeCandidates(): List<ScreenTextCandidate> {
@@ -490,6 +541,8 @@ object ScreenTextCandidateExtractor {
             lower.contains("/search?q=") ||
             lower.contains("?q=") ||
             lower.contains("&q=") ||
+            Regex("""^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?(?:[/?#].*)?$""").matches(lower) ||
+            Regex("""^(?:localhost|127\.0\.0\.1|10\.0\.2\.2)(?::\d+)?(?:[/?#].*)?$""").matches(lower) ||
             Regex("""^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}([/?#].*)?$""", RegexOption.IGNORE_CASE).matches(text)
     }
 

@@ -13,6 +13,8 @@
 | `plan.md` | 발표 자료 구성 계획, 검증 기준, 후속 작업 | 추적 |
 | `materials/` | 발표에 필요한 요약 근거와 분석 자료 | 추적 |
 | `ppt-assets/` | PPT에 바로 넣을 그래프, 도식, 기존 PPTX 추출 media | 추적 |
+| `html-deck/` | `bbangyippt.kro.kr`에 올리는 HTML deck 원본 | 추적 |
+| `../../build/presentation/bbangyippt/` | HTML deck 배포용 build 산출물 | 추적 제외 |
 | `*.pdf`, `*.pptx` | 발표용 내보내기 결과물 | 추적 제외 |
 
 ## 관리 원칙
@@ -25,6 +27,9 @@
 - PDF/PPTX/HWPX/PNG/대용량 JSON은 재생성 가능한 산출물로 보고 Git 추적에서 제외합니다.
 - 원본 로그와 대용량 분석 파일을 그대로 보존하기보다, 보고서에 쓸 수 있는 실패 원인, 제약, 선택한 해결책, 검증 결과를 작은 문서로 남깁니다.
 - Android 실시간 탐지 개선 내용은 실제 검증 결과가 생길 때만 발표 자료에 반영합니다.
+- HTML deck 원본은 `docs/presentation/html-deck/index.html`입니다. `build/presentation/bbangyippt`는 `scripts/publish_chungmaru_deck.py build`가 만드는 배포용 산출물입니다.
+- Chrome site guard, 검색 결과 보호, wellbeing widget은 screenshot pack이 생기면 상세 슬라이드에 유지하고, 증거가 없으면 데모 범위/남은 검증으로 표시합니다.
+- Android browser title compact mask는 estimated range 직접 overlay가 아니라 제한된 title line 후보 처리로 설명합니다.
 
 ## 현재 발표 메시지
 

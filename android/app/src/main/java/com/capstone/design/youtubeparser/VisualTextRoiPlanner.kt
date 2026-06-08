@@ -54,6 +54,7 @@ object VisualTextRoiPlanner {
     private const val COMMENT_PANEL_BOTTOM_GUARD_PX = 72
     private const val MAX_COMMENT_PANEL_ROI_COUNT = 4
     private const val BROWSER_TEXT_NODE_SOURCE = "browser-text-node"
+    private const val BROWSER_VISUAL_NODE_SOURCE = "browser-visual-region"
     private const val BROWSER_TEXT_ROI_HORIZONTAL_PADDING_PX = 12
     private const val BROWSER_TEXT_ROI_VERTICAL_PADDING_PX = 10
     private const val BROWSER_TEXT_ROI_MIN_WIDTH_PX = 80
@@ -61,6 +62,9 @@ object VisualTextRoiPlanner {
     private const val BROWSER_TEXT_ROI_MIN_HEIGHT_PX = 40
     private const val BROWSER_TEXT_ROI_MAX_HEIGHT_PX = 260
     private const val BROWSER_TEXT_ROI_MAX_COUNT = 4
+    private const val BROWSER_VISUAL_ROI_MIN_WIDTH_PX = 220
+    private const val BROWSER_VISUAL_ROI_MIN_HEIGHT_PX = 140
+    private const val BROWSER_VISUAL_ROI_MAX_COUNT = 2
 
     fun planFromNodes(
         nodes: List<ParsedTextNode>,
@@ -83,9 +87,11 @@ object VisualTextRoiPlanner {
             toCandidate(node, screenWidth, screenHeight)
         }
         val browserTextNodeRois = buildBrowserTextNodeRois(nodes, screenWidth, screenHeight)
+        val browserVisualNodeRois = buildBrowserVisualNodeRois(nodes, screenWidth, screenHeight)
         val commentPanelRois = buildYoutubeCommentPanelRois(nodes, screenWidth, screenHeight)
         val fallbackCandidates =
             browserTextNodeRois +
+                browserVisualNodeRois +
                 commentPanelRois +
                 buildYoutubeExpandedShortCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
                 buildYoutubeShortCardThumbnailRois(rawCandidates, screenWidth, screenHeight) +
@@ -166,6 +172,58 @@ object VisualTextRoiPlanner {
             .toList()
     }
 
+    private fun buildBrowserVisualNodeRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<VisualTextRoi> {
+        return nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName in ACCESSIBILITY_FIRST_PACKAGES
+            }
+            .mapNotNull { node ->
+                val text = node.displayText
+                    ?: node.contentDescription
+                    ?: node.text
+                    ?: return@mapNotNull null
+                val normalized = text.replace(Regex("\\s+"), " ").trim()
+                if (!isUsefulSourceText(normalized)) return@mapNotNull null
+                if (!hasBrowserTextBearingVisualCue(normalized)) return@mapNotNull null
+                if (looksLikeBrowserControlTextNode(node, normalized)) return@mapNotNull null
+
+                val clamped = clampBounds(
+                    BoundsRect(node.left, node.top, node.right, node.bottom),
+                    screenWidth,
+                    screenHeight
+                ) ?: return@mapNotNull null
+                val width = clamped.right - clamped.left
+                val height = clamped.bottom - clamped.top
+                if (width < BROWSER_VISUAL_ROI_MIN_WIDTH_PX || height < BROWSER_VISUAL_ROI_MIN_HEIGHT_PX) {
+                    return@mapNotNull null
+                }
+                if (!isNearCurrentViewport(clamped, screenHeight)) return@mapNotNull null
+                if (looksLikeRootOrSystemRegion(clamped, screenWidth, screenHeight)) return@mapNotNull null
+                if (looksLikeTopControlRegion(clamped, screenHeight)) return@mapNotNull null
+
+                val roiBounds = normalizeRoiBounds(clamped, screenWidth, screenHeight) ?: return@mapNotNull null
+                VisualTextRoi(
+                    boundsInScreen = roiBounds,
+                    source = BROWSER_VISUAL_NODE_SOURCE,
+                    priority = -2,
+                    reason = "browser-text-bearing-visual-node",
+                    sourceText = normalized.take(MAX_SOURCE_TEXT_LENGTH)
+                )
+            }
+            .sortedWith(
+                compareBy<VisualTextRoi> { it.boundsInScreen.top }
+                    .thenBy { it.boundsInScreen.left }
+            )
+            .take(BROWSER_VISUAL_ROI_MAX_COUNT)
+            .toList()
+    }
+
     private fun hasExactCharBoxCoverage(
         text: String,
         charBoxes: List<CharBox>,
@@ -239,19 +297,26 @@ object VisualTextRoiPlanner {
             ?: return null
         val normalized = sourceText.replace(Regex("\\s+"), " ").trim()
         if (!isUsefulSourceText(normalized)) return null
-        if (node.packageName in ACCESSIBILITY_FIRST_PACKAGES) return null
+        val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
+        val className = node.className.orEmpty()
+        val browserVisualNode = node.packageName in ACCESSIBILITY_FIRST_PACKAGES &&
+            isBrowserVisualNodeCandidate(contentDescriptionOnly, className, normalized)
+        if (node.packageName in ACCESSIBILITY_FIRST_PACKAGES && !browserVisualNode) return null
 
         val clamped = clampBounds(
             BoundsRect(node.left, node.top, node.right, node.bottom),
             screenWidth,
             screenHeight
         ) ?: return null
-        val contentDescriptionOnly = node.text.isNullOrBlank() && !node.contentDescription.isNullOrBlank()
-        val className = node.className.orEmpty()
         val isImageLike = className.contains("Image", ignoreCase = true)
         val isYoutubeComposite = contentDescriptionOnly &&
             (isMediaCardDescription(normalized) || isLargeAnalyzableVisualCard(normalized, clamped))
-        val isGenericVisual = contentDescriptionOnly && (isImageLike || looksLikeVisualCard(className, normalized))
+        val isGenericVisual = contentDescriptionOnly &&
+            if (browserVisualNode) {
+                true
+            } else {
+                isImageLike || looksLikeVisualCard(className, normalized)
+            }
         if (!isYoutubeComposite && !isGenericVisual) return null
 
         if (!isNearCurrentViewport(clamped, screenHeight)) return null
@@ -267,11 +332,47 @@ object VisualTextRoiPlanner {
 
         return VisualTextRoi(
             boundsInScreen = roiBounds,
-            source = if (isYoutubeComposite) "youtube-composite-card" else "generic-visual-region",
-            priority = if (isYoutubeComposite) 0 else 1,
+            source = when {
+                isYoutubeComposite -> "youtube-composite-card"
+                browserVisualNode -> BROWSER_VISUAL_NODE_SOURCE
+                else -> "generic-visual-region"
+            },
+            priority = when {
+                isYoutubeComposite -> 0
+                browserVisualNode -> 2
+                else -> 1
+            },
             reason = if (contentDescriptionOnly) "content-description-only" else "visual-node",
             sourceText = normalized
         )
+    }
+
+    private fun isBrowserVisualNodeCandidate(
+        contentDescriptionOnly: Boolean,
+        className: String,
+        text: String
+    ): Boolean {
+        if (!contentDescriptionOnly) return false
+        if (className.contains("Button", ignoreCase = true)) return false
+        if (className.contains("EditText", ignoreCase = true)) return false
+        if (className.contains("RecyclerView", ignoreCase = true)) return false
+
+        if (!hasBrowserTextBearingVisualCue(text)) return false
+
+        return className.contains("View", ignoreCase = true) ||
+            className.contains("Image", ignoreCase = true) ||
+            looksLikeVisualCard(className, text)
+    }
+
+    private fun hasBrowserTextBearingVisualCue(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.contains("ocr") ||
+            lower.contains("canvas") ||
+            lower.contains("캔버스") ||
+            lower.contains("image text") ||
+            lower.contains("text in image") ||
+            lower.contains("텍스트 이미지") ||
+            (lower.contains("이미지") && (lower.contains("텍스트") || lower.contains("문자")))
     }
 
     private fun isUsefulSourceText(text: String): Boolean {

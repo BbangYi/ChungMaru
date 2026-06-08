@@ -14,11 +14,11 @@ from normalizer import normalize
 
 BASE = _BACKEND
 SPAN_MODEL_DIR = os.path.join(BASE, "models", "span_large_combined_crf")
-CLF_MODEL_DIR = os.path.join(BASE, "models", "v2")
+CLF_MODEL_DIR = os.path.join(BASE, "v3")
 
 
 def load_models():
-    # 1) 문장 분류 모델 (v2)
+    # 1) 문장 분류 모델 (v3)
     classifier = TextClassifier(model_path=CLF_MODEL_DIR)
 
     # 2) Span 추출 모델 (large + CRF)

@@ -1,0 +1,7 @@
+mode,stages,runs,avg_collect_ms,min_collect_ms,max_collect_ms,avg_backend_api_ms,avg_backend_e2e_ms,avg_ocr_ms,avg_coord_ms,avg_display_ms,avg_observed_total_ms,avg_screen_candidates,avg_char_nodes,avg_char_range_candidates,avg_overlay_candidates,avg_overlay_rendered,avg_offensive,avg_filtered,avg_roi_selected,avg_ocr_selected
+opt_base_all_nodes_backend,1+2,10,657.1,446,899,546.3,23.2,,0.9,,773.3,14.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0
+s12_collect_backend,1+2,10,519.3,338,777,207.1,22.9,,2.9,,519.3,14.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0
+opt_base_fullscreen_ocr,1+2+3,10,766.1,334,2952,292.4,74.0,174.1,5.0,65.0,766.1,14.1,0.0,0.0,0.0,0.0,1.0,0.1,1.0,0.7
+s123_collect_backend_ocr,1+2+3,10,643.6,369,825,204.0,231.9,220.2,3.2,208.6,643.6,14.0,0.0,0.0,0.0,0.0,1.0,0.8,2.0,0.9
+opt_base_full_box_overlay,1+2+5,10,566.4,330,671,332.8,8.8,,8.3,19.8,566.4,14.0,0.0,0.0,3.0,3.0,1.0,0.0,0.0,0.0
+s12345_full,1+2+3+4+5,10,751.8,526,1011,278.1,181.2,363.3,3.4,100.9,755.4,17.0,4.0,3.0,3.2,3.2,2.0,0.5,1.8,1.0

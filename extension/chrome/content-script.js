@@ -14,6 +14,16 @@ const DEFAULT_SETTINGS = {
   warnDomains: "",
   showReason: true,
   siteProtectionEnabled: true,
+  siteNavigationWarningEnabled: true,
+  searchResultProtectionEnabled: true,
+  showWellbeingWidget: true,
+  wellbeingWidgetStyle: "soft",
+  wellbeingAvatarImages: "",
+  wellbeingAgeStageCount: 5,
+  wellbeingAgeMinutesPerStage: 30,
+  wellbeingAngerStageCount: 5,
+  wellbeingAngerDetectionsPerStage: 3,
+  backendEnabled: false,
   backendApiBaseUrl: "http://127.0.0.1:8000",
   requestTimeoutMs: 10000
 };
@@ -49,12 +59,12 @@ const SKIP_TAGS = new Set([
 ]);
 
 const PIPELINE_DEBOUNCE_MS = 48;
-const BACKGROUND_PIPELINE_DEBOUNCE_MS = 16;
-const MAX_CANDIDATES = 120;
+const BACKGROUND_PIPELINE_DEBOUNCE_MS = 180;
+const MAX_CANDIDATES = 80;
 const MAX_FOREGROUND_CONTAINERS = 5;
-const MAX_BACKGROUND_CONTAINERS = 14;
+const MAX_BACKGROUND_CONTAINERS = 8;
 const VIEWPORT_BUFFER_PX = 720;
-const SCROLL_REFRESH_TEXT_NODE_LIMIT = 140;
+const SCROLL_REFRESH_TEXT_NODE_LIMIT = 80;
 const SCROLL_SETTLE_REFRESH_DELAY_MS = 110;
 const SCROLL_LATE_REFRESH_DELAY_MS = 340;
 const MAX_ANALYSIS_CONTEXT_LENGTH = 360;
@@ -62,26 +72,29 @@ const MAX_RECONCILE_CONTEXT_LENGTH = 560;
 const MIN_ANALYSIS_CONTEXT_LENGTH = 24;
 const MAX_ANALYSIS_CONTAINER_ASCENT = 5;
 const ANALYSIS_CACHE_LIMIT = 500;
-const MAX_DIRTY_TEXT_NODES_PER_MUTATION = 80;
-const MAX_INITIAL_TEXT_NODES = 260;
+const MAX_DIRTY_TEXT_NODES_PER_MUTATION = 40;
+const MAX_INITIAL_TEXT_NODES = 120;
 const HOT_PATH_WORKER_TIMEOUT_MS = 90;
 const HOT_PATH_WORKER_INIT_TIMEOUT_MS = 900;
 const HOT_PATH_WORKER_BACKOFF_MS = 8000;
 const MAX_HOT_PATH_CONTEXT_LENGTH = 320;
 const INPUT_PIPELINE_DEBOUNCE_MS = 0;
-const VISIBILITY_PIPELINE_DEBOUNCE_MS = 8;
+const VISIBILITY_PIPELINE_DEBOUNCE_MS = 80;
 const RECONCILE_FLUSH_DELAY_MS = 20;
 const RECONCILE_FAST_FLUSH_DELAY_MS = 0;
 const RECONCILE_CHUNK_SIZE = 2;
 const MAX_FOREGROUND_CANDIDATES = 16;
-const MAX_FOREGROUND_WAVE_CANDIDATES = 12;
-const MAX_FOREGROUND_WAVE_CONTAINERS = 4;
+const MAX_FOREGROUND_WAVE_CANDIDATES = 8;
+const MAX_FOREGROUND_WAVE_CONTAINERS = 3;
 const MAX_BACKGROUND_CANDIDATES = 24;
+const MAX_BACKGROUND_VALIDATION_CANDIDATES = 12;
+const MAX_BACKGROUND_VALIDATION_ANALYSIS_UNITS = 4;
 const MAX_HOT_PATH_CONTAINERS = 8;
 const INITIAL_EDITABLE_PASS_LIMIT = 2;
-const STARTUP_FOLLOWUP_DELAYS_MS = [16, 48, 180, 420, 900];
-const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [24, 80, 220, 520, 1100, 1800];
-const NAVIGATION_POLL_INTERVAL_MS = 80;
+const STARTUP_FOLLOWUP_DELAYS_MS = [650, 1800];
+const ROUTE_CHANGE_FOLLOWUP_DELAYS_MS = [160, 520, 1400];
+const NAVIGATION_POLL_INTERVAL_MS = 1000;
+const INITIAL_ANALYSIS_IDLE_TIMEOUT_MS = 1600;
 const SAME_ROUTE_DIRTY_REFRESH_REASONS = new Set([
   "load",
   "pageshow",
@@ -92,30 +105,86 @@ const SAME_ROUTE_DIRTY_REFRESH_REASONS = new Set([
   "yt-navigate-finish",
   "yt-page-data-updated"
 ]);
+const GOOGLE_SEARCH_ALLOWED_PIPELINE_REASONS = new Set([
+  "input",
+  "input-hot-path",
+  "initial-editable-pass",
+  "google-dynamic-content",
+  "manual",
+  "manual-request",
+  "manual-request-after-inject"
+]);
 const MAX_DOMAIN_PRIORITY_CANDIDATES = 10;
 const MAX_GOOGLE_CANDIDATES_PER_CONTAINER = 16;
+const GOOGLE_SEARCH_LIGHT_CANDIDATE_LIMIT = 6;
+const GOOGLE_SEARCH_LIGHT_PROTECTION_MIN_INTERVAL_MS = 80;
+const GOOGLE_VISIBLE_HIGH_SIGNAL_SCAN_NODE_LIMIT = 240;
+const GOOGLE_INITIAL_PRECONCEAL_TTL_MS = 2200;
+const GOOGLE_INITIAL_PRECONCEAL_LIMIT = 16;
+const SEARCH_RESULT_BACKEND_CHECK_LIMIT = 8;
+const SEARCH_RESULT_BACKEND_CHECK_CONCURRENCY = 1;
+const SEARCH_RESULT_POLICY_CACHE_LIMIT = 200;
+const SEARCH_RESULT_POLICY_CACHE_TTL_MS = 10 * 60 * 1000;
+const SEARCH_RESULT_POLICY_ERROR_CACHE_TTL_MS = 30 * 1000;
+const SEARCH_RESULT_POLICY_PREEMPTED_CACHE_TTL_MS = 2500;
+const SEARCH_RESULT_SNIPPET_LIMIT = 280;
+const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
-const FOREGROUND_ANALYZE_TIMEOUT_MS = 900;
+const FOREGROUND_ANALYZE_TIMEOUT_MS = 650;
 const RECONCILE_ANALYZE_TIMEOUT_MS = 1500;
 const SKIPPED_ANALYSIS_RETRY_BACKOFF_MS = 1200;
 const HIGH_SIGNAL_SKIPPED_RETRY_BACKOFF_MS = 260;
 const MAX_HIGH_SIGNAL_SKIPPED_RETRY_ATTEMPTS = 2;
 const HIGH_SIGNAL_SKIPPED_RETRY_MAX_BACKOFF_MS = 2200;
 const SKIPPED_RETRY_MAX_BACKOFF_MS = 5000;
+const PERFORMANCE_GUARD_SLOW_PIPELINE_MS = 900;
+const PERFORMANCE_GUARD_CANDIDATE_LIMIT = 100;
+const PERFORMANCE_GUARD_UNIT_BUILD_MS = 180;
+const PERFORMANCE_GUARD_COOLDOWN_MS = 30 * 1000;
+const PERFORMANCE_GUARD_ALLOWED_PIPELINE_REASONS = new Set([
+  "input",
+  "input-hot-path",
+  "initial-editable-pass",
+  "google-dynamic-content",
+  "manual",
+  "manual-request",
+  "manual-request-after-inject"
+]);
 const FOREGROUND_BACKEND_BATCH_SIZE = 4;
+const BACKGROUND_VALIDATION_BACKEND_BATCH_SIZE = 4;
 const RECONCILE_BACKEND_BATCH_SIZE = 2;
-const BACKEND_WARMUP_TEXTS = ["안녕하세요", "검색 테스트", "청마루 실시간 필터"];
+const BACKGROUND_VALIDATION_BACKEND_BUDGET_MS = 140;
 const BACKEND_WARMUP_DELAY_MS = 1800;
+const BACKEND_WARMUP_REQUEST_TIMEOUT_MS = 8000;
+const BACKEND_WARMUP_FALLBACK_TEXTS = ["안녕하세요", "씨발 테스트", "검색 테스트", "청마루 실시간 필터"];
 const FOREGROUND_STANDALONE_SAFE_CACHE_TTL_MS = 7000;
 const FOREGROUND_CONTEXTUAL_SAFE_CACHE_TTL_MS = 800;
 const RECONCILE_CONTEXTUAL_SAFE_CACHE_TTL_MS = 600;
 const OFFENSIVE_CACHE_TTL_MS = 90000;
 const ANALYSIS_CACHE_SCHEMA_VERSION = "content-v13";
 const DECISION_STAGE_RANK = Object.freeze({
+  "local-preflight": 0,
   foreground: 1,
   reconcile: 2
 });
+const SEARCH_RESULT_CURATED_FALLBACK_POLICIES = Object.freeze([
+  {
+    domain: "google-account-verify.com",
+    verdict: "block",
+    matchedRule: "phishing smoke seed"
+  },
+  {
+    domain: "adult-webtoon-plus.kr",
+    verdict: "block",
+    matchedRule: "adult smoke seed"
+  },
+  {
+    domain: "dcinside.com",
+    verdict: "warning",
+    matchedRule: "community smoke seed"
+  }
+]);
 
 const TEXT_NODE_ID_MAP = new WeakMap();
 const NODE_STATE_BY_ID = new Map();
@@ -160,31 +229,72 @@ const SAFE_BROWSER_UI_LABELS = new Set([
 
 // Backend remains the authority; this mirror only prioritizes obvious candidates
 // and prevents trusted backend spans from being discarded by frontend sanity checks.
+const KOREAN_WORD_CHAR_CLASS = "0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ";
+const KOREAN_PROFANITY_LEFT_EDGE = `(?<![${KOREAN_WORD_CHAR_CLASS}])`;
+const KOREAN_PROFANITY_RIGHT_EDGE = `(?![${KOREAN_WORD_CHAR_CLASS}])`;
+const KOREAN_PROFANITY_INFLECTION_SUFFIX = "(?:(?:이라는|이라고|이라|이란)|(?:하고|하며|해서|하면|하다|한|할|해)|(?:같은|같다|같네|처럼)|(?:새끼|새키)|[이가은는을를의아야]|[놈년련들])?";
+
+function koreanProfanity(pattern) {
+  return `${KOREAN_PROFANITY_LEFT_EDGE}(?:${pattern})${KOREAN_PROFANITY_RIGHT_EDGE}`;
+}
+
+function koreanProfanityWithInflection(pattern) {
+  return `${KOREAN_PROFANITY_LEFT_EDGE}(?:${pattern})${KOREAN_PROFANITY_INFLECTION_SUFFIX}${KOREAN_PROFANITY_RIGHT_EDGE}`;
+}
+
+const KOREAN_INITIAL_SEPARATOR = "[\\s._/·ㆍ|:;,'’()\\[\\]{}<>-]*";
+const KOREAN_OBFUSCATION_SEPARATOR = "[\\s._/·ㆍ|:;,'’()\\[\\]{}<>-]*";
+const KOREAN_ADULT_COMMERCE_SEPARATOR = "[\\s._/·ㆍ|:;,'’()\\[\\]{}<>-]*";
+const KOREAN_ADULT_COMMERCE_PATTERN =
+  `(?:콜${KOREAN_ADULT_COMMERCE_SEPARATOR}걸|성인${KOREAN_ADULT_COMMERCE_SEPARATOR}(?:업소|마사지${KOREAN_ADULT_COMMERCE_SEPARATOR}(?:업소|샵|구인|후기|추천|가격|예약|콜|출장|불법|알선))|출장${KOREAN_ADULT_COMMERCE_SEPARATOR}(?:마사지|안마|만남)|유흥${KOREAN_ADULT_COMMERCE_SEPARATOR}(?:업소|마사지|주점)|안마${KOREAN_ADULT_COMMERCE_SEPARATOR}방|키스${KOREAN_ADULT_COMMERCE_SEPARATOR}방|립${KOREAN_ADULT_COMMERCE_SEPARATOR}카페|룸${KOREAN_ADULT_COMMERCE_SEPARATOR}(?:싸롱|살롱)|셔츠${KOREAN_ADULT_COMMERCE_SEPARATOR}룸|조건${KOREAN_ADULT_COMMERCE_SEPARATOR}만남|성${KOREAN_ADULT_COMMERCE_SEPARATOR}매매)`;
+
+function koreanSeparatedSyllables(...parts) {
+  return parts.join(KOREAN_OBFUSCATION_SEPARATOR);
+}
+
 const HIGH_SIGNAL_PROFANITY_PATTERN = new RegExp(
   [
-    "씨[이\\s]*발",
-    "시[이\\s]*발",
-    "씨[이\\s]*팔",
-    "시[이\\s]*팔",
-    "ㅅㅂ",
-    "ㅆㅂ",
-    "병[.\\s]*신",
-    "ㅂㅅ",
-    "지[이\\s]*랄",
-    "ㅈㄹ",
-    "존\\s*나",
-    "ㅈㄴ",
-    "좆",
-    "좇",
-    "씹",
-    "개[새세][끼키]",
-    "꺼[져저]",
-    "닥[쳐치]",
-    "죽어",
-    "뒤져",
-    "느[금끔]마",
-    "니[금끔]마",
-    "미친[놈년새]?",
+    koreanProfanityWithInflection(`씨[이]*${KOREAN_OBFUSCATION_SEPARATOR}발`),
+    koreanProfanityWithInflection(`시[이]*${KOREAN_OBFUSCATION_SEPARATOR}발`),
+    koreanProfanityWithInflection(`씨[이]*${KOREAN_OBFUSCATION_SEPARATOR}팔`),
+    koreanProfanityWithInflection(`시[이]*${KOREAN_OBFUSCATION_SEPARATOR}팔`),
+    koreanProfanity(`ㅅ${KOREAN_INITIAL_SEPARATOR}ㅂ`),
+    koreanProfanity(`ㅆ${KOREAN_INITIAL_SEPARATOR}ㅂ`),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("병", "신")),
+    koreanProfanity(`ㅂ${KOREAN_INITIAL_SEPARATOR}ㅅ(?:같(?:다|은|네)?)?`),
+    koreanProfanityWithInflection(`지[이]*${KOREAN_OBFUSCATION_SEPARATOR}랄`),
+    koreanProfanity(`ㅈ${KOREAN_INITIAL_SEPARATOR}ㄹ(?:하(?:네|다|고|면|며|니)?)?`),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("존", "나")),
+    koreanProfanity(`ㅈ${KOREAN_INITIAL_SEPARATOR}ㄴ`),
+    koreanProfanity(`ㅈ${KOREAN_INITIAL_SEPARATOR}(?:(?:되|된|돼|됐|대|댄|댔|댐)(?:다|네|고|면|며|니|는|서|어|겠(?:다|네)|버(?:렸(?:다|네)?|리(?:다|네|고|면)?|린|림|려)?)?|같(?:다|은|네|이)?)`),
+    koreanProfanity(`좆${KOREAN_OBFUSCATION_SEPARATOR}(?:(?:되|된|돼|됐|대|댄|댔|댐)(?:다|네|고|면|며|니|는|서|어|겠(?:다|네)|버(?:렸(?:다|네)?|리(?:다|네|고|면)?|린|림|려)?)?)`),
+    koreanProfanity(`좇${KOREAN_OBFUSCATION_SEPARATOR}(?:(?:되|된|돼|됐|대|댄|댔|댐)(?:다|네|고|면|며|니|는|서|어|겠(?:다|네)|버(?:렸(?:다|네)?|리(?:다|네|고|면)?|린|림|려)?)?)`),
+    koreanProfanityWithInflection("좆"),
+    koreanProfanityWithInflection("좇"),
+    koreanProfanityWithInflection("씹"),
+    koreanProfanity(`씹${KOREAN_OBFUSCATION_SEPARATOR}감${KOREAN_OBFUSCATION_SEPARATOR}다${KOREAN_OBFUSCATION_SEPARATOR}살[ㅋㅎ]*`),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("맘", "충")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("한", "남", "충")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("틀", "딱")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("쪽", "바", "리")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("짱", "깨")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("짱", "개")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("니", "엄", "마")),
+    koreanProfanityWithInflection(koreanSeparatedSyllables("느", "금", "마")),
+    koreanProfanityWithInflection(`너${KOREAN_OBFUSCATION_SEPARATOR}[희히]${KOREAN_OBFUSCATION_SEPARATOR}엄${KOREAN_OBFUSCATION_SEPARATOR}마`),
+    koreanProfanityWithInflection(`개${KOREAN_OBFUSCATION_SEPARATOR}[새세]${KOREAN_OBFUSCATION_SEPARATOR}[끼키]`),
+    koreanProfanity(`꺼${KOREAN_OBFUSCATION_SEPARATOR}[져저](?:라)?`),
+    koreanProfanity(`닥${KOREAN_OBFUSCATION_SEPARATOR}(?:쳐|치)(?:라)?`),
+    koreanProfanity(`죽${KOREAN_OBFUSCATION_SEPARATOR}어(?:라)?`),
+    koreanProfanity(`(?:뒤|디|뒈)${KOREAN_OBFUSCATION_SEPARATOR}[져저](?:라)?`),
+    koreanProfanity(`(?:뒤|디|뒈)${KOREAN_OBFUSCATION_SEPARATOR}지(?:긴(?:(?:하|한)(?:다|네|고|면)?)?|다|네|고|면|냐|겠(?:다|네)?|는|게)?`),
+    koreanProfanity(koreanSeparatedSyllables("뒤", "질", "래")),
+    koreanProfanityWithInflection("죽여(?:버릴|버린|버리|버려|버림)?"),
+    koreanProfanityWithInflection(`느${KOREAN_OBFUSCATION_SEPARATOR}[금끔]${KOREAN_OBFUSCATION_SEPARATOR}마`),
+    koreanProfanityWithInflection(`니${KOREAN_OBFUSCATION_SEPARATOR}[금끔]${KOREAN_OBFUSCATION_SEPARATOR}마`),
+    koreanProfanityWithInflection("미친"),
+    koreanProfanityWithInflection(`미${KOREAN_OBFUSCATION_SEPARATOR}친${KOREAN_OBFUSCATION_SEPARATOR}(?:놈|년|새${KOREAN_OBFUSCATION_SEPARATOR}(?:끼|키)?)`),
+    KOREAN_ADULT_COMMERCE_PATTERN,
     "блядь",
     "сука",
     "くそ",
@@ -197,6 +307,9 @@ const HIGH_SIGNAL_PROFANITY_PATTERN = new RegExp(
   "i"
 );
 const HIGH_SIGNAL_PROFANITY_SPAN_PATTERN = new RegExp(HIGH_SIGNAL_PROFANITY_PATTERN.source, "gi");
+const SAFE_HIGH_SIGNAL_COMPOUND_PATTERN = /시[이]*발(?:점|역|택시)/i;
+const SAFE_HIGH_SIGNAL_COMPOUND_FRAGMENT_PATTERN = /^시[이]*발$/i;
+const SAFE_HIGH_SIGNAL_CONTEXT_PATTERN = /(?:국제차량제작\s+시[이]*발|국가중요과학기술자료\s*#?시[이]*발|시[이]*발\.\s*1955년[\s\S]{0,80}자동차)/i;
 const GOOGLE_SFC_CONTAINER_SELECTOR = [
   "[data-container-id='main-col']",
   "[data-container-id='main-col'] .n6owBd",
@@ -224,7 +337,16 @@ const GOOGLE_SFC_TEXT_SELECTOR = [
   "[data-sfc-root='c'] .n6owBd",
   "[data-sfc-root='c'] .MFrAxb"
 ].join(", ");
+const GOOGLE_AI_OVERVIEW_SELECTOR = [
+  "[aria-label*='AI 개요' i]",
+  "[aria-label*='AI Overview' i]",
+  "[data-attrid*='ai_overview' i]",
+  "[data-attrid*='AI Overview' i]",
+  "[data-mcpr]",
+  "[data-content-feature='1']"
+].join(", ");
 const GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR = [
+  GOOGLE_AI_OVERVIEW_SELECTOR,
   "[role='heading'][data-attrid='title']",
   "[data-attrid='title'] [role='heading']",
   "[data-attrid='title']",
@@ -277,6 +399,27 @@ const GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR = [
   ".PZPZlf.ssJ7i",
   ".PZPZlf.B5dxMb"
 ].join(", ");
+const GOOGLE_DYNAMIC_CONTENT_SELECTOR = [
+  GOOGLE_AI_OVERVIEW_SELECTOR,
+  GOOGLE_SFC_CONTAINER_SELECTOR,
+  GOOGLE_SFC_TEXT_SELECTOR,
+  GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR,
+  "#search h3",
+  "#search [role='heading']",
+  "#search .VwiC3b",
+  "#search .MUxGbd",
+  "#search [data-sncf]",
+  "#search [data-snf]",
+  "#rso h3",
+  "#rso [role='heading']",
+  "#rso .VwiC3b",
+  "#rso .MUxGbd",
+  "#rso [data-sncf]",
+  "#rso [data-snf]",
+  "#bres",
+  "#botstuff",
+  "#rhs"
+].join(", ");
 const YOUTUBE_HIGH_SIGNAL_TEXT_SELECTOR = [
   "#content-text",
   "[id='content-text']",
@@ -297,6 +440,7 @@ const YOUTUBE_HIGH_SIGNAL_TEXT_SELECTOR = [
 
 let nextTextNodeId = 1;
 let nextEditableValueId = 1;
+let nextAttributeValueId = 1;
 let observer = null;
 let visibilityObserver = null;
 let debounceTimerId = null;
@@ -337,12 +481,26 @@ let pendingHotPathStats = null;
 const RECONCILE_QUEUE = new Map();
 let bootstrapStarted = false;
 let bootstrapRetryTimerId = null;
+let initialPageAnalysisScheduled = false;
+let initialPageAnalysisStarted = false;
 let navigationListenersInitialized = false;
 let routeRefreshFrameId = null;
+let searchResultProtectionFrameId = null;
+let googleSearchLocalPreflightFrameId = null;
+let googleSearchLocalPreflightTimerId = null;
+let searchResultProtectionClickGuardInitialized = false;
+let searchResultProtectionRunId = 0;
+let lastGoogleSearchLocalPreflightAt = 0;
+let lastGoogleSearchLocalPreflightHref = "";
 let navigationPollTimerId = null;
 let routeRefreshSequence = 0;
 const ROUTE_REFRESH_TIMEOUT_IDS = new Set();
 const STARTUP_FOLLOWUP_TIMEOUT_IDS = new Set();
+const SEARCH_RESULT_POLICY_CACHE = new Map();
+const SEARCH_RESULT_POLICY_IN_FLIGHT = new Map();
+const ATTRIBUTE_MASK_NAMES = ["aria-label", "title", "alt"];
+const ATTRIBUTE_VALUE_ID_MAP = new WeakMap();
+const ATTRIBUTE_VALUE_STATE_BY_ID = new Map();
 let lastObservedLocationHref = String(location.href || "");
 let staleResponseDropCount = 0;
 let foregroundApplyCount = 0;
@@ -359,6 +517,8 @@ let backendWarmupStarted = false;
 let extensionContextInvalidatedLogged = false;
 let lastAppliedSettingsSnapshotKey = "";
 let lastAppliedSettingsSnapshotAt = 0;
+let performanceGuardUntil = 0;
+let performanceGuardReason = "";
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -368,6 +528,11 @@ function normalizeSensitivity(value) {
   const numberValue = Number(value);
   if (Number.isNaN(numberValue)) return DEFAULT_SETTINGS.sensitivity;
   return Math.max(0, Math.min(100, Math.round(numberValue)));
+}
+
+function normalizeInterventionMode(value) {
+  const mode = String(value || DEFAULT_SETTINGS.interventionMode).trim();
+  return ["mask", "blur", "hide", "remove"].includes(mode) ? mode : DEFAULT_SETTINGS.interventionMode;
 }
 
 function getSensitivityMode(settings) {
@@ -390,13 +555,39 @@ function buildSettingsSnapshotKey(settings) {
   return JSON.stringify({
     enabled: normalizedSettings.enabled !== false,
     sensitivity: normalizeSensitivity(normalizedSettings.sensitivity),
-    interventionMode: normalizedSettings.interventionMode || DEFAULT_SETTINGS.interventionMode,
+    interventionMode: normalizeInterventionMode(normalizedSettings.interventionMode),
     categories: normalizedSettings.categories || DEFAULT_SETTINGS.categories,
     customBlockWords: String(normalizedSettings.customBlockWords || ""),
     customAllowWords: String(normalizedSettings.customAllowWords || ""),
     blockedDomains: String(normalizedSettings.blockedDomains || ""),
     warnDomains: String(normalizedSettings.warnDomains || ""),
     siteProtectionEnabled: normalizedSettings.siteProtectionEnabled !== false,
+    siteNavigationWarningEnabled: normalizedSettings.siteNavigationWarningEnabled !== false,
+    searchResultProtectionEnabled: normalizedSettings.searchResultProtectionEnabled !== false,
+    showWellbeingWidget: normalizedSettings.showWellbeingWidget !== false,
+    wellbeingWidgetStyle: normalizedSettings.wellbeingWidgetStyle || DEFAULT_SETTINGS.wellbeingWidgetStyle,
+    wellbeingAvatarImages: String(normalizedSettings.wellbeingAvatarImages || ""),
+    wellbeingAgeStageCount: normalizeWellbeingStageCount(
+      normalizedSettings.wellbeingAgeStageCount,
+      DEFAULT_SETTINGS.wellbeingAgeStageCount
+    ),
+    wellbeingAgeMinutesPerStage: normalizeWellbeingStageStep(
+      normalizedSettings.wellbeingAgeMinutesPerStage,
+      DEFAULT_SETTINGS.wellbeingAgeMinutesPerStage,
+      5,
+      240
+    ),
+    wellbeingAngerStageCount: normalizeWellbeingStageCount(
+      normalizedSettings.wellbeingAngerStageCount,
+      DEFAULT_SETTINGS.wellbeingAngerStageCount
+    ),
+    wellbeingAngerDetectionsPerStage: normalizeWellbeingStageStep(
+      normalizedSettings.wellbeingAngerDetectionsPerStage,
+      DEFAULT_SETTINGS.wellbeingAngerDetectionsPerStage,
+      1,
+      50
+    ),
+    backendEnabled: normalizedSettings.backendEnabled === true,
     backendApiBaseUrl: sanitizeApiBaseUrl(normalizedSettings.backendApiBaseUrl),
     requestTimeoutMs: normalizeRequestTimeoutMs(normalizedSettings.requestTimeoutMs)
   });
@@ -433,6 +624,18 @@ function normalizeRequestTimeoutMs(value) {
   const numberValue = Number(value);
   if (Number.isNaN(numberValue)) return DEFAULT_SETTINGS.requestTimeoutMs;
   return Math.max(1000, Math.min(30000, Math.round(numberValue)));
+}
+
+function normalizeWellbeingStageCount(value, fallback = 5) {
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) return fallback;
+  return Math.max(1, Math.min(10, Math.round(numberValue)));
+}
+
+function normalizeWellbeingStageStep(value, fallback, min, max) {
+  const numberValue = Number(value);
+  if (Number.isNaN(numberValue)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(numberValue)));
 }
 
 function normalizeLabel(value) {
@@ -517,6 +720,10 @@ function teardownInvalidatedExtensionContext() {
   if (routeRefreshFrameId) {
     window.cancelAnimationFrame(routeRefreshFrameId);
     routeRefreshFrameId = null;
+  }
+  if (googleSearchLocalPreflightFrameId) {
+    window.cancelAnimationFrame(googleSearchLocalPreflightFrameId);
+    googleSearchLocalPreflightFrameId = null;
   }
   if (suppressedMutationRefreshTimerId) {
     window.clearTimeout(suppressedMutationRefreshTimerId);
@@ -690,11 +897,78 @@ function isUnsupportedPage() {
   return isUnsupportedDocumentTarget();
 }
 
+function parseDomainList(rawValue) {
+  return String(rawValue || "")
+    .split(/[\n,]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function normalizeDomainForPolicy(value) {
+  const domain = String(value || "").trim().toLowerCase();
+  return domain.startsWith("www.") ? domain.slice(4) : domain;
+}
+
+function matchDomainRule(domain, rawValue) {
+  const normalizedDomain = normalizeDomainForPolicy(domain);
+  const rules = parseDomainList(rawValue);
+  for (const rule of rules) {
+    const normalizedRule = normalizeDomainForPolicy(rule);
+    if (!normalizedRule) continue;
+    if (normalizedDomain === normalizedRule || normalizedDomain.endsWith(`.${normalizedRule}`)) {
+      return normalizedRule;
+    }
+  }
+  return "";
+}
+
+function parseHttpUrl(value) {
+  try {
+    const parsed = new URL(String(value || ""), location.href);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function domainFromHref(value) {
+  const parsed = parseHttpUrl(value);
+  return parsed ? normalizeDomainForPolicy(parsed.hostname) : "";
+}
+
 function getMergedSettings(storedSettings) {
   return {
     ...DEFAULT_SETTINGS,
     ...(storedSettings || {}),
+    interventionMode: normalizeInterventionMode(storedSettings?.interventionMode),
     siteProtectionEnabled: storedSettings?.siteProtectionEnabled !== false,
+    siteNavigationWarningEnabled: storedSettings?.siteNavigationWarningEnabled !== false,
+    searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
+    wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
+    wellbeingAgeStageCount: normalizeWellbeingStageCount(
+      storedSettings?.wellbeingAgeStageCount,
+      DEFAULT_SETTINGS.wellbeingAgeStageCount
+    ),
+    wellbeingAgeMinutesPerStage: normalizeWellbeingStageStep(
+      storedSettings?.wellbeingAgeMinutesPerStage,
+      DEFAULT_SETTINGS.wellbeingAgeMinutesPerStage,
+      5,
+      240
+    ),
+    wellbeingAngerStageCount: normalizeWellbeingStageCount(
+      storedSettings?.wellbeingAngerStageCount,
+      DEFAULT_SETTINGS.wellbeingAngerStageCount
+    ),
+    wellbeingAngerDetectionsPerStage: normalizeWellbeingStageStep(
+      storedSettings?.wellbeingAngerDetectionsPerStage,
+      DEFAULT_SETTINGS.wellbeingAngerDetectionsPerStage,
+      1,
+      50
+    ),
+    backendEnabled: storedSettings?.backendEnabled === true,
     backendApiBaseUrl: sanitizeApiBaseUrl(storedSettings?.backendApiBaseUrl),
     requestTimeoutMs: normalizeRequestTimeoutMs(storedSettings?.requestTimeoutMs),
     sensitivity: normalizeSensitivity(storedSettings?.sensitivity),
@@ -717,6 +991,50 @@ function removeSitePolicyOverlay() {
   sitePolicyOverlayElement = null;
 }
 
+function appendSitePolicyFace(parent, verdict) {
+  const widget = document.createElement("div");
+  widget.className = "shieldtext-site-policy-widget";
+  widget.dataset.mood = verdict === "block" ? "furious" : "annoyed";
+  widget.dataset.ageLevel = "0";
+  widget.dataset.angerLevel = verdict === "block" ? "5" : "2";
+  widget.dataset.policyVerdict = verdict === "block" ? "block" : "warning";
+  widget.setAttribute("aria-hidden", "true");
+
+  const face = document.createElement("div");
+  face.className = "shieldtext-wellbeing-face";
+
+  const hair = document.createElement("span");
+  hair.className = "shieldtext-wellbeing-hair";
+  face.appendChild(hair);
+
+  const wrinkle = document.createElement("span");
+  wrinkle.className = "shieldtext-wellbeing-wrinkle";
+  face.appendChild(wrinkle);
+
+  const leftBrow = document.createElement("span");
+  leftBrow.className = "shieldtext-wellbeing-brow left";
+  face.appendChild(leftBrow);
+
+  const rightBrow = document.createElement("span");
+  rightBrow.className = "shieldtext-wellbeing-brow right";
+  face.appendChild(rightBrow);
+
+  const leftEye = document.createElement("span");
+  leftEye.className = "shieldtext-wellbeing-eye left";
+  face.appendChild(leftEye);
+
+  const rightEye = document.createElement("span");
+  rightEye.className = "shieldtext-wellbeing-eye right";
+  face.appendChild(rightEye);
+
+  const mouth = document.createElement("span");
+  mouth.className = "shieldtext-wellbeing-mouth";
+  face.appendChild(mouth);
+
+  widget.appendChild(face);
+  parent.appendChild(widget);
+}
+
 function renderSitePolicyOverlay(policy) {
   if (!policy || policy.verdict === "allow") {
     removeSitePolicyOverlay();
@@ -732,16 +1050,25 @@ function renderSitePolicyOverlay(policy) {
 
   const root = document.createElement("div");
   root.className = "shieldtext-site-policy-overlay";
+  root.dataset.verdict = String(policy.verdict || "warning");
   root.setAttribute("data-shieldtext-site-policy", "true");
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-modal", "true");
+  root.tabIndex = -1;
 
   const box = document.createElement("div");
   box.className = "shieldtext-site-policy-box";
+  box.dataset.verdict = String(policy.verdict || "warning");
+
+  appendSitePolicyFace(box, policy.verdict);
 
   const title = document.createElement("h2");
+  title.id = "shieldtext-site-policy-title";
   title.textContent =
     policy.verdict === "block"
-      ? "주의: 위험 가능성이 높은 사이트입니다"
-      : "주의: 접속 전 확인이 필요한 사이트입니다";
+      ? "청마루가 이 사이트를 차단했습니다"
+      : "청마루가 접속 전 확인을 요청합니다";
+  root.setAttribute("aria-labelledby", title.id);
 
   const description = document.createElement("p");
   description.textContent =
@@ -778,34 +1105,49 @@ function renderSitePolicyOverlay(policy) {
   const actions = document.createElement("div");
   actions.className = "shieldtext-site-policy-actions";
 
-  const continueButton = document.createElement("button");
-  continueButton.type = "button";
-  continueButton.className = "shieldtext-site-policy-close";
-  continueButton.textContent = policy.verdict === "block" ? "위험 안내를 이해하고 계속" : "계속 접속";
-  continueButton.addEventListener("click", async () => {
-    removeSitePolicyOverlay();
-    if (!isExtensionContextAvailable()) {
-      return;
-    }
-    try {
-      await chrome.runtime.sendMessage({
-        type: "DISMISS_SITE_POLICY",
-        url: lastSitePolicyUrl || location.href
-      });
-    } catch (error) {
-      handleExtensionContextError(error);
-    }
-  });
-  actions.appendChild(continueButton);
-
   const backButton = document.createElement("button");
   backButton.type = "button";
-  backButton.className = "shieldtext-site-policy-secondary";
+  backButton.className =
+    policy.verdict === "block"
+      ? "shieldtext-site-policy-close"
+      : "shieldtext-site-policy-secondary";
   backButton.textContent = "뒤로 가기";
   backButton.addEventListener("click", () => {
-    history.back();
+    try {
+      if (history.length > 1) {
+        history.back();
+      } else {
+        location.replace("about:blank");
+      }
+    } catch {
+      location.href = "about:blank";
+    }
   });
-  actions.appendChild(backButton);
+
+  if (policy.verdict === "block") {
+    actions.appendChild(backButton);
+  } else {
+    const continueButton = document.createElement("button");
+    continueButton.type = "button";
+    continueButton.className = "shieldtext-site-policy-close";
+    continueButton.textContent = "계속 접속";
+    continueButton.addEventListener("click", async () => {
+      removeSitePolicyOverlay();
+      if (!isExtensionContextAvailable()) {
+        return;
+      }
+      try {
+        await chrome.runtime.sendMessage({
+          type: "DISMISS_SITE_POLICY",
+          url: lastSitePolicyUrl || location.href
+        });
+      } catch (error) {
+        handleExtensionContextError(error);
+      }
+    });
+    actions.appendChild(continueButton);
+    actions.appendChild(backButton);
+  }
 
   box.appendChild(actions);
   root.appendChild(box);
@@ -814,14 +1156,645 @@ function renderSitePolicyOverlay(policy) {
   if (mountTarget) {
     mountTarget.appendChild(root);
     sitePolicyOverlayElement = root;
+    window.setTimeout(() => {
+      root.focus?.({ preventScroll: true });
+    }, 0);
   }
+}
+
+function isSearchResultProtectionEnabled(settings) {
+  return (
+    settings?.enabled !== false &&
+    normalizeSensitivity(settings?.sensitivity) > 0 &&
+    settings?.siteProtectionEnabled !== false &&
+    settings?.searchResultProtectionEnabled !== false
+  );
+}
+
+function extractSearchResultTargetUrl(anchor) {
+  if (!(anchor instanceof HTMLAnchorElement)) {
+    return "";
+  }
+
+  const parsed = parseHttpUrl(anchor.href || anchor.getAttribute("href") || "");
+  if (!parsed) {
+    return "";
+  }
+
+  const host = normalizeDomainForPolicy(parsed.hostname);
+  if (/(\.|^)google\./i.test(host) && parsed.pathname === "/url") {
+    const nested = parsed.searchParams.get("url") || parsed.searchParams.get("q");
+    const nestedParsed = parseHttpUrl(nested);
+    return nestedParsed ? nestedParsed.href : "";
+  }
+
+  return parsed.href;
+}
+
+function normalizeSearchResultPolicyKey(url) {
+  const parsed = parseHttpUrl(url);
+  if (!parsed) return "";
+  parsed.hash = "";
+  return parsed.href;
+}
+
+function getSearchResultSnippet(container) {
+  if (!(container instanceof Element)) {
+    return "";
+  }
+  return normalizeText(container.innerText || container.textContent || "").slice(0, SEARCH_RESULT_SNIPPET_LIMIT);
+}
+
+function getLocalSearchResultPolicy(url, settings) {
+  const domain = domainFromHref(url);
+  if (!domain) {
+    return null;
+  }
+
+  const blockedRule = matchDomainRule(domain, settings?.blockedDomains);
+  if (blockedRule) {
+    return {
+      verdict: "block",
+      domain,
+      matchedRule: blockedRule,
+      source: "manual"
+    };
+  }
+
+  const warnedRule = matchDomainRule(domain, settings?.warnDomains);
+  if (warnedRule) {
+    return {
+      verdict: "warning",
+      domain,
+      matchedRule: warnedRule,
+      source: "manual"
+    };
+  }
+
+  const curatedFallback = SEARCH_RESULT_CURATED_FALLBACK_POLICIES.find((entry) => {
+    const fallbackDomain = normalizeDomainForPolicy(entry.domain);
+    return domain === fallbackDomain || domain.endsWith(`.${fallbackDomain}`);
+  });
+  if (curatedFallback) {
+    return {
+      verdict: curatedFallback.verdict,
+      domain,
+      matchedRule: curatedFallback.matchedRule,
+      source: "curated-fallback"
+    };
+  }
+
+  return null;
+}
+
+function getCachedBackendSearchResultPolicy(url) {
+  const key = normalizeSearchResultPolicyKey(url);
+  if (!key) return { cached: false, policy: null };
+
+  const entry = SEARCH_RESULT_POLICY_CACHE.get(key);
+  if (!entry) return { cached: false, policy: null };
+  if (Number(entry.expiresAt || 0) <= Date.now()) {
+    SEARCH_RESULT_POLICY_CACHE.delete(key);
+    return { cached: false, policy: null };
+  }
+  return {
+    cached: true,
+    policy: entry.policy || null
+  };
+}
+
+function trimSearchResultPolicyCache(now = Date.now()) {
+  for (const [key, entry] of SEARCH_RESULT_POLICY_CACHE.entries()) {
+    if (Number(entry?.expiresAt || 0) <= now) {
+      SEARCH_RESULT_POLICY_CACHE.delete(key);
+    }
+  }
+
+  if (SEARCH_RESULT_POLICY_CACHE.size <= SEARCH_RESULT_POLICY_CACHE_LIMIT) {
+    return;
+  }
+
+  const overflowCount = SEARCH_RESULT_POLICY_CACHE.size - SEARCH_RESULT_POLICY_CACHE_LIMIT;
+  const oldestEntries = Array.from(SEARCH_RESULT_POLICY_CACHE.entries())
+    .sort(([, left], [, right]) => Number(left?.expiresAt || 0) - Number(right?.expiresAt || 0))
+    .slice(0, overflowCount);
+  for (const [key] of oldestEntries) {
+    SEARCH_RESULT_POLICY_CACHE.delete(key);
+  }
+}
+
+function setCachedBackendSearchResultPolicy(url, policy, ttlMs = SEARCH_RESULT_POLICY_CACHE_TTL_MS) {
+  const key = normalizeSearchResultPolicyKey(url);
+  if (!key) return;
+  SEARCH_RESULT_POLICY_CACHE.set(key, {
+    policy: policy || null,
+    expiresAt: Date.now() + Math.max(1000, Number(ttlMs || SEARCH_RESULT_POLICY_CACHE_TTL_MS))
+  });
+  trimSearchResultPolicyCache();
+}
+
+function normalizeBackendSearchResultPolicy(url, response) {
+  const policy = response?.policy || null;
+  const verdict = String(policy?.verdict || "allow");
+  if (verdict !== "block" && verdict !== "warning") {
+    return null;
+  }
+
+  const riskScore = Number(policy?.risk_score || 0);
+  const hasExactMatch = Boolean(policy?.exact_match?.domain);
+  const hasStrongBackendSignal =
+    verdict === "block" ||
+    Boolean(policy?.security_threat) ||
+    Boolean(policy?.harmful_content) ||
+    riskScore >= 0.34;
+
+  if (!hasExactMatch && !hasStrongBackendSignal) {
+    return null;
+  }
+
+  return {
+    verdict,
+    domain: normalizeDomainForPolicy(policy?.domain || domainFromHref(url)),
+    matchedRule:
+      String(policy?.exact_match?.domain || policy?.site_category || policy?.reasons?.[0] || response?.source || "site-check"),
+    source: response?.source || "site-check",
+    riskScore
+  };
+}
+
+async function getBackendSearchResultPolicy(candidate) {
+  const key = normalizeSearchResultPolicyKey(candidate?.url);
+  if (!key) return null;
+
+  const cached = getCachedBackendSearchResultPolicy(key);
+  if (cached.cached) {
+    return cached.policy;
+  }
+
+  const inflight = SEARCH_RESULT_POLICY_IN_FLIGHT.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = safeRuntimeSendMessage({
+    type: "GET_SITE_POLICY_FOR_URL",
+    url: key,
+    title: candidate?.title || "",
+    snippet: candidate?.snippet || "",
+    context: "search-result"
+  })
+    .then((response) => {
+      if (response?.ok === false || response?.source === "fallback" || response?.errorCode) {
+        const errorTtl =
+          response?.errorCode === "PREEMPTED_BY_FOREGROUND"
+            ? SEARCH_RESULT_POLICY_PREEMPTED_CACHE_TTL_MS
+            : SEARCH_RESULT_POLICY_ERROR_CACHE_TTL_MS;
+        setCachedBackendSearchResultPolicy(key, null, errorTtl);
+        return null;
+      }
+      const policy = normalizeBackendSearchResultPolicy(key, response);
+      setCachedBackendSearchResultPolicy(key, policy);
+      return policy;
+    })
+    .catch((error) => {
+      const errorTtl =
+        error?.errorCode === "PREEMPTED_BY_FOREGROUND" || error?.code === "PREEMPTED_BY_FOREGROUND"
+          ? SEARCH_RESULT_POLICY_PREEMPTED_CACHE_TTL_MS
+          : SEARCH_RESULT_POLICY_ERROR_CACHE_TTL_MS;
+      setCachedBackendSearchResultPolicy(key, null, errorTtl);
+      return null;
+    })
+    .finally(() => {
+      SEARCH_RESULT_POLICY_IN_FLIGHT.delete(key);
+    });
+
+  SEARCH_RESULT_POLICY_IN_FLIGHT.set(key, request);
+  return request;
+}
+
+function getSearchResultContainerForAnchor(anchor) {
+  if (!(anchor instanceof Element)) {
+    return null;
+  }
+
+  const selectors = [
+    "#search .MjjYud",
+    "#search .g",
+    "#search .tF2Cxc",
+    "#search .yuRUbf",
+    "#rso .MjjYud",
+    "#rso .g",
+    "#rso .tF2Cxc",
+    "#rso [data-sokoban-container]",
+    "#rso [data-content-feature]",
+    "#rso [data-attrid]",
+    "#bres li",
+    "#botstuff li",
+    "g-section-with-header",
+    "article",
+    "li"
+  ];
+
+  for (const selector of selectors) {
+    const container = anchor.closest(selector);
+    if (container && !["HTML", "BODY"].includes(container.tagName)) {
+      return promoteSearchResultContainer(container, anchor);
+    }
+  }
+
+  return promoteSearchResultContainer(anchor.closest("div"), anchor);
+}
+
+function isOversizedSearchResultContainer(container) {
+  if (!(container instanceof Element)) {
+    return false;
+  }
+
+  const rect = container.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  const maxHeight = Math.max(360, window.innerHeight * 0.42);
+  const maxBroadHeight = Math.max(220, window.innerHeight * 0.28);
+  return rect.height > maxHeight || (rect.width > window.innerWidth * 0.86 && rect.height > maxBroadHeight);
+}
+
+function getCompactSearchResultContainerForAnchor(anchor) {
+  if (!(anchor instanceof Element)) {
+    return null;
+  }
+
+  const selectors = [
+    "#search .yuRUbf",
+    "#rso .yuRUbf",
+    "#search .tF2Cxc",
+    "#rso .tF2Cxc",
+    "#bres li",
+    "#botstuff li",
+    "#search a[href]",
+    "#rso a[href]"
+  ];
+
+  for (const selector of selectors) {
+    const compact = anchor.closest(selector);
+    if (
+      compact instanceof Element &&
+      !["HTML", "BODY"].includes(compact.tagName) &&
+      !isOversizedSearchResultContainer(compact)
+    ) {
+      return compact;
+    }
+  }
+
+  return null;
+}
+
+function promoteSearchResultContainer(container, anchor) {
+  if (!(container instanceof Element)) {
+    return null;
+  }
+
+  const roots = [
+    "#search .MjjYud",
+    "#rso .MjjYud",
+    "#search .g",
+    "#rso .g",
+    "#search [data-sokoban-container]",
+    "#rso [data-sokoban-container]",
+    "#search [data-content-feature]",
+    "#rso [data-content-feature]",
+    "[role='button'][aria-label]",
+    "article",
+    "li"
+  ];
+
+  for (const selector of roots) {
+    const root = container.closest(selector) || anchor.closest(selector);
+    if (
+      root &&
+      !["HTML", "BODY"].includes(root.tagName) &&
+      (root.contains(container) || root.contains(anchor))
+    ) {
+      return isOversizedSearchResultContainer(root)
+        ? getCompactSearchResultContainerForAnchor(anchor)
+        : root;
+    }
+  }
+
+  return isOversizedSearchResultContainer(container)
+    ? getCompactSearchResultContainerForAnchor(anchor)
+    : container;
+}
+
+function getSearchPolicyPriority(policy) {
+  if (policy?.verdict === "block") return 2;
+  if (policy?.verdict === "warning") return 1;
+  return 0;
+}
+
+function selectSearchResultPolicy(selected, container, policy) {
+  if (!(container instanceof Element) || !policy) {
+    return;
+  }
+  const current = selected.get(container);
+  if (!current || getSearchPolicyPriority(policy) > getSearchPolicyPriority(current)) {
+    selected.set(container, policy);
+  }
+}
+
+function clearProtectedSearchResultContainer(container) {
+  if (!(container instanceof Element)) {
+    return;
+  }
+  container.classList.remove("shieldtext-search-result-protected");
+  container.removeAttribute("data-shieldtext-search-policy");
+  container.removeAttribute("data-shieldtext-search-domain");
+  container.removeAttribute("data-shieldtext-search-rule");
+  container.querySelectorAll(":scope > .shieldtext-search-result-notice").forEach((node) => {
+    node.remove();
+  });
+}
+
+function upsertSearchResultNotice(container, policy) {
+  let notice = container.querySelector(":scope > .shieldtext-search-result-notice");
+  if (!notice) {
+    notice = document.createElement("div");
+    notice.className = "shieldtext-search-result-notice";
+    notice.setAttribute("data-shieldtext-rendered", "true");
+    notice.setAttribute("role", "note");
+    container.appendChild(notice);
+  }
+
+  const title =
+    policy.verdict === "block"
+      ? "청마루가 이 검색결과를 가렸습니다"
+      : "주의가 필요한 검색결과입니다";
+  const action =
+    policy.verdict === "block"
+      ? policy.source === "manual"
+        ? "차단 도메인 목록과 일치해 링크와 요약을 숨겼습니다."
+        : policy.source === "curated-fallback"
+          ? "청마루 기본 위험 사이트 예시와 일치해 링크와 요약을 숨겼습니다."
+        : "사이트 판별 결과 위험도가 높아 링크와 요약을 숨겼습니다."
+      : policy.source === "manual"
+        ? "경고 도메인 목록과 일치해 내용을 흐리게 표시했습니다."
+        : policy.source === "curated-fallback"
+          ? "청마루 기본 주의 사이트 예시와 일치해 내용을 흐리게 표시했습니다."
+        : "사이트 판별 결과 주의가 필요해 내용을 흐리게 표시했습니다.";
+
+  notice.textContent = "";
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  const detail = document.createElement("span");
+  detail.textContent = `${policy.domain} · ${action}`;
+  notice.appendChild(strong);
+  notice.appendChild(detail);
+}
+
+function applyProtectedSearchResultContainer(container, policy) {
+  if (!(container instanceof Element) || !policy) {
+    return;
+  }
+
+  container.classList.add("shieldtext-search-result-protected");
+  container.dataset.shieldtextSearchPolicy = policy.verdict;
+  container.dataset.shieldtextSearchDomain = policy.domain;
+  container.dataset.shieldtextSearchRule = policy.matchedRule || "";
+  upsertSearchResultNotice(container, policy);
+}
+
+function clearSearchResultProtection() {
+  document
+    .querySelectorAll(".shieldtext-search-result-protected")
+    .forEach((container) => clearProtectedSearchResultContainer(container));
+}
+
+async function checkBackendSearchResultPolicies(candidates, runId) {
+  const unique = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    const key = normalizeSearchResultPolicyKey(candidate?.url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ ...candidate, url: key });
+    if (unique.length >= SEARCH_RESULT_BACKEND_CHECK_LIMIT) break;
+  }
+
+  let changed = false;
+  for (let index = 0; index < unique.length; index += SEARCH_RESULT_BACKEND_CHECK_CONCURRENCY) {
+    const chunk = unique.slice(index, index + SEARCH_RESULT_BACKEND_CHECK_CONCURRENCY);
+    const policies = await Promise.all(chunk.map((candidate) => getBackendSearchResultPolicy(candidate)));
+    changed = changed || policies.some(Boolean);
+  }
+
+  if (changed && runId === searchResultProtectionRunId && isGoogleTextSearchAnalysisPage()) {
+    scheduleSearchResultProtection(cachedSettings);
+  }
+}
+
+function applySearchResultProtection(settings = cachedSettings, runId = ++searchResultProtectionRunId) {
+  if (
+    !document.body ||
+    !isGoogleTextSearchAnalysisPage() ||
+    !isSearchResultProtectionEnabled(settings)
+  ) {
+    clearSearchResultProtection();
+    return 0;
+  }
+
+  const selected = new Map();
+  const backendCandidates = [];
+  const shouldUseBackendPolicies = settings?.backendEnabled === true;
+  const anchors = [
+    ...document.querySelectorAll(
+      "#search a[href], #rso a[href], #bres a[href], #botstuff a[href]"
+    )
+  ].slice(0, 160);
+
+  for (const anchor of anchors) {
+    const targetUrl = extractSearchResultTargetUrl(anchor);
+    if (!targetUrl) {
+      continue;
+    }
+    const container = getSearchResultContainerForAnchor(anchor);
+    if (!container) continue;
+
+    const localPolicy = getLocalSearchResultPolicy(targetUrl, settings);
+    if (localPolicy) {
+      selectSearchResultPolicy(selected, container, localPolicy);
+      continue;
+    }
+
+    if (shouldUseBackendPolicies) {
+      const cached = getCachedBackendSearchResultPolicy(targetUrl);
+      if (cached.cached) {
+        if (cached.policy) {
+          selectSearchResultPolicy(selected, container, cached.policy);
+        }
+        continue;
+      }
+
+      if (backendCandidates.length < SEARCH_RESULT_BACKEND_CHECK_LIMIT) {
+        backendCandidates.push({
+          url: targetUrl,
+          title: normalizeText(anchor.textContent || ""),
+          snippet: getSearchResultSnippet(container)
+        });
+      }
+    }
+  }
+
+  for (const container of document.querySelectorAll(".shieldtext-search-result-protected")) {
+    if (!selected.has(container)) {
+      clearProtectedSearchResultContainer(container);
+    }
+  }
+
+  for (const [container, policy] of selected.entries()) {
+    applyProtectedSearchResultContainer(container, policy);
+  }
+
+  if (shouldUseBackendPolicies && backendCandidates.length > 0) {
+    checkBackendSearchResultPolicies(backendCandidates, runId).catch((error) => {
+      if (!handleExtensionContextError(error)) {
+        console.warn("[청마루] search result site policy check failed", error);
+      }
+    });
+  }
+
+  return selected.size;
+}
+
+function scheduleSearchResultProtection(settings = cachedSettings) {
+  if (searchResultProtectionFrameId) {
+    window.cancelAnimationFrame(searchResultProtectionFrameId);
+  }
+  const runId = ++searchResultProtectionRunId;
+  searchResultProtectionFrameId = window.requestAnimationFrame(() => {
+    searchResultProtectionFrameId = null;
+    applySearchResultProtection(settings || cachedSettings, runId);
+  });
+}
+
+function applyGoogleSearchLightModeProtection(settings = cachedSettings, options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !isGoogleSearchPage()) {
+    return 0;
+  }
+  const startedAt = performance.now();
+
+  if (isGoogleImageSearchPage()) {
+    clearSearchResultProtection();
+    lastGoogleSearchLocalPreflightAt = performance.now();
+    lastGoogleSearchLocalPreflightHref = String(location.href || "");
+    return {
+      maskedSpanCount: 0,
+      preconcealCount: 0
+    };
+  }
+
+  scheduleSearchResultProtection(settings || cachedSettings);
+  const localPreflight = applyCachedLocalPreflightForVisiblePage({
+    limit: Number.isFinite(options.limit)
+      ? Number(options.limit)
+      : MAX_DOMAIN_PRIORITY_CANDIDATES,
+    startedAt
+  });
+  lastGoogleSearchLocalPreflightAt = performance.now();
+  lastGoogleSearchLocalPreflightHref = String(location.href || "");
+  scheduleInitialEditablePass();
+  return {
+    maskedSpanCount: Number(localPreflight.decision?.maskedSpanCount || 0),
+    preconcealCount: Number(localPreflight.preconcealCount || 0)
+  };
+}
+
+function scheduleGoogleSearchLightModeProtection(settings = cachedSettings, options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !isGoogleSearchPage()) {
+    return;
+  }
+
+  if (googleSearchLocalPreflightFrameId) {
+    window.cancelAnimationFrame(googleSearchLocalPreflightFrameId);
+    googleSearchLocalPreflightFrameId = null;
+  }
+
+  if (googleSearchLocalPreflightTimerId) {
+    window.clearTimeout(googleSearchLocalPreflightTimerId);
+    googleSearchLocalPreflightTimerId = null;
+  }
+
+  const href = String(location.href || "");
+  const now = performance.now();
+  const minIntervalMs = Number.isFinite(options.minIntervalMs)
+    ? Math.max(0, Number(options.minIntervalMs))
+    : GOOGLE_SEARCH_LIGHT_PROTECTION_MIN_INTERVAL_MS;
+  const shouldRunNow =
+    options.force === true ||
+    !lastGoogleSearchLocalPreflightAt ||
+    href !== lastGoogleSearchLocalPreflightHref;
+  const delayMs = shouldRunNow
+    ? 0
+    : Math.max(0, minIntervalMs - (now - lastGoogleSearchLocalPreflightAt));
+
+  const scheduleFrame = () => {
+    googleSearchLocalPreflightTimerId = null;
+    googleSearchLocalPreflightFrameId = window.requestAnimationFrame(() => {
+      googleSearchLocalPreflightFrameId = null;
+      applyGoogleSearchLightModeProtection(settings || cachedSettings, options);
+    });
+  };
+
+  if (delayMs > 0) {
+    googleSearchLocalPreflightTimerId = window.setTimeout(scheduleFrame, delayMs);
+    return;
+  }
+
+  scheduleFrame();
+}
+
+function initializeSearchResultProtectionClickGuard() {
+  if (searchResultProtectionClickGuardInitialized) {
+    return;
+  }
+  searchResultProtectionClickGuardInitialized = true;
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const blockedResult = target.closest(
+        ".shieldtext-search-result-protected[data-shieldtext-search-policy='block']"
+      );
+      if (!blockedResult || !target.closest("a[href]")) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    },
+    true
+  );
 }
 
 async function requestCurrentSitePolicy() {
   const settings = await loadSettings().catch(() => getMergedSettings({}));
-  if (settings?.siteProtectionEnabled === false) {
+  if (
+    settings?.enabled === false ||
+    normalizeSensitivity(settings?.sensitivity) <= 0 ||
+    settings?.siteProtectionEnabled === false
+  ) {
     removeSitePolicyOverlay();
+    clearSearchResultProtection();
     return;
+  }
+  if (isGoogleImageSearchPage()) {
+    clearSearchResultProtection();
+  } else {
+    scheduleSearchResultProtection(settings);
   }
   if (!isExtensionContextAvailable() || !location?.href || !/^https?:/i.test(location.href)) {
     return;
@@ -843,6 +1816,15 @@ async function requestCurrentSitePolicy() {
 
     const policy = response?.policy || null;
     if (!policy || policy.verdict === "allow") {
+      removeSitePolicyOverlay();
+      return;
+    }
+
+    if (
+      policy.site_category !== "manual-policy" &&
+      policy.agent?.mode !== "override" &&
+      !policy.exact_match?.domain
+    ) {
       removeSitePolicyOverlay();
       return;
     }
@@ -927,6 +1909,10 @@ function restoreAllRenderedContent() {
     restoreEditableValueState(state);
   }
 
+  for (const state of ATTRIBUTE_VALUE_STATE_BY_ID.values()) {
+    restoreAttributeValueState(state);
+  }
+
   restoreOrphanRenderedContent();
 
   RECONCILE_QUEUE.clear();
@@ -947,6 +1933,8 @@ function restoreCandidatesRenderedContent(candidates) {
 
     if (candidate.candidateKind === "editable-value") {
       restoreEditableValueState(candidate.state);
+    } else if (candidate.candidateKind === "attribute-value") {
+      restoreAttributeValueState(candidate.state);
     } else {
       restoreNodeState(candidate.state);
     }
@@ -1126,7 +2114,7 @@ function isEditableElement(element) {
 }
 
 function getGoogleInteractiveRoot(element) {
-  if (!isGoogleSearchPage() || !(element instanceof Element)) {
+  if (!isGoogleTextSearchAnalysisPage() || !(element instanceof Element)) {
     return null;
   }
 
@@ -1134,7 +2122,7 @@ function getGoogleInteractiveRoot(element) {
 }
 
 function getGoogleSfcAnalysisContainer(element) {
-  if (!isGoogleSearchPage() || !(element instanceof Element)) {
+  if (!isGoogleTextSearchAnalysisPage() || !(element instanceof Element)) {
     return null;
   }
 
@@ -1152,7 +2140,7 @@ function getGoogleSfcAnalysisContainer(element) {
 }
 
 function isGoogleSfcTextElement(element) {
-  if (!isGoogleSearchPage() || !(element instanceof Element)) {
+  if (!isGoogleTextSearchAnalysisPage() || !(element instanceof Element)) {
     return false;
   }
 
@@ -1208,6 +2196,29 @@ function shouldSkipTextNodeParent(element) {
   return isSkippableElement(element) || isSpeculationRulesElement(element);
 }
 
+function shouldSkipGoogleVisibleTextNodeParent(element) {
+  if (!(element instanceof Element)) return true;
+  if (isSpeculationRulesElement(element)) return true;
+  if (isShieldTextManagedElement(element)) return true;
+  if (isEditableElement(element)) return true;
+  if (element.closest("[data-shieldtext-rendered='true']")) return true;
+  if (element.closest("header, nav, [role='navigation'], [role='tablist'], form")) return true;
+  if (element.closest("pre, code, textarea, input, select, button, [role='button']")) return true;
+  if (SKIP_TAGS.has(element.tagName)) return true;
+  return false;
+}
+
+function shouldSkipGoogleInteractiveTextNodeParent(element) {
+  if (!(element instanceof Element)) return true;
+  if (isSpeculationRulesElement(element)) return true;
+  if (isShieldTextManagedElement(element)) return true;
+  if (isEditableElement(element)) return true;
+  if (element.closest("[data-shieldtext-rendered='true']")) return true;
+  if (element.closest("pre, code, textarea, input, select")) return true;
+  if (SKIP_TAGS.has(element.tagName) && element.tagName !== "BUTTON") return true;
+  return false;
+}
+
 function looksLikeRawUrl(text) {
   const compact = String(text || "").replace(/\s+/g, "");
   if (!compact) return false;
@@ -1217,6 +2228,29 @@ function looksLikeRawUrl(text) {
   return false;
 }
 
+function looksLikeInteractionMetadataText(text) {
+  const normalizedText = normalizeText(text);
+  if (!normalizedText) return false;
+  if (HIGH_SIGNAL_PROFANITY_PATTERN.test(normalizedText)) return false;
+
+  const compact = normalizedText
+    .replace(/[·ㆍ•|,/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!compact || compact.length > 80) {
+    return false;
+  }
+
+  const hasUiAction = /(좋아요|답글달기|답글|댓글|공유|저장|신고|더보기|조회수)/.test(compact);
+  const hasCountOrTime =
+    /(\d+\s*(개|명|회|분|시간|일|주|개월|년)|방금\s*전|어제|오늘)/.test(compact);
+  if (hasUiAction && hasCountOrTime) {
+    return true;
+  }
+
+  return /^(좋아요|답글달기|답글|댓글|공유|저장|신고|더보기)(\s+(좋아요|답글달기|답글|댓글|공유|저장|신고|더보기))*$/.test(compact);
+}
+
 function isCandidateTextUseful(text, element) {
   const normalizedText = normalizeText(text);
   if (!normalizedText) return false;
@@ -1224,6 +2258,7 @@ function isCandidateTextUseful(text, element) {
   if (looksLikeRawUrl(normalizedText)) return false;
   if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(normalizedText))) return false;
   if (HIGH_SIGNAL_PROFANITY_PATTERN.test(normalizedText)) return true;
+  if (looksLikeInteractionMetadataText(normalizedText)) return false;
   if (normalizedText.length < 2) return false;
 
   if (element instanceof Element) {
@@ -1358,6 +2393,72 @@ function getEditableValueState(element) {
   return state;
 }
 
+function getAttributeValueId(element, attributeName) {
+  if (!(element instanceof Element)) return "";
+  const normalizedAttributeName = String(attributeName || "").toLowerCase();
+  let attributeIdMap = ATTRIBUTE_VALUE_ID_MAP.get(element);
+  if (!attributeIdMap) {
+    attributeIdMap = new Map();
+    ATTRIBUTE_VALUE_ID_MAP.set(element, attributeIdMap);
+  }
+  let nodeId = attributeIdMap.get(normalizedAttributeName);
+  if (!nodeId) {
+    nodeId = `attribute-value-${nextAttributeValueId++}`;
+    attributeIdMap.set(normalizedAttributeName, nodeId);
+  }
+  return nodeId;
+}
+
+function getAttributeValueState(element, attributeName) {
+  const normalizedAttributeName = String(attributeName || "").toLowerCase();
+  const nodeId = getAttributeValueId(element, normalizedAttributeName);
+  if (!nodeId) return null;
+
+  let state = ATTRIBUTE_VALUE_STATE_BY_ID.get(nodeId);
+  const currentValue = String(element.getAttribute(normalizedAttributeName) || "");
+  if (!state) {
+    state = {
+      nodeId,
+      element,
+      attributeName: normalizedAttributeName,
+      originalValue: currentValue,
+      hasProcessed: false,
+      lastFingerprint: "",
+      lastSkippedAnalysisAt: 0,
+      lastSkippedFingerprint: "",
+      lastSkippedRetryBackoffMs: 0,
+      lastSkippedRetryCount: 0,
+      lastSkippedRetryFingerprint: "",
+      lastDecisionKey: "",
+      lastAppliedFingerprint: "",
+      lastAppliedStage: "",
+      lastAppliedBlocked: false,
+      lastReconcileFingerprint: "",
+      lastQueuedReconcileFingerprint: "",
+      reconcileInFlightFingerprint: "",
+      analysisGeneration: 0,
+      isMasked: false,
+      isPending: false
+    };
+    ATTRIBUTE_VALUE_STATE_BY_ID.set(nodeId, state);
+  } else {
+    state.element = element;
+    state.attributeName = normalizedAttributeName;
+    if (!state.isMasked && currentValue && currentValue !== state.originalValue) {
+      state.originalValue = currentValue;
+    }
+  }
+
+  return state;
+}
+
+function getAttributeSourceValue(state) {
+  if (!state?.element || !state.attributeName) return "";
+  return state.isMasked
+    ? String(state.originalValue || "")
+    : String(state.element.getAttribute(state.attributeName) || "");
+}
+
 function getNodeState(textNode) {
   const nodeId = getTextNodeId(textNode);
   let state = NODE_STATE_BY_ID.get(nodeId);
@@ -1430,7 +2531,7 @@ function getElementReadableText(element) {
 }
 
 function getGoogleSearchAnalysisContainer(element) {
-  if (!isGoogleSearchPage() || !(element instanceof Element)) {
+  if (!isGoogleTextSearchAnalysisPage() || !(element instanceof Element)) {
     return null;
   }
 
@@ -1466,7 +2567,7 @@ function isExcludedGoogleAnalysisContainer(element) {
 }
 
 function getGoogleHighSignalInteractiveContainers(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -1533,7 +2634,7 @@ function getGoogleHighSignalInteractiveContainers(limit = MAX_DOMAIN_PRIORITY_CA
 }
 
 function getGoogleVisibleAnalysisContainers(limit = MAX_HOT_PATH_CONTAINERS) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -2010,6 +3111,14 @@ function cleanupDisconnectedStates() {
       MASKED_EDITABLE_STATE_IDS.delete(nodeId);
     }
   }
+
+  for (const [nodeId, state] of ATTRIBUTE_VALUE_STATE_BY_ID.entries()) {
+    if (!state.element?.isConnected) {
+      ATTRIBUTE_VALUE_STATE_BY_ID.delete(nodeId);
+      DIRTY_NODE_IDS.delete(nodeId);
+      VISIBLE_NODE_IDS.delete(nodeId);
+    }
+  }
 }
 
 function buildCandidateFromState(state) {
@@ -2110,6 +3219,112 @@ function buildEditableValueCandidate(element) {
   };
 }
 
+function isMaskableAttributeValue(element, attributeName) {
+  if (!(element instanceof Element)) return false;
+  if (!ATTRIBUTE_MASK_NAMES.includes(String(attributeName || "").toLowerCase())) return false;
+  if (!element.isConnected || isShieldTextManagedElement(element)) return false;
+  if (!isElementVisible(element)) return false;
+  if (!isElementNearViewport(element.getBoundingClientRect())) return false;
+  if (
+    element.closest(
+      "header, nav, [role='navigation'], [role='tablist'], form, [data-shieldtext-rendered='true']"
+    )
+  ) {
+    return false;
+  }
+
+  const value = normalizeText(element.getAttribute(attributeName) || "");
+  return Boolean(
+    value &&
+    HIGH_SIGNAL_PROFANITY_PATTERN.test(value) &&
+    isCandidateTextUseful(value, element)
+  );
+}
+
+function buildAttributeValueCandidate(element, attributeName) {
+  if (!isMaskableAttributeValue(element, attributeName)) return null;
+
+  const state = getAttributeValueState(element, attributeName);
+  if (!state) return null;
+
+  const text = getAttributeSourceValue(state);
+  const normalizedText = normalizeText(text);
+  if (!normalizedText) return null;
+
+  const rect = element.getBoundingClientRect();
+  const nodeId = state.nodeId;
+  const analysisContainer = getAnalysisContainer(element) || element;
+  VISIBLE_NODE_IDS.add(nodeId);
+  DIRTY_NODE_IDS.add(nodeId);
+
+  return {
+    nodeId,
+    candidateKind: "attribute-value",
+    element,
+    state,
+    text,
+    normalizedText: normalizedText.toLowerCase(),
+    analysisContainer,
+    packageName: `web::${location.hostname || "unknown"}`,
+    className:
+      typeof element.className === "string" && element.className.trim()
+        ? element.className.trim()
+        : `${element.tagName}[${String(attributeName).toLowerCase()}]`,
+    top: Math.round(rect.top + window.scrollY),
+    bottom: Math.round(rect.bottom + window.scrollY),
+    left: Math.round(rect.left + window.scrollX),
+    right: Math.round(rect.right + window.scrollX),
+    distanceFromViewport: Math.abs(rect.top),
+    fingerprint: buildFingerprint(normalizedText)
+  };
+}
+
+function collectAttributeValueCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES * 2) {
+  if (isGoogleSearchPage()) {
+    return [];
+  }
+
+  const selectors = isGoogleSearchPage()
+    ? [
+        "#search [aria-label]",
+        "#search [title]",
+        "#search img[alt]",
+        "main [aria-label]",
+        "main [title]",
+        "main img[alt]",
+        "#rhs [aria-label]",
+        "#rhs [title]",
+        "#rhs img[alt]",
+        "#bres [aria-label]",
+        "#botstuff [aria-label]"
+      ]
+    : [
+        "[aria-label]",
+        "[title]",
+        "img[alt]"
+      ];
+  const candidates = [];
+  const seen = new Set();
+
+  for (const selector of selectors) {
+    for (const element of document.querySelectorAll(selector)) {
+      if (!(element instanceof Element) || seen.has(element)) continue;
+      seen.add(element);
+
+      for (const attributeName of ATTRIBUTE_MASK_NAMES) {
+        const candidate = buildAttributeValueCandidate(element, attributeName);
+        if (!candidate) continue;
+        candidates.push(candidate);
+        if (candidates.length >= limit) {
+          return candidates;
+        }
+      }
+    }
+  }
+
+  return candidates;
+}
+
 function getEditableCandidatePriority(candidate) {
   if (!candidate) return Number.NEGATIVE_INFINITY;
 
@@ -2119,6 +3334,9 @@ function getEditableCandidatePriority(candidate) {
   }
   if (candidate.element === document.activeElement) {
     score += 100;
+  }
+  if (candidate.element?.matches?.('textarea[name="q"], textarea[role="combobox"], input[name="q"]')) {
+    score += 48;
   }
   if (
     candidate.element instanceof HTMLInputElement &&
@@ -2163,6 +3381,8 @@ function collectTextCandidatesFromElements(elements, limit = Number.POSITIVE_INF
   const seenNodeIds = new Set();
   const candidateFilter =
     typeof options.candidateFilter === "function" ? options.candidateFilter : null;
+  const skipParentFilter =
+    typeof options.skipParentFilter === "function" ? options.skipParentFilter : shouldSkipTextNodeParent;
   const perElementLimit = Math.max(
     1,
     Number.isFinite(options.perElementLimit)
@@ -2184,7 +3404,7 @@ function collectTextCandidatesFromElements(elements, limit = Number.POSITIVE_INF
       acceptNode(node) {
         if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
         if (!node.parentElement) return NodeFilter.FILTER_REJECT;
-        if (shouldSkipTextNodeParent(node.parentElement)) {
+        if (skipParentFilter(node.parentElement)) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -2215,7 +3435,7 @@ function collectTextCandidatesFromElements(elements, limit = Number.POSITIVE_INF
 }
 
 function collectGoogleSearchPriorityContainerCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -2225,13 +3445,14 @@ function collectGoogleSearchPriorityContainerCandidates(limit = MAX_DOMAIN_PRIOR
     containers,
     Math.max(1, containers.length) * MAX_GOOGLE_CANDIDATES_PER_CONTAINER,
     {
-      perElementLimit: Math.min(4, MAX_GOOGLE_CANDIDATES_PER_CONTAINER)
+      perElementLimit: Math.min(4, MAX_GOOGLE_CANDIDATES_PER_CONTAINER),
+      skipParentFilter: shouldSkipGoogleVisibleTextNodeParent
     }
   );
 }
 
 function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -2300,6 +3521,7 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
 
   return collectTextCandidatesFromElements(elements, limit * 2, {
     perElementLimit: 3,
+    skipParentFilter: shouldSkipGoogleInteractiveTextNodeParent,
     candidateFilter(candidate) {
       const text = normalizeText(candidate.text);
       return Boolean(text) && HIGH_SIGNAL_PROFANITY_PATTERN.test(text);
@@ -2308,7 +3530,7 @@ function collectGoogleHighSignalInteractiveCandidates(limit = MAX_DOMAIN_PRIORIT
 }
 
 function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES * 3) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -2318,6 +3540,7 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
   const maxInspectedElements = Math.max(120, limit * 12);
 
   for (const selector of [
+    GOOGLE_AI_OVERVIEW_SELECTOR,
     GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR,
     GOOGLE_SFC_TEXT_SELECTOR,
     "#search h3, #search [role='heading'], #rso h3, #rso [role='heading']",
@@ -2331,6 +3554,7 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
       if (!(element instanceof Element)) continue;
       if (seenElements.has(element)) continue;
       if (!element.isConnected || !isElementVisible(element)) continue;
+      if (element.closest("[data-shieldtext-rendered='true']")) continue;
       if (!isElementNearViewport(element.getBoundingClientRect())) continue;
 
       const text = getElementAnalysisText(element);
@@ -2360,6 +3584,7 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
 
   return collectTextCandidatesFromElements(elements, limit, {
     perElementLimit: 3,
+    skipParentFilter: shouldSkipGoogleVisibleTextNodeParent,
     candidateFilter(candidate) {
       const text = normalizeText(candidate?.text || "");
       const isHighSignalCandidate = Boolean(text) &&
@@ -2376,28 +3601,43 @@ function collectGoogleDirectHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY
 }
 
 function collectGoogleVisibleHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES * 3) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
   const roots = [];
   const seenRoots = new Set();
   for (const selector of [
-    "[data-container-id='main-col']",
-    "[data-sfc-root='c']",
+    GOOGLE_AI_OVERVIEW_SELECTOR,
     "#rso",
-    "#search",
-    "main",
-    "[role='main']",
+    "#rhs",
     "#bres",
     "#botstuff",
-    "#rhs"
+    "[data-sfc-root='c']",
+    "[data-container-id='main-col']",
+    "#search",
+    "main",
+    "[role='main']"
   ]) {
     for (const root of document.querySelectorAll(selector)) {
       if (!(root instanceof Element)) continue;
       if (seenRoots.has(root)) continue;
       if (!root.isConnected || !isElementVisible(root)) continue;
+      if (root.closest("[data-shieldtext-rendered='true']")) continue;
       if (!isElementNearViewport(root.getBoundingClientRect())) continue;
+      let coveredByExistingRoot = false;
+      for (let index = roots.length - 1; index >= 0; index -= 1) {
+        const existingRoot = roots[index];
+        if (existingRoot.contains(root)) {
+          seenRoots.delete(existingRoot);
+          roots.splice(index, 1);
+          continue;
+        }
+        if (root.contains(existingRoot)) {
+          coveredByExistingRoot = true;
+        }
+      }
+      if (coveredByExistingRoot) continue;
       seenRoots.add(root);
       roots.push(root);
     }
@@ -2406,7 +3646,10 @@ function collectGoogleVisibleHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORIT
   const candidates = [];
   const seenNodeIds = new Set();
   let visitedCount = 0;
-  const maxVisitedCount = Math.max(320, limit * 80);
+  const maxVisitedCount = Math.min(
+    GOOGLE_VISIBLE_HIGH_SIGNAL_SCAN_NODE_LIMIT,
+    Math.max(120, limit * 16)
+  );
 
   for (const root of roots) {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -2418,7 +3661,7 @@ function collectGoogleVisibleHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORIT
 
         if (!(node instanceof Text)) return NodeFilter.FILTER_REJECT;
         const parent = node.parentElement;
-        if (!parent || shouldSkipTextNodeParent(parent)) {
+        if (!parent || shouldSkipGoogleVisibleTextNodeParent(parent)) {
           return NodeFilter.FILTER_REJECT;
         }
 
@@ -2468,8 +3711,55 @@ function collectGoogleVisibleHighSignalTextCandidates(limit = MAX_DOMAIN_PRIORIT
   return candidates.slice(0, limit);
 }
 
+function isUsefulGoogleDynamicContentText(text) {
+  const normalized = normalizeText(text || "");
+  if (!normalized) return false;
+  if (SAFE_BROWSER_UI_LABELS.has(normalizeLabel(normalized))) return false;
+  if (/^(AI\s*개요|AI\s*Overview|더보기|관련 검색어)$/i.test(normalized)) return false;
+  if (/^[\d\s.,:;()[\]{}'"’“”·ㆍ-]+$/.test(normalized)) return false;
+  return normalized.length >= 2;
+}
+
+function collectGoogleDynamicContentTextCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
+  if (!isGoogleTextSearchAnalysisPage()) {
+    return [];
+  }
+
+  const roots = [];
+  const seenRoots = new Set();
+  for (const selector of [
+    GOOGLE_AI_OVERVIEW_SELECTOR,
+    GOOGLE_SFC_CONTAINER_SELECTOR,
+    "[data-container-id='main-col']",
+    "[data-sfc-root='c']"
+  ]) {
+    for (const root of document.querySelectorAll(selector)) {
+      if (!(root instanceof Element)) continue;
+      if (seenRoots.has(root)) continue;
+      if (!root.isConnected || !isElementVisible(root)) continue;
+      if (root.closest("[data-shieldtext-rendered='true']")) continue;
+      if (!isElementNearViewport(root.getBoundingClientRect())) continue;
+      seenRoots.add(root);
+      roots.push(root);
+    }
+  }
+
+  return collectTextCandidatesFromElements(roots, limit, {
+    perElementLimit: 6,
+    skipParentFilter: shouldSkipGoogleVisibleTextNodeParent,
+    candidateFilter(candidate) {
+      const text = normalizeText(candidate?.text || "");
+      if (!isUsefulGoogleDynamicContentText(text)) return false;
+      if (candidate?.nodeId) {
+        DIRTY_NODE_IDS.add(candidate.nodeId);
+      }
+      return true;
+    }
+  });
+}
+
 function markGoogleHighSignalCandidatesDirty(limit = 16) {
-  if (!isGoogleSearchPage() || limit <= 0) {
+  if (!isGoogleTextSearchAnalysisPage() || limit <= 0) {
     return 0;
   }
 
@@ -2516,12 +3806,14 @@ function markGoogleHighSignalCandidatesDirty(limit = 16) {
   return dirtyCount;
 }
 
-function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
-  if (!isGoogleSearchPage()) {
+function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES, options = {}) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
+  const includeDeepVisibleScan = options.includeDeepVisibleScan !== false;
 
   const selectors = [
+    GOOGLE_AI_OVERVIEW_SELECTOR,
     GOOGLE_HIGH_SIGNAL_TEXT_SELECTOR,
     GOOGLE_SFC_TEXT_SELECTOR,
     GOOGLE_SFC_CONTAINER_SELECTOR,
@@ -2612,12 +3904,14 @@ function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDI
     }
   }
 
-  for (const candidate of collectGoogleVisibleHighSignalTextCandidates(limit * 2)) {
-    if (seenNodeIds.has(candidate.nodeId)) continue;
-    seenNodeIds.add(candidate.nodeId);
-    candidates.push(candidate);
-    if (candidates.length >= limit * 3) {
-      return candidates;
+  if (includeDeepVisibleScan) {
+    for (const candidate of collectGoogleVisibleHighSignalTextCandidates(limit * 2)) {
+      if (seenNodeIds.has(candidate.nodeId)) continue;
+      seenNodeIds.add(candidate.nodeId);
+      candidates.push(candidate);
+      if (candidates.length >= limit * 3) {
+        return candidates;
+      }
     }
   }
 
@@ -2630,7 +3924,9 @@ function collectGoogleSearchPriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDI
     }
   }
 
-  for (const candidate of collectTextCandidatesFromElements(elements, limit)) {
+  for (const candidate of collectTextCandidatesFromElements(elements, limit, {
+    skipParentFilter: shouldSkipGoogleVisibleTextNodeParent
+  })) {
     if (seenNodeIds.has(candidate.nodeId)) continue;
     seenNodeIds.add(candidate.nodeId);
     candidates.push(candidate);
@@ -2745,8 +4041,67 @@ function collectYouTubePriorityCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES
   return candidates;
 }
 
-function collectCandidates() {
+function collectGoogleSearchLightCandidates(limit = GOOGLE_SEARCH_LIGHT_CANDIDATE_LIMIT) {
+  const candidates = [];
+  const seenNodeIds = new Set();
+  const maxCandidates = Math.max(1, Number(limit || MAX_DOMAIN_PRIORITY_CANDIDATES));
+
+  const addCandidate = (candidate) => {
+    if (!candidate?.nodeId || seenNodeIds.has(candidate.nodeId)) {
+      return false;
+    }
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+    return candidates.length >= maxCandidates;
+  };
+
+  if (isGoogleTextSearchAnalysisPage()) {
+    for (const candidate of collectEditableValueCandidates(INITIAL_EDITABLE_PASS_LIMIT)) {
+      if (addCandidate(candidate)) return candidates;
+    }
+
+    for (const candidate of collectGoogleDirectHighSignalTextCandidates(maxCandidates * 2)) {
+      if (addCandidate(candidate)) return candidates;
+    }
+
+    for (const candidate of collectGoogleVisibleHighSignalTextCandidates(maxCandidates * 2)) {
+      if (addCandidate(candidate)) return candidates;
+    }
+
+    for (const candidate of collectGoogleDynamicContentTextCandidates(maxCandidates * 2)) {
+      if (addCandidate(candidate)) return candidates;
+    }
+
+    for (const candidate of collectGoogleSearchPriorityCandidates(maxCandidates, {
+      includeDeepVisibleScan: false
+    })) {
+      if (addCandidate(candidate)) return candidates;
+    }
+  }
+
+  if (!isGoogleTextSearchAnalysisPage()) {
+    for (const candidate of collectEditableValueCandidates(INITIAL_EDITABLE_PASS_LIMIT)) {
+      if (addCandidate(candidate)) return candidates;
+    }
+  }
+
+  return candidates;
+}
+
+function collectGoogleImageSearchLightCandidates() {
+  return collectGoogleSearchLightCandidates();
+}
+
+function collectCandidates(runReason = "") {
   cleanupDisconnectedStates();
+
+  if (isGoogleSearchPage()) {
+    return collectGoogleSearchLightCandidates();
+  }
+
+  if (isPerformanceGuardActive() && !shouldAllowPipelineDuringPerformanceGuard(runReason)) {
+    return collectEditableValueCandidates(INITIAL_EDITABLE_PASS_LIMIT);
+  }
 
   const candidates = [];
   const seenNodeIds = new Set();
@@ -2758,6 +4113,12 @@ function collectCandidates() {
   }
 
   for (const candidate of collectYouTubePriorityCandidates()) {
+    if (seenNodeIds.has(candidate.nodeId)) continue;
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+  }
+
+  for (const candidate of collectAttributeValueCandidates()) {
     if (seenNodeIds.has(candidate.nodeId)) continue;
     seenNodeIds.add(candidate.nodeId);
     candidates.push(candidate);
@@ -2823,10 +4184,50 @@ function containsAnyWord(text, words) {
   return words.some((word) => word && text.includes(word.toLowerCase()));
 }
 
+function getCustomWordList(value) {
+  const seen = new Set();
+  return parseWordList(value)
+    .map((item) => item.toLowerCase())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function findCustomWordSpans(text, words) {
+  const source = String(text || "");
+  const loweredSource = source.toLowerCase();
+  if (!source || !Array.isArray(words) || words.length === 0) return [];
+
+  const spans = [];
+  for (const word of words) {
+    if (!word) continue;
+
+    let offset = 0;
+    while (offset < loweredSource.length) {
+      const start = loweredSource.indexOf(word, offset);
+      if (start === -1) break;
+
+      const end = start + word.length;
+      spans.push({
+        start,
+        end,
+        score: 1,
+        text: source.slice(start, end),
+        keyword: word
+      });
+      offset = Math.max(start + 1, end);
+    }
+  }
+
+  return spans.sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
 function buildRealtimeHints(settings) {
   return {
-    allowWords: parseWordList(settings?.customAllowWords).map((item) => item.toLowerCase()),
-    blockWords: parseWordList(settings?.customBlockWords).map((item) => item.toLowerCase())
+    allowWords: getCustomWordList(settings?.customAllowWords),
+    blockWords: getCustomWordList(settings?.customBlockWords)
   };
 }
 
@@ -2842,6 +4243,10 @@ function getCandidateUrgency(candidate, hints) {
 
   if (candidate?.candidateKind === "editable-value") {
     score += 6;
+  }
+
+  if (candidate?.candidateKind === "attribute-value") {
+    score += 10;
   }
 
   if (shouldPreferStandaloneAnalysis(candidate)) {
@@ -2955,7 +4360,7 @@ function isShortHighSignalCandidate(candidate) {
 }
 
 function isGoogleHighSignalSurfaceCandidate(candidate) {
-  if (!isGoogleSearchPage() || !isShortHighSignalCandidate(candidate)) {
+  if (!isGoogleTextSearchAnalysisPage() || !isShortHighSignalCandidate(candidate)) {
     return false;
   }
 
@@ -2979,7 +4384,7 @@ function isGoogleHighSignalSurfaceCandidate(candidate) {
 }
 
 function isGoogleVisibleHighSignalCandidate(candidate) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return false;
   }
 
@@ -3016,7 +4421,7 @@ function shouldPreferStandaloneAnalysis(candidate) {
     return true;
   }
 
-  if (isGoogleSearchPage()) {
+  if (isGoogleTextSearchAnalysisPage()) {
     if (isGoogleVisibleHighSignalCandidate(candidate) && isShortHighSignalCandidate(candidate)) {
       return true;
     }
@@ -3040,7 +4445,7 @@ function shouldPreferStandaloneAnalysis(candidate) {
     return true;
   }
 
-  if (isGoogleSearchPage()) {
+  if (isGoogleTextSearchAnalysisPage()) {
     if (
       element.matches("h1, h2, h3, h4, [role='heading']") ||
       element.closest("h1, h2, h3, h4, [role='heading']")
@@ -3075,6 +4480,10 @@ function shouldPreferStandaloneAnalysis(candidate) {
 }
 
 function isForegroundMetadataCandidate(candidate) {
+  if (looksLikeInteractionMetadataText(candidate?.text || "")) {
+    return true;
+  }
+
   const element = candidate?.element;
   if (!(element instanceof Element)) return false;
   if (
@@ -3099,13 +4508,109 @@ function isGoogleSearchPage() {
   return /(^|\.)google\./i.test(location.hostname || "") && location.pathname === "/search";
 }
 
+function isGoogleImageSearchPage() {
+  if (!/(^|\.)google\./i.test(location.hostname || "")) {
+    return false;
+  }
+
+  if (location.pathname === "/imghp") {
+    return true;
+  }
+
+  if (location.pathname !== "/search") {
+    return false;
+  }
+
+  const params = new URLSearchParams(location.search || "");
+  return params.get("tbm") === "isch" || params.get("udm") === "2";
+}
+
+function isGoogleTextSearchAnalysisPage() {
+  return isGoogleSearchPage() && !isGoogleImageSearchPage();
+}
+
+function shouldSuppressPipelineForGoogleSearch(reason) {
+  if (!isGoogleSearchPage()) {
+    return false;
+  }
+
+  return !GOOGLE_SEARCH_ALLOWED_PIPELINE_REASONS.has(String(reason || ""));
+}
+
+function isPerformanceGuardActive(now = Date.now()) {
+  return Number(performanceGuardUntil || 0) > now;
+}
+
+function shouldAllowPipelineDuringPerformanceGuard(reason) {
+  return PERFORMANCE_GUARD_ALLOWED_PIPELINE_REASONS.has(String(reason || ""));
+}
+
+function shouldSuppressPipelineForPerformanceGuard(reason) {
+  return isPerformanceGuardActive() && !shouldAllowPipelineDuringPerformanceGuard(reason);
+}
+
+function getPerformanceGuardDiagnostics(now = Date.now()) {
+  const active = isPerformanceGuardActive(now);
+  return {
+    performanceGuardActive: active,
+    performanceGuardReason: active ? performanceGuardReason : "",
+    performanceGuardRemainingMs: active ? Math.max(0, Math.round(performanceGuardUntil - now)) : 0
+  };
+}
+
+function activatePerformanceGuard(reason, details = {}) {
+  const now = Date.now();
+  performanceGuardUntil = Math.max(
+    Number(performanceGuardUntil || 0),
+    now + PERFORMANCE_GUARD_COOLDOWN_MS
+  );
+  performanceGuardReason = String(reason || "slow-page");
+  scheduleHotPathStatsPersist({
+    ...details,
+    ...getPerformanceGuardDiagnostics(now),
+    lastDecisionSource: details.lastDecisionSource || "performance-guard"
+  });
+}
+
+function maybeActivatePerformanceGuard(stats, runReason) {
+  if (shouldAllowPipelineDuringPerformanceGuard(runReason)) {
+    return false;
+  }
+
+  const totalCandidateCount = Number(stats?.totalCandidateCount || 0);
+  const durationMs = Number(stats?.durationMs || 0);
+  const foregroundUnitBuildMs = Number(stats?.foregroundUnitBuildMs || 0);
+  if (
+    totalCandidateCount < PERFORMANCE_GUARD_CANDIDATE_LIMIT &&
+    durationMs < PERFORMANCE_GUARD_SLOW_PIPELINE_MS &&
+    foregroundUnitBuildMs < PERFORMANCE_GUARD_UNIT_BUILD_MS
+  ) {
+    return false;
+  }
+
+  const reason =
+    totalCandidateCount >= PERFORMANCE_GUARD_CANDIDATE_LIMIT
+      ? "candidate-count"
+      : foregroundUnitBuildMs >= PERFORMANCE_GUARD_UNIT_BUILD_MS
+        ? "unit-build"
+        : "slow-pipeline";
+  activatePerformanceGuard(reason, {
+    hostname: stats?.hostname || location.hostname || "unknown",
+    runReason,
+    durationMs,
+    totalCandidateCount,
+    foregroundUnitBuildMs
+  });
+  return true;
+}
+
 function isRapidlyChangingRealtimeHost() {
   const hostname = String(location.hostname || "").toLowerCase();
   return /(^|\.)google\./i.test(hostname) || /(^|\.)youtube\.com$/i.test(hostname);
 }
 
 function isGooglePriorityCandidate(candidate) {
-  if (!isGoogleSearchPage()) return false;
+  if (!isGoogleTextSearchAnalysisPage()) return false;
   const element = candidate?.element;
   if (!(element instanceof Element)) return false;
 
@@ -3175,7 +4680,7 @@ function isGoogleSnippetCandidate(candidate) {
 }
 
 function selectGoogleForegroundCandidates(candidates) {
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return [];
   }
 
@@ -3266,7 +4771,7 @@ function selectCandidatesForRun(candidates, settings, runReason) {
   const hints = buildRealtimeHints(settings);
   const sortedCandidates = sortCandidatesByUrgency(candidates, hints);
 
-  if (!isBroadAnalysisReason(runReason) && isGoogleSearchPage()) {
+  if (!isBroadAnalysisReason(runReason) && isGoogleTextSearchAnalysisPage()) {
     const prioritized = [];
     const selectedNodeIds = new Set();
 
@@ -3297,7 +4802,10 @@ function selectCandidatesForRun(candidates, settings, runReason) {
   }
 
   if (isBroadAnalysisReason(runReason)) {
-    return sortedCandidates.slice(0, MAX_BACKGROUND_CANDIDATES);
+    const limit = runReason === "background-validation"
+      ? MAX_BACKGROUND_VALIDATION_CANDIDATES
+      : MAX_BACKGROUND_CANDIDATES;
+    return sortedCandidates.slice(0, limit);
   }
 
   const domainPriorityCandidates = sortedCandidates.filter(
@@ -3348,7 +4856,9 @@ function buildForegroundAnalysisUnits(candidates) {
     return [];
   }
 
-  return candidates.map((candidate) => ({
+  return candidates.filter((candidate) =>
+    !looksLikeInteractionMetadataText(candidate?.text || "")
+  ).map((candidate) => ({
     cacheScope:
       candidate?.candidateKind === "editable-value"
         ? "foreground-editable"
@@ -3385,18 +4895,19 @@ function selectForegroundWaveCandidates(candidates, settings, runReason) {
       nextCandidates.filter((candidate) => !isForegroundMetadataCandidate(candidate)),
       hints
     );
+    const candidateLimit = MAX_BACKGROUND_VALIDATION_CANDIDATES;
 
-    if (isGoogleSearchPage()) {
+    if (isGoogleTextSearchAnalysisPage()) {
       return selectForegroundCandidatesByContainer(
         backgroundCandidates,
         MAX_BACKGROUND_CONTAINERS
-      ).slice(0, MAX_BACKGROUND_CANDIDATES);
+      ).slice(0, candidateLimit);
     }
 
-    return backgroundCandidates.slice(0, MAX_BACKGROUND_CANDIDATES);
+    return backgroundCandidates.slice(0, candidateLimit);
   }
 
-  if (isGoogleSearchPage()) {
+  if (isGoogleTextSearchAnalysisPage()) {
     const hints = buildRealtimeHints(settings);
     const editableCandidates = collectEditableValueCandidates(1).filter((candidate) =>
       nextCandidates.some((item) => item.nodeId === candidate.nodeId)
@@ -3570,6 +5081,11 @@ function isCandidateGenerationCurrent(candidate, generation) {
       buildFingerprint(normalizeText(candidate.element.value || "")) === candidate.fingerprint;
   }
 
+  if (candidate.candidateKind === "attribute-value") {
+    return Boolean(candidate.element?.isConnected) &&
+      buildFingerprint(normalizeText(getAttributeSourceValue(candidate.state))) === candidate.fingerprint;
+  }
+
   return Boolean(candidate.textNode?.isConnected) &&
     buildFingerprint(normalizeText(getSourceText(candidate.state))) === candidate.fingerprint;
 }
@@ -3584,6 +5100,42 @@ function shouldSkipCandidateApply(candidate, state, stage) {
   }
 
   return getDecisionStageRank(stage) < getDecisionStageRank(state.lastAppliedStage);
+}
+
+function getCandidateCurrentSourceText(candidate, state) {
+  if (candidate?.candidateKind === "editable-value") {
+    return String(candidate.element?.value ?? candidate.text ?? "");
+  }
+
+  if (candidate?.candidateKind === "attribute-value") {
+    return String(getAttributeSourceValue(state) || candidate.text || "");
+  }
+
+  return String(getSourceText(state) || candidate?.text || "");
+}
+
+function shouldPreserveHighSignalMask(candidate, state, outcome, stage) {
+  const normalizedStage = String(stage || "");
+  if (
+    normalizedStage !== "foreground" &&
+    normalizedStage !== "reconcile" &&
+    normalizedStage !== "background-validation"
+  ) {
+    return false;
+  }
+
+  if (outcome?.blocked || !state?.isMasked || !state?.lastAppliedBlocked) {
+    return false;
+  }
+
+  if (
+    !candidate?.fingerprint ||
+    String(state.lastAppliedFingerprint || "") !== String(candidate.fingerprint || "")
+  ) {
+    return false;
+  }
+
+  return findHighSignalProfanitySpans(getCandidateCurrentSourceText(candidate, state)).length > 0;
 }
 
 function markCandidateSettledAfterLowerPriorityApplySkip(candidate) {
@@ -3688,6 +5240,10 @@ function isGoogleMaskTargetElement(element) {
 }
 
 function shouldCreateContainerMember(segmentElement, normalizedSegment, selectedCandidate) {
+  if (looksLikeInteractionMetadataText(normalizedSegment)) {
+    return false;
+  }
+
   if (selectedCandidate) {
     return true;
   }
@@ -3696,7 +5252,7 @@ function shouldCreateContainerMember(segmentElement, normalizedSegment, selected
     return false;
   }
 
-  if (!isGoogleSearchPage()) {
+  if (!isGoogleTextSearchAnalysisPage()) {
     return false;
   }
 
@@ -3837,7 +5393,7 @@ function buildHotPathAnalysisUnits(candidates, options = {}) {
   }
 
   if (textCandidates.length > 0) {
-    if (isGoogleSearchPage()) {
+    if (isGoogleTextSearchAnalysisPage()) {
       const preferStandaloneGoogle = options.preferStandaloneGoogle !== false;
       if (preferStandaloneGoogle) {
         units.push(...buildForegroundAnalysisUnits(textCandidates));
@@ -4079,7 +5635,7 @@ function buildContextualAnalysisUnits(candidates) {
       const shouldIncludeSegment =
         Boolean(selectedCandidate) ||
         isCandidateTextUseful(normalizedSegment, segmentElement) ||
-        (isGoogleSearchPage() && isGoogleMaskTargetElement(segmentElement));
+        (isGoogleTextSearchAnalysisPage() && isGoogleMaskTargetElement(segmentElement));
 
       if (!shouldIncludeSegment) {
         continue;
@@ -4315,7 +5871,10 @@ function chunkArray(items, chunkSize) {
 
 function getBackendRequestBatchSize(analysisMode) {
   const mode = String(analysisMode || "");
-  if (mode === "reconcile" || mode === "background-validation") {
+  if (mode === "background-validation") {
+    return BACKGROUND_VALIDATION_BACKEND_BATCH_SIZE;
+  }
+  if (mode === "reconcile") {
     return RECONCILE_BACKEND_BATCH_SIZE;
   }
   return FOREGROUND_BACKEND_BATCH_SIZE;
@@ -4340,6 +5899,55 @@ function isRenderableEvidenceSpan(spanText) {
   return true;
 }
 
+function isSafeHighSignalCompoundSpan(sourceText, start, end, contextText = "") {
+  const source = String(sourceText || "");
+  const spanStart = Math.max(0, Number(start || 0));
+  const spanEnd = Math.max(spanStart, Number(end || 0));
+  if (!source || spanEnd <= spanStart) return false;
+
+  const windowText = source.slice(spanStart, Math.min(source.length, spanEnd + 8));
+  if (SAFE_HIGH_SIGNAL_COMPOUND_PATTERN.test(windowText)) {
+    return true;
+  }
+
+  const spanText = source.slice(spanStart, spanEnd);
+  const context = String(contextText || "");
+  const localContext = source.slice(
+    Math.max(0, spanStart - 48),
+    Math.min(source.length, spanEnd + 120)
+  );
+  return (
+    SAFE_HIGH_SIGNAL_COMPOUND_FRAGMENT_PATTERN.test(spanText) &&
+    (
+      SAFE_HIGH_SIGNAL_COMPOUND_PATTERN.test(localContext) ||
+      SAFE_HIGH_SIGNAL_CONTEXT_PATTERN.test(localContext) ||
+      SAFE_HIGH_SIGNAL_COMPOUND_PATTERN.test(context) ||
+      SAFE_HIGH_SIGNAL_CONTEXT_PATTERN.test(context)
+    )
+  );
+}
+
+function hasUnsafeHighSignalMatch(text, contextText = "") {
+  const sourceText = String(text || "");
+  if (!sourceText) return false;
+
+  const regex = new RegExp(HIGH_SIGNAL_PROFANITY_SPAN_PATTERN.source, "gi");
+  let match;
+  while ((match = regex.exec(sourceText)) !== null) {
+    const matchText = String(match[0] || "");
+    if (!matchText) {
+      regex.lastIndex += 1;
+      continue;
+    }
+
+    if (!isSafeHighSignalCompoundSpan(sourceText, match.index, match.index + matchText.length, contextText)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function expandEvidenceSpanToHighSignalMatch(span, sourceText) {
   const source = String(sourceText || "");
   const start = Math.max(0, Number(span?.start ?? 0));
@@ -4354,6 +5962,12 @@ function expandEvidenceSpanToHighSignalMatch(span, sourceText) {
     const matchText = match[0] || "";
     const matchStart = match.index;
     const matchEnd = matchStart + matchText.length;
+    if (isSafeHighSignalCompoundSpan(source, matchStart, matchEnd)) {
+      if (matchText.length === 0) {
+        regex.lastIndex += 1;
+      }
+      continue;
+    }
     if (matchEnd <= start || matchStart >= end) {
       if (matchText.length === 0) {
         regex.lastIndex += 1;
@@ -4389,6 +6003,7 @@ function normalizeEvidenceSpans(spans, originalText) {
       Number.isFinite(span.start) &&
       Number.isFinite(span.end) &&
       span.end > span.start &&
+      !isSafeHighSignalCompoundSpan(sourceText, span.start, span.end) &&
       isRenderableEvidenceSpan(span.text)
     ))
     .sort((left, right) => left.start - right.start || left.end - right.end);
@@ -4407,6 +6022,123 @@ function normalizeEvidenceSpans(spans, originalText) {
       ...span,
       text: sourceText.slice(span.start, span.end)
     });
+  }
+
+  return merged;
+}
+
+function findHighSignalProfanitySpans(text) {
+  const sourceText = String(text || "");
+  if (!sourceText) return [];
+
+  const regex = new RegExp(HIGH_SIGNAL_PROFANITY_SPAN_PATTERN.source, "gi");
+  const spans = [];
+  let match;
+  while ((match = regex.exec(sourceText)) !== null) {
+    const matchText = String(match[0] || "");
+    if (!matchText) {
+      regex.lastIndex += 1;
+      continue;
+    }
+    if (isSafeHighSignalCompoundSpan(sourceText, match.index, match.index + matchText.length)) {
+      continue;
+    }
+
+    spans.push({
+      start: match.index,
+      end: match.index + matchText.length,
+      score: 1,
+      text: matchText
+    });
+  }
+
+  return normalizeEvidenceSpans(spans, sourceText);
+}
+
+function normalizeCustomWordDisplaySpans(spans, originalText) {
+  const sourceText = String(originalText || "");
+  const nextSpans = (Array.isArray(spans) ? spans : [])
+    .map((span) => {
+      const start = Math.max(0, Number(span?.start ?? 0));
+      const end = Math.min(sourceText.length, Number(span?.end ?? 0));
+      return {
+        start,
+        end,
+        score: Number(span?.score ?? 1),
+        text: sourceText.slice(start, end),
+        keyword: String(span?.keyword || span?.text || "").toLowerCase()
+      };
+    })
+    .filter((span) => (
+      Number.isFinite(span.start) &&
+      Number.isFinite(span.end) &&
+      span.end > span.start &&
+      normalizeText(span.text)
+    ))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+
+  const merged = [];
+  for (const span of nextSpans) {
+    const previous = merged[merged.length - 1];
+    if (previous && span.start <= previous.end) {
+      previous.end = Math.max(previous.end, span.end);
+      previous.score = Math.max(previous.score, span.score);
+      previous.text = sourceText.slice(previous.start, previous.end);
+      previous.keyword = [previous.keyword, span.keyword].filter(Boolean).join(",");
+      continue;
+    }
+
+    merged.push({ ...span });
+  }
+
+  return merged;
+}
+
+function collectCustomSpanKeywords(spans) {
+  const keywords = new Set();
+  for (const span of Array.isArray(spans) ? spans : []) {
+    String(span?.keyword || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((item) => keywords.add(item));
+  }
+  return [...keywords];
+}
+
+function mergeDisplaySpans(spans, originalText) {
+  const sourceText = String(originalText || "");
+  const nextSpans = (Array.isArray(spans) ? spans : [])
+    .map((span) => {
+      const start = Math.max(0, Number(span?.start ?? 0));
+      const end = Math.min(sourceText.length, Number(span?.end ?? 0));
+      return {
+        ...span,
+        start,
+        end,
+        score: Number(span?.score ?? 0),
+        text: sourceText.slice(start, end)
+      };
+    })
+    .filter((span) => (
+      Number.isFinite(span.start) &&
+      Number.isFinite(span.end) &&
+      span.end > span.start &&
+      normalizeText(span.text)
+    ))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+
+  const merged = [];
+  for (const span of nextSpans) {
+    const previous = merged[merged.length - 1];
+    if (previous && span.start <= previous.end) {
+      previous.end = Math.max(previous.end, span.end);
+      previous.score = Math.max(previous.score, span.score);
+      previous.text = sourceText.slice(previous.start, previous.end);
+      continue;
+    }
+
+    merged.push({ ...span });
   }
 
   return merged;
@@ -4446,7 +6178,10 @@ async function analyzePayloadWithRealtimeWorker(analysisUnits, settings, onProgr
   const suppressHotPathFailure = options.suppressHotPathFailure === true;
 
   try {
-    const response = await analyzePayloadWithBackend(analysisUnits, onProgress, options);
+    const response = await analyzePayloadWithBackend(analysisUnits, onProgress, {
+      ...options,
+      settings
+    });
     if (!response?.ok) {
       const failure = {
         reason: String(response?.error?.reason || "FOREGROUND_BACKEND_FAILED"),
@@ -4574,6 +6309,7 @@ function scheduleHotPathStatsPersist(partialStats) {
         lastStats: {
           ...(currentState.lastStats || {}),
           ...getRealtimeWorkerDiagnostics(),
+          ...getPerformanceGuardDiagnostics(),
           ...statsPatch
         }
       });
@@ -4692,8 +6428,33 @@ function summarizeBackendRequestTimings(requestTimings) {
 }
 
 async function analyzePayloadWithBackend(items, onProgress, options = {}) {
+  const startedAt = performance.now();
+  const activeSettings = getMergedSettings(options.settings || cachedSettings || {});
+  if (activeSettings.backendEnabled !== true) {
+    return {
+      ok: true,
+      results: items.map((item) => createSkippedAnalysisResult(item?.text || "")),
+      apiBaseUrl: "",
+      backendDurationMs: 0,
+      backendStatus: "disabled",
+      requestedCount: 0,
+      requestCount: 0,
+      splitRetryCount: 0,
+      skippedChunkCount: items.length > 0 ? 1 : 0,
+      failedTextCount: 0,
+      chunkSize: 0,
+      requestTimeoutMs: 0,
+      lastBackendErrorCode: "BACKEND_DISABLED",
+      backendQueueWaitMs: 0,
+      backendQueueDepthAtEnqueue: 0,
+      backendRequestTimings: [],
+      cacheHitCount: 0,
+      backendCacheHitCount: 0
+    };
+  }
+
   const cacheSensitivity = normalizeSensitivity(
-    options.sensitivity ?? cachedSettings?.sensitivity ?? DEFAULT_SETTINGS.sensitivity
+    options.sensitivity ?? activeSettings.sensitivity ?? DEFAULT_SETTINGS.sensitivity
   );
   const resultsByText = new Map();
   const pendingRequests = [];
@@ -4783,7 +6544,8 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
   if (pendingRequests.length > 0) {
     const analysisMode = String(options.analysisMode || "");
 
-    for (const requestBatch of requestBatches) {
+    for (let requestBatchIndex = 0; requestBatchIndex < requestBatches.length; requestBatchIndex += 1) {
+      const requestBatch = requestBatches[requestBatchIndex];
       let response = null;
       try {
         response = await safeRuntimeSendMessage({
@@ -4946,6 +6708,48 @@ async function analyzePayloadWithBackend(items, onProgress, options = {}) {
       });
 
       await emitProgress(resolvedCandidates);
+
+      if (
+        analysisMode === "background-validation" &&
+        requestBatchIndex < requestBatches.length - 1 &&
+        Math.round(performance.now() - startedAt) >= BACKGROUND_VALIDATION_BACKEND_BUDGET_MS
+      ) {
+        const skippedCandidates = [];
+        for (const remainingBatch of requestBatches.slice(requestBatchIndex + 1)) {
+          serviceWorkerSkippedChunkCount += 1;
+          serviceWorkerFailedTextCount += remainingBatch.length;
+          for (const request of remainingBatch) {
+            const skippedResult = createSkippedAnalysisResult(request?.text || "");
+            resultsByText.set(request.key, skippedResult);
+            for (const item of itemsByText.get(request.key) || []) {
+              skippedCandidates.push(item);
+            }
+          }
+        }
+        await emitProgress(skippedCandidates);
+        break;
+      }
+
+      if (
+        analysisMode === "foreground" &&
+        Number(response.skippedChunkCount || 0) > 0 &&
+        isRetryableBackendErrorCode(String(response.lastBackendErrorCode || ""))
+      ) {
+        const skippedCandidates = [];
+        for (const remainingBatch of requestBatches.slice(requestBatchIndex + 1)) {
+          serviceWorkerSkippedChunkCount += 1;
+          serviceWorkerFailedTextCount += remainingBatch.length;
+          for (const request of remainingBatch) {
+            const skippedResult = createSkippedAnalysisResult(request?.text || "");
+            resultsByText.set(request.key, skippedResult);
+            for (const item of itemsByText.get(request.key) || []) {
+              skippedCandidates.push(item);
+            }
+          }
+        }
+        await emitProgress(skippedCandidates);
+        break;
+      }
     }
   }
 
@@ -5033,6 +6837,23 @@ function filterSpansForSensitivity(spans, scores, settings) {
 }
 
 function buildNodeOutcome(candidate, analysis, settings, evidenceSpans) {
+  const sourceText = String(candidate?.text || "");
+  const allowWordSpans = findCustomWordSpans(sourceText, getCustomWordList(settings?.customAllowWords));
+  if (allowWordSpans.length > 0) {
+    return {
+      blocked: false,
+      categories: [],
+      reasons: [],
+      scores: {
+        profanity: Number(analysis?.scores?.profanity || 0),
+        toxicity: Number(analysis?.scores?.toxicity || 0),
+        hate: Number(analysis?.scores?.hate || 0)
+      },
+      spans: [],
+      matchedKeywords: collectCustomSpanKeywords(allowWordSpans)
+    };
+  }
+
   const scores = {
     profanity: Number(analysis?.scores?.profanity || 0),
     toxicity: Number(analysis?.scores?.toxicity || 0),
@@ -5040,9 +6861,21 @@ function buildNodeOutcome(candidate, analysis, settings, evidenceSpans) {
   };
   const normalizedLocalSpans = normalizeEvidenceSpans(
     Array.isArray(evidenceSpans) ? evidenceSpans : [],
-    candidate.text
+    sourceText
   );
-  const displaySpans = filterSpansForSensitivity(normalizedLocalSpans, scores, settings);
+  const customBlockSpans = isFilteringSuppressedBySensitivity(settings)
+    ? []
+    : normalizeCustomWordDisplaySpans(
+      findCustomWordSpans(sourceText, getCustomWordList(settings?.customBlockWords)),
+      sourceText
+    );
+  const displaySpans = mergeDisplaySpans(
+    [
+      ...filterSpansForSensitivity(normalizedLocalSpans, scores, settings),
+      ...customBlockSpans
+    ],
+    sourceText
+  );
   const flaggedProfanity = Boolean(analysis?.is_profane);
   const flaggedToxicity = Boolean(analysis?.is_toxic);
   const flaggedHate = Boolean(analysis?.is_hate);
@@ -5051,6 +6884,11 @@ function buildNodeOutcome(candidate, analysis, settings, evidenceSpans) {
     (displaySpans.length > 0 || getMaxOutcomeScore(scores) >= getSensitivityScoreThreshold(settings));
   const categories = [];
   const reasons = [];
+
+  if (customBlockSpans.length > 0) {
+    categories.push("custom");
+    reasons.push("사용자 차단 단어");
+  }
 
   if (settings.categories?.insult && flaggedProfanity) {
     categories.push("insult");
@@ -5109,7 +6947,7 @@ function buildNodeOutcome(candidate, analysis, settings, evidenceSpans) {
     reasons: [...new Set(reasons)],
     scores,
     spans: displaySpans,
-    matchedKeywords: []
+    matchedKeywords: collectCustomSpanKeywords(customBlockSpans)
   };
 }
 
@@ -5186,6 +7024,309 @@ function buildDecisionFromBackend(analysisUnits, analysisResults, settings, back
   };
 }
 
+function unitHasCustomBlockWord(unit, settings) {
+  const blockWords = getCustomWordList(settings?.customBlockWords);
+  if (blockWords.length === 0) {
+    return false;
+  }
+
+  return (Array.isArray(unit?.members) ? unit.members : []).some((member) =>
+    findCustomWordSpans(member?.candidate?.text || "", blockWords).length > 0
+  );
+}
+
+function buildLocalPreflightAnalysisResult(unit, settings) {
+  const unitText = String(unit?.text || "");
+  if (!unitText) return null;
+
+  const highSignalSpans = findHighSignalProfanitySpans(unitText);
+  const hasCustomBlockWord = unitHasCustomBlockWord(unit, settings);
+  if (highSignalSpans.length === 0 && !hasCustomBlockWord) {
+    return null;
+  }
+
+  return {
+    text: unitText,
+    original: unitText,
+    is_offensive: true,
+    is_profane: highSignalSpans.length > 0,
+    is_toxic: false,
+    is_hate: false,
+    scores: {
+      profanity: highSignalSpans.length > 0 ? 0.99 : 0,
+      toxicity: highSignalSpans.length > 0 ? 0.7 : 0,
+      hate: 0
+    },
+    evidence_spans: highSignalSpans
+  };
+}
+
+function buildLocalPreflightDecision(analysisUnits, settings) {
+  const units = Array.isArray(analysisUnits) ? analysisUnits : [];
+  const localResults = units.map((unit) => buildLocalPreflightAnalysisResult(unit, settings));
+  if (!localResults.some(Boolean)) {
+    return null;
+  }
+
+  const decision = buildDecisionFromBackend(units, localResults, settings, {
+    apiBaseUrl: "local-preflight",
+    backendDurationMs: 0,
+    backendStatus: "local-preflight"
+  });
+  return {
+    ...decision,
+    apiMode: "local-preflight"
+  };
+}
+
+function applyLocalPreflightDecision(unitCandidates, analysisUnits, settings, options = {}) {
+  const decision = buildLocalPreflightDecision(analysisUnits, settings);
+  if (!decision || Number(decision.maskedSpanCount || 0) <= 0) {
+    return {
+      decision,
+      firstMaskLatencyMs: 0
+    };
+  }
+
+  suppressMutationFeedback(120);
+  applyDecision(unitCandidates, decision, settings, {
+    generation: options.generation,
+    stage: "local-preflight",
+    settingsRevision: options.settingsRevision
+  });
+  if (Number(options.pipelineSequence || 0) > 0) {
+    recordWellbeingDetectionFromDecision(
+      decision,
+      "local-preflight",
+      options.pipelineSequence
+    );
+  }
+
+  return {
+    decision,
+    firstMaskLatencyMs: Math.round(performance.now() - Number(options.startedAt || performance.now()))
+  };
+}
+
+function shouldRunLocalPreflight(settings) {
+  return Boolean(
+    settings &&
+    settings.enabled !== false &&
+    !isFilteringSuppressedBySensitivity(settings) &&
+    !extensionContextInvalidated &&
+    !isUnsupportedPage()
+  );
+}
+
+function applyCachedLocalPreflightForCandidates(candidates, options = {}) {
+  const settings = cachedSettings;
+  if (!shouldRunLocalPreflight(settings)) {
+    return {
+      decision: null,
+      firstMaskLatencyMs: 0,
+      preconcealCount: 0
+    };
+  }
+
+  const nextCandidates = (Array.isArray(candidates) ? candidates : []).filter(Boolean);
+  if (nextCandidates.length === 0) {
+    return {
+      decision: null,
+      firstMaskLatencyMs: 0,
+      preconcealCount: 0
+    };
+  }
+
+  const analysisUnits = buildForegroundAnalysisUnits(nextCandidates);
+  const unitCandidates = collectUnitCandidates(analysisUnits);
+  if (analysisUnits.length === 0 || unitCandidates.length === 0) {
+    return {
+      decision: null,
+      firstMaskLatencyMs: 0,
+      preconcealCount: 0
+    };
+  }
+
+  const preconcealCount = preConcealGoogleAnalysisUnits(analysisUnits, {
+    limit: options.preconcealLimit
+  });
+  const result = applyLocalPreflightDecision(unitCandidates, analysisUnits, settings, {
+    generation: options.generation,
+    settingsRevision: settingsRevision,
+    startedAt: options.startedAt
+  });
+  return {
+    ...result,
+    preconcealCount
+  };
+}
+
+function collectVisibleLocalPreflightCandidates(limit = MAX_DOMAIN_PRIORITY_CANDIDATES) {
+  const maxCandidates = Math.max(1, Number(limit || MAX_DOMAIN_PRIORITY_CANDIDATES));
+  const candidates = [];
+  const seenNodeIds = new Set();
+
+  const addCandidate = (candidate) => {
+    if (!candidate?.nodeId || seenNodeIds.has(candidate.nodeId)) {
+      return;
+    }
+    seenNodeIds.add(candidate.nodeId);
+    candidates.push(candidate);
+  };
+
+  if (isGoogleSearchPage()) {
+    if (isGoogleImageSearchPage()) {
+      return candidates;
+    }
+
+    for (const candidate of collectEditableValueCandidates(INITIAL_EDITABLE_PASS_LIMIT)) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+
+    for (const candidate of collectGoogleDirectHighSignalTextCandidates(maxCandidates * 2)) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+
+    for (const candidate of collectGoogleSearchPriorityCandidates(maxCandidates, {
+      includeDeepVisibleScan: false
+    })) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+
+    for (const candidate of collectGoogleVisibleHighSignalTextCandidates(maxCandidates)) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+
+    for (const candidate of collectGoogleSearchLightCandidates()) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+    return candidates;
+  }
+
+  if (isYouTubePage()) {
+    for (const candidate of collectYouTubeDirectHighSignalTextCandidates(maxCandidates)) {
+      addCandidate(candidate);
+      if (candidates.length >= maxCandidates) return candidates;
+    }
+  }
+
+  return candidates;
+}
+
+function applyCachedLocalPreflightForVisiblePage(options = {}) {
+  const startedAt = Number(options.startedAt || performance.now());
+  return applyCachedLocalPreflightForCandidates(
+    collectVisibleLocalPreflightCandidates(options.limit),
+    { startedAt }
+  );
+}
+
+function getDecisionWellbeingCounters(decision) {
+  const counters = {
+    blockedNodeCount: 0,
+    maskedSpanCount: 0,
+    profanityNodeCount: 0,
+    toxicNodeCount: 0,
+    hateNodeCount: 0
+  };
+
+  const nodeCategoryMap = decision?.nodeCategoryMap || {};
+  const nodeScoreMap = decision?.nodeScoreMap || {};
+  const nodeEvidenceMap = decision?.nodeEvidenceMap || {};
+
+  for (const [nodeId, categories] of Object.entries(nodeCategoryMap)) {
+    const categorySet = new Set(Array.isArray(categories) ? categories : []);
+    const scores = nodeScoreMap[nodeId] || {};
+    const spans = Array.isArray(nodeEvidenceMap[nodeId]) ? nodeEvidenceMap[nodeId] : [];
+    const spanCount = Math.max(1, spans.length);
+    const highSignalProfanitySpanCount = spans.filter((span) =>
+      HIGH_SIGNAL_PROFANITY_PATTERN.test(String(span?.text || ""))
+    ).length;
+    const hasExplicitProfanityScore =
+      categorySet.has("insult") &&
+      Number(scores.profanity || 0) >= WELLBEING_EXPLICIT_SCORE_THRESHOLD;
+    const profanityCount = highSignalProfanitySpanCount > 0
+      ? highSignalProfanitySpanCount
+      : hasExplicitProfanityScore
+        ? spanCount
+        : 0;
+    const isExplicitToxicity =
+      categorySet.has("abuse") &&
+      Number(scores.toxicity || 0) >= WELLBEING_EXPLICIT_SCORE_THRESHOLD;
+    const isExplicitHate =
+      categorySet.has("hate") &&
+      Number(scores.hate || 0) >= WELLBEING_EXPLICIT_SCORE_THRESHOLD;
+    const isCustomBlocked = categorySet.has("custom");
+    const shouldCountForWidget =
+      profanityCount > 0 || isExplicitToxicity || isExplicitHate || isCustomBlocked;
+
+    if (!shouldCountForWidget) {
+      continue;
+    }
+
+    counters.blockedNodeCount += 1;
+    counters.maskedSpanCount += spanCount;
+    counters.profanityNodeCount += profanityCount;
+    if (isExplicitToxicity) counters.toxicNodeCount += spanCount;
+    if (isExplicitHate) counters.hateNodeCount += spanCount;
+  }
+
+  return counters;
+}
+
+function summarizeDecisionForWellbeing(decision, pipelineSequence) {
+  const nodeScores = Object.values(decision?.nodeScoreMap || {});
+  const maxScores = nodeScores.reduce(
+    (current, scores) => ({
+      profanity: Math.max(current.profanity, Number(scores?.profanity || 0)),
+      toxicity: Math.max(current.toxicity, Number(scores?.toxicity || 0)),
+      hate: Math.max(current.hate, Number(scores?.hate || 0))
+    }),
+    { profanity: 0, toxicity: 0, hate: 0 }
+  );
+  const categoryHits = {
+    ...emptyCategoryHits(),
+    ...(decision?.categoryHits || {})
+  };
+  const wellbeingCounters = getDecisionWellbeingCounters(decision);
+
+  return {
+    pipelineSequence: Number(pipelineSequence || 0),
+    blockedNodeCount: Number(wellbeingCounters.blockedNodeCount || 0),
+    maskedSpanCount: Number(wellbeingCounters.maskedSpanCount || 0),
+    profanityNodeCount: Number(wellbeingCounters.profanityNodeCount || 0),
+    toxicNodeCount: Number(wellbeingCounters.toxicNodeCount || 0),
+    hateNodeCount: Number(wellbeingCounters.hateNodeCount || 0),
+    categoryHits,
+    maxScores
+  };
+}
+
+function recordWellbeingDetectionFromDecision(decision, source, pipelineSequence) {
+  const summary = summarizeDecisionForWellbeing(decision, pipelineSequence);
+  if (
+    !decision ||
+    Number(summary.maskedSpanCount || 0) <= 0
+  ) {
+    return;
+  }
+
+  safeRuntimeSendMessage({
+    type: "RECORD_WELLBEING_DETECTION",
+    url: location.href,
+    title: document.title || "",
+    source,
+    summary
+  }).catch((error) => {
+    handleExtensionContextError(error);
+  });
+}
+
 function buildMaskTooltip(categories, reasons, settings) {
   const firstCategory = Array.isArray(categories) && categories[0] ? categories[0] : "abuse";
   const label = CATEGORY_LABELS[firstCategory] || CATEGORY_LABELS.abuse;
@@ -5200,9 +7341,43 @@ function buildMaskTooltip(categories, reasons, settings) {
   return `${label} 콘텐츠`;
 }
 
+function buildMaskAccessibilityLabel(tooltip) {
+  const reason = String(tooltip || "").trim();
+  return reason ? `청마루 보호: ${reason}` : "청마루 보호: 마스킹됨";
+}
+
 function buildVisibleMaskReplacement(text) {
   const graphemeCount = Array.from(String(text || "")).length;
   return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
+}
+
+function buildAttributeReplacementText(sourceText, spans, settings) {
+  const interventionMode = normalizeInterventionMode(settings?.interventionMode);
+  let cursor = 0;
+  let nextValue = "";
+  for (const span of spans) {
+    if (span.start > cursor) {
+      nextValue += sourceText.slice(cursor, span.start);
+    }
+
+    const spanText = sourceText.slice(span.start, span.end);
+    if (interventionMode === "remove") {
+      cursor = span.end;
+      continue;
+    }
+    if (interventionMode === "hide") {
+      nextValue += "[숨김]";
+    } else {
+      nextValue += buildVisibleMaskReplacement(spanText);
+    }
+    cursor = span.end;
+  }
+
+  if (cursor < sourceText.length) {
+    nextValue += sourceText.slice(cursor);
+  }
+
+  return normalizeText(nextValue);
 }
 
 function ensureWrapper(state) {
@@ -5242,6 +7417,283 @@ function clearRenderedContent(state) {
   state.wrapper.removeAttribute("data-shieldtext-tooltip");
 }
 
+function clearPreconcealState(state) {
+  if (!state) return;
+  if (state.preconcealTimerId) {
+    window.clearTimeout(state.preconcealTimerId);
+  }
+  if (state.preconcealElement instanceof Element) {
+    state.preconcealElement.classList.remove("shieldtext-preconceal-element");
+    state.preconcealElement.removeAttribute("data-shieldtext-preconceal");
+    state.preconcealElement.removeAttribute("data-shieldtext-preconceal-source");
+    if (state.preconcealElementTitle) {
+      state.preconcealElement.setAttribute("title", state.preconcealElementTitle);
+    } else {
+      state.preconcealElement.removeAttribute("title");
+    }
+  }
+  state.preconcealTimerId = 0;
+  state.preconcealToken = "";
+  state.preconcealElement = null;
+  state.preconcealElementTitle = "";
+}
+
+function getPreconcealCompoundContextText(candidate, fallbackText = "") {
+  const pieces = [
+    fallbackText,
+    candidate?.text,
+    candidate?.element instanceof Element ? candidate.element.textContent : ""
+  ];
+  return pieces
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function extractHighSignalPreconcealSpans(sourceText, contextText = "") {
+  const text = String(sourceText || "");
+  if (!text) return [];
+
+  const matcher = new RegExp(HIGH_SIGNAL_PROFANITY_PATTERN.source, "gi");
+  const spans = [];
+  let match = matcher.exec(text);
+  while (match) {
+    const value = String(match[0] || "");
+    if (value && !isSafeHighSignalCompoundSpan(text, match.index, match.index + value.length, contextText)) {
+      spans.push({
+        start: match.index,
+        end: match.index + value.length,
+        text: value
+      });
+    }
+    if (matcher.lastIndex === match.index) {
+      matcher.lastIndex += 1;
+    }
+    match = matcher.exec(text);
+  }
+
+  return normalizeEvidenceSpans(spans, text);
+}
+
+function isPreconcealableGoogleCandidate(candidate) {
+  if (!isGoogleTextSearchAnalysisPage()) return false;
+  if (!candidate || candidate.candidateKind === "editable-value") return false;
+  if (candidate.candidateKind === "attribute-value") return false;
+
+  const state = candidate.state;
+  if (!state || state.isMasked || state.isPending) return false;
+  if (!isGooglePriorityCandidate(candidate)) return false;
+
+  const stateText = String(getSourceText(state) || "");
+  const candidateText = String(candidate.text || "");
+  const contextText = getPreconcealCompoundContextText(candidate, stateText);
+  return Boolean(
+    (stateText && hasUnsafeHighSignalMatch(stateText, contextText)) ||
+    (candidateText && hasUnsafeHighSignalMatch(candidateText, contextText))
+  );
+}
+
+function releasePreconcealNodeState(state, token) {
+  if (!state || state.preconcealToken !== token || state.isMasked) {
+    return;
+  }
+
+  clearPreconcealState(state);
+  clearRenderedContent(state);
+  if (state.textNode?.isConnected) {
+    state.textNode.nodeValue = state.originalText;
+  }
+  unwrapInlineWrapperIfRestored(state);
+  state.isPending = false;
+}
+
+function getPreconcealElementForCandidate(candidate) {
+  const element = candidate?.element;
+  if (!(element instanceof Element)) return null;
+
+  const target = element.closest(
+    [
+      GOOGLE_AI_OVERVIEW_SELECTOR,
+      "h3",
+      "[role='heading']",
+      ".LC20lb",
+      ".DKV0Md",
+      ".VwiC3b",
+      ".MUxGbd",
+      "[data-sncf]",
+      "[data-snf]",
+      "[data-content-feature='1']",
+      "[data-attrid='description']",
+      "[data-attrid='title']"
+    ].join(", ")
+  ) || element;
+
+  if (
+    target === document.body ||
+    target === document.documentElement ||
+    target.matches("main, #search, #rso, #rhs, #bres, #botstuff")
+  ) {
+    return null;
+  }
+
+  const rect = target.getBoundingClientRect();
+  if (!isElementNearViewport(rect)) return null;
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  const targetArea = Math.max(1, rect.width * rect.height);
+  if (targetArea / viewportArea > 0.35) return null;
+
+  return target;
+}
+
+function renderElementPreconcealCandidate(candidate) {
+  const state = candidate?.state;
+  if (!state || state.isMasked || state.isPending) return false;
+
+  const element = getPreconcealElementForCandidate(candidate);
+  if (!(element instanceof Element)) return false;
+
+  clearPreconcealState(state);
+  const tooltip = "청마루 보호: 분석 중";
+  state.preconcealElementTitle = element.getAttribute("title") || "";
+  element.classList.add("shieldtext-preconceal-element");
+  element.setAttribute("data-shieldtext-preconceal", "true");
+  element.setAttribute("data-shieldtext-preconceal-source", "google-high-signal");
+  element.setAttribute("title", tooltip);
+
+  const token = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  state.preconcealElement = element;
+  state.preconcealToken = token;
+  state.preconcealTimerId = window.setTimeout(
+    () => releasePreconcealNodeState(state, token),
+    GOOGLE_INITIAL_PRECONCEAL_TTL_MS
+  );
+  state.isPending = true;
+  return true;
+}
+
+function renderPreconcealNodeState(state, sourceText, contextText = "") {
+  if (!state || state.isMasked || state.isPending) return false;
+
+  const text = String(sourceText || getSourceText(state) || "");
+  const spans = extractHighSignalPreconcealSpans(text, contextText);
+  if (!text || spans.length === 0) return false;
+
+  const wrapper = ensureWrapper(state);
+  if (!wrapper) return false;
+
+  clearPreconcealState(state);
+  clearRenderedContent(state);
+  state.originalText = text;
+  state.textNode.nodeValue = "";
+
+  const renderBox = document.createElement("span");
+  renderBox.dataset.shieldtextRendered = "true";
+  renderBox.dataset.shieldtextOriginalText = text;
+  renderBox.className = "shieldtext-render-box shieldtext-preconceal-box";
+
+  const tooltip = "청마루 보호: 분석 중";
+  wrapper.dataset.shieldtextState = "pending";
+  wrapper.dataset.shieldtextTooltip = tooltip;
+  wrapper.setAttribute("title", tooltip);
+
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.start > cursor) {
+      renderBox.appendChild(document.createTextNode(text.slice(cursor, span.start)));
+    }
+
+    const mask = document.createElement("span");
+    mask.className = "shieldtext-inline-mask shieldtext-preconceal-mask";
+    mask.dataset.shieldtextTooltip = tooltip;
+    mask.setAttribute("title", tooltip);
+    mask.setAttribute("aria-label", tooltip);
+    mask.textContent = buildVisibleMaskReplacement(span.text);
+    renderBox.appendChild(mask);
+    cursor = span.end;
+  }
+
+  if (cursor < text.length) {
+    renderBox.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+  wrapper.appendChild(renderBox);
+  const token = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  state.preconcealToken = token;
+  state.preconcealTimerId = window.setTimeout(
+    () => releasePreconcealNodeState(state, token),
+    GOOGLE_INITIAL_PRECONCEAL_TTL_MS
+  );
+  state.isPending = true;
+  return true;
+}
+
+function preConcealGoogleCandidates(candidates, options = {}) {
+  const limit = Math.max(
+    0,
+    Number.isFinite(options.limit)
+      ? Number(options.limit)
+      : GOOGLE_INITIAL_PRECONCEAL_LIMIT
+  );
+  if (limit <= 0 || !isGoogleTextSearchAnalysisPage()) return 0;
+
+  let count = 0;
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (count >= limit) break;
+    if (!isPreconcealableGoogleCandidate(candidate)) continue;
+
+    const sourceText = String(getSourceText(candidate.state) || "");
+    const contextText = getPreconcealCompoundContextText(candidate, sourceText);
+    const didPreconceal =
+      hasUnsafeHighSignalMatch(sourceText, contextText)
+        ? renderPreconcealNodeState(candidate.state, sourceText, contextText)
+        : renderElementPreconcealCandidate(candidate);
+    if (didPreconceal) {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+function preConcealGoogleAnalysisUnits(analysisUnits, options = {}) {
+  const limit = Math.max(
+    0,
+    Number.isFinite(options.limit)
+      ? Number(options.limit)
+      : GOOGLE_INITIAL_PRECONCEAL_LIMIT
+  );
+  if (limit <= 0 || !isGoogleTextSearchAnalysisPage()) return 0;
+
+  let count = 0;
+  const seenNodeIds = new Set();
+  for (const unit of Array.isArray(analysisUnits) ? analysisUnits : []) {
+    if (count >= limit) break;
+    const unitText = String(unit?.text || "");
+    if (!hasUnsafeHighSignalMatch(unitText, unitText)) continue;
+
+    for (const member of Array.isArray(unit?.members) ? unit.members : []) {
+      if (count >= limit) break;
+      const candidate = member?.candidate;
+      if (!candidate?.nodeId || seenNodeIds.has(candidate.nodeId)) continue;
+      seenNodeIds.add(candidate.nodeId);
+      if (!candidate.state || candidate.state.isMasked || candidate.state.isPending) continue;
+      if (!isGooglePriorityCandidate(candidate)) continue;
+
+      const sourceText = String(getSourceText(candidate.state) || "");
+      const contextText = getPreconcealCompoundContextText(candidate, unitText || sourceText);
+      const didPreconceal =
+        hasUnsafeHighSignalMatch(sourceText, contextText)
+          ? renderPreconcealNodeState(candidate.state, sourceText, contextText)
+          : renderElementPreconcealCandidate(candidate);
+      if (didPreconceal) {
+        count += 1;
+      }
+    }
+  }
+
+  return count;
+}
+
 function unwrapInlineWrapperIfRestored(state) {
   const wrapper = state?.wrapper;
   const textNode = state?.textNode;
@@ -5267,6 +7719,7 @@ function restoreNodeState(state) {
   if (!state) return;
   suppressMutationFeedback(120);
 
+  clearPreconcealState(state);
   clearRenderedContent(state);
   if (state.textNode?.isConnected) {
     state.textNode.nodeValue = state.originalText;
@@ -5278,11 +7731,63 @@ function restoreNodeState(state) {
   state.lastDecisionKey = "";
 }
 
+function restoreAttributeValueState(state) {
+  if (!state?.element || !state.attributeName) return;
+  suppressMutationFeedback(120);
+  if (state.originalValue) {
+    state.element.setAttribute(state.attributeName, state.originalValue);
+  } else {
+    state.element.removeAttribute(state.attributeName);
+  }
+  state.isMasked = false;
+  state.isPending = false;
+  state.lastDecisionKey = "";
+}
+
 // editable overlay helpers are loaded from content-editable-overlay.js
+
+function renderAttributeValueOutcome(state, outcome, settings) {
+  if (!state?.element || !state.attributeName) return;
+  suppressMutationFeedback(120);
+
+  if (!outcome?.blocked) {
+    restoreAttributeValueState(state);
+    return;
+  }
+
+  const sourceText = String(state.originalValue || "");
+  const spans = normalizeEvidenceSpans(outcome.spans, sourceText);
+  if (!sourceText || spans.length === 0) {
+    restoreAttributeValueState(state);
+    return;
+  }
+
+  const decisionKey = JSON.stringify({
+    text: sourceText,
+    attributeName: state.attributeName,
+    categories: outcome.categories,
+    interventionMode: normalizeInterventionMode(settings?.interventionMode),
+    spans
+  });
+  if (decisionKey === state.lastDecisionKey) {
+    return;
+  }
+
+  const replacementText = buildAttributeReplacementText(sourceText, spans, settings);
+  if (replacementText) {
+    state.element.setAttribute(state.attributeName, replacementText);
+  } else {
+    state.element.removeAttribute(state.attributeName);
+  }
+  state.isMasked = true;
+  state.isPending = false;
+  state.lastDecisionKey = decisionKey;
+}
 
 function renderOutcome(state, outcome, settings) {
   if (!state) return;
   suppressMutationFeedback(180);
+  clearPreconcealState(state);
 
   if (!outcome?.blocked) {
     restoreNodeState(state);
@@ -5299,11 +7804,11 @@ function renderOutcome(state, outcome, settings) {
   const decisionKey = JSON.stringify({
     text: sourceText,
     categories: outcome.categories,
-    interventionMode: settings?.interventionMode || "mask",
+    interventionMode: normalizeInterventionMode(settings?.interventionMode),
     tooltip: buildMaskTooltip(outcome.categories, outcome.reasons, settings),
     spans
   });
-  if (decisionKey === state.lastDecisionKey) {
+  if (decisionKey === state.lastDecisionKey && !state.isPending) {
     return;
   }
 
@@ -5319,18 +7824,34 @@ function renderOutcome(state, outcome, settings) {
   renderBox.className = "shieldtext-render-box";
 
   const tooltip = buildMaskTooltip(outcome.categories, outcome.reasons, settings);
+  const accessibilityLabel = buildMaskAccessibilityLabel(tooltip);
   wrapper.dataset.shieldtextState = "blocked";
   wrapper.dataset.shieldtextTooltip = tooltip;
+  wrapper.setAttribute("title", accessibilityLabel);
 
   let cursor = 0;
+  const interventionMode = normalizeInterventionMode(settings?.interventionMode);
   for (const span of spans) {
     if (span.start > cursor) {
       renderBox.appendChild(document.createTextNode(sourceText.slice(cursor, span.start)));
     }
 
+    if (interventionMode === "remove") {
+      cursor = span.end;
+      continue;
+    }
+
     const mask = document.createElement("span");
-    const shouldHide = settings?.interventionMode === "hide";
-    mask.className = shouldHide ? "shieldtext-inline-hide" : "shieldtext-inline-mask";
+    const shouldHide = interventionMode === "hide";
+    const shouldBlur = interventionMode === "blur";
+    mask.className = shouldHide
+      ? "shieldtext-inline-hide"
+      : shouldBlur
+        ? "shieldtext-inline-blur"
+        : "shieldtext-inline-mask";
+    mask.dataset.shieldtextTooltip = accessibilityLabel;
+    mask.setAttribute("title", accessibilityLabel);
+    mask.setAttribute("aria-label", accessibilityLabel);
     if (shouldHide) {
       mask.style.setProperty("color", "transparent", "important");
       mask.style.setProperty("-webkit-text-fill-color", "transparent", "important");
@@ -5344,9 +7865,10 @@ function renderOutcome(state, outcome, settings) {
       hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
       hiddenText.style.setProperty("text-shadow", "none", "important");
       mask.appendChild(hiddenText);
+    } else if (shouldBlur) {
+      mask.textContent = span.text;
     } else {
       mask.textContent = buildVisibleMaskReplacement(span.text);
-      mask.setAttribute("aria-label", "마스킹됨");
     }
     renderBox.appendChild(mask);
 
@@ -5364,6 +7886,9 @@ function renderOutcome(state, outcome, settings) {
 }
 
 function applyDecision(candidates, decision, settings, options = {}) {
+  const applySummary = {
+    preservedHighSignalMaskCount: 0
+  };
   const expectedGeneration = Number(options.generation || 0);
   const expectedSettingsRevision = Number(options.settingsRevision ?? settingsRevision);
   const stage = String(options.stage || "foreground");
@@ -5380,7 +7905,7 @@ function applyDecision(candidates, decision, settings, options = {}) {
       restoreCandidatesRenderedContent(candidates);
     }
     staleResponseDropCount += Array.isArray(candidates) ? candidates.length : 0;
-    return;
+    return applySummary;
   }
 
   for (const candidate of candidates) {
@@ -5403,6 +7928,14 @@ function applyDecision(candidates, decision, settings, options = {}) {
       markCandidateSettledAfterLowerPriorityApplySkip(candidate);
       continue;
     }
+    if (shouldPreserveHighSignalMask(candidate, state, outcome, stage)) {
+      applySummary.preservedHighSignalMaskCount += Math.max(
+        1,
+        findHighSignalProfanitySpans(getCandidateCurrentSourceText(candidate, state)).length
+      );
+      markCandidateApplied(candidate, stage, true);
+      continue;
+    }
 
     if (candidate.candidateKind === "editable-value") {
       if (!isCandidateGenerationCurrent(candidate, expectedGeneration)) {
@@ -5414,6 +7947,42 @@ function applyDecision(candidates, decision, settings, options = {}) {
       const previousDecisionKey = String(state.lastDecisionKey || "");
       renderEditableValueOutcome(
         candidate,
+        outcome || {
+          blocked: false,
+          categories: [],
+          reasons: [],
+          spans: []
+        },
+        settings
+      );
+
+      if (stage === "foreground" && !wasMasked && state.isMasked) {
+        foregroundApplyCount += 1;
+      } else if (stage === "reconcile") {
+        if (wasMasked && !state.isMasked) {
+          reconcileUnmaskCount += 1;
+        } else if (
+          state.isMasked &&
+          previousDecisionKey &&
+          previousDecisionKey !== String(state.lastDecisionKey || "")
+        ) {
+          reconcileOverwriteCount += 1;
+        }
+      }
+      markCandidateApplied(candidate, stage, state.isMasked);
+      continue;
+    }
+
+    if (candidate.candidateKind === "attribute-value") {
+      if (!isCandidateGenerationCurrent(candidate, expectedGeneration)) {
+        staleResponseDropCount += 1;
+        continue;
+      }
+
+      const wasMasked = Boolean(state.isMasked);
+      const previousDecisionKey = String(state.lastDecisionKey || "");
+      renderAttributeValueOutcome(
+        state,
         outcome || {
           blocked: false,
           categories: [],
@@ -5473,6 +8042,7 @@ function applyDecision(candidates, decision, settings, options = {}) {
     }
     markCandidateApplied(candidate, stage, state.isMasked);
   }
+  return applySummary;
 }
 
 function createEmptySessionStats() {
@@ -5553,9 +8123,49 @@ function summarizeAnalysisResultForDiagnostics(result, sourceText = "") {
   };
 }
 
+function summarizeAnalysisTimingResults(results) {
+  const entries = Array.isArray(results) ? results : [];
+  const pipelineTimings = [];
+  const modelTimings = [];
+
+  for (const result of entries) {
+    const pipelineMs = Number(result?.timing_ms);
+    const modelMs = Number(result?.model_timing_ms);
+    if (Number.isFinite(pipelineMs) && pipelineMs >= 0) {
+      pipelineTimings.push(pipelineMs);
+    }
+    if (Number.isFinite(modelMs) && modelMs >= 0) {
+      modelTimings.push(modelMs);
+    }
+  }
+
+  const summarize = (values) => {
+    if (values.length === 0) {
+      return {
+        count: 0,
+        avgMs: 0,
+        maxMs: 0
+      };
+    }
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return {
+      count: values.length,
+      avgMs: Math.round((total / values.length) * 1000) / 1000,
+      maxMs: Math.round(Math.max(...values) * 1000) / 1000
+    };
+  };
+
+  return {
+    backendPipeline: summarize(pipelineTimings),
+    backendModel: summarize(modelTimings)
+  };
+}
+
 function buildAnalysisDiagnostics(analysisUnits, analysisResults, meta = {}) {
   const units = Array.isArray(analysisUnits) ? analysisUnits : [];
   const results = Array.isArray(analysisResults) ? analysisResults : [];
+  const backendInternalTimingSummary =
+    meta.backendInternalTimingSummary || summarizeAnalysisTimingResults(results);
 
   return {
     decisionSource: String(meta.decisionSource || "backend"),
@@ -5578,6 +8188,7 @@ function buildAnalysisDiagnostics(analysisUnits, analysisResults, meta = {}) {
     returnedSpanCount: Number(meta.returnedSpanCount || 0),
     appliedSpanCount: Number(meta.appliedSpanCount || 0),
     droppedSpanCount: Number(meta.droppedSpanCount || 0),
+    backendInternalTimingSummary,
     backendRequestTimings: Array.isArray(meta.backendRequestTimings)
       ? meta.backendRequestTimings.slice(-8)
       : [],
@@ -5593,7 +8204,8 @@ function buildAnalysisDiagnostics(analysisUnits, analysisResults, meta = {}) {
 async function persistDebug(payload, decision, stats) {
   const runtimeStats = {
     ...(stats || {}),
-    ...getRealtimeWorkerDiagnostics()
+    ...getRealtimeWorkerDiagnostics(),
+    ...getPerformanceGuardDiagnostics()
   };
   const { sessionStats } = await safeStorageLocalGet(["sessionStats"]);
   const currentSessionStats = {
@@ -6300,6 +8912,8 @@ async function executeHotPathForCandidates(candidates, runReason) {
     for (const candidate of nextCandidates) {
       if (candidate.candidateKind === "editable-value") {
         restoreEditableValueState(candidate.state);
+      } else if (candidate.candidateKind === "attribute-value") {
+        restoreAttributeValueState(candidate.state);
       } else {
         restoreNodeState(candidate.state);
       }
@@ -6326,6 +8940,9 @@ async function executeHotPathForCandidates(candidates, runReason) {
       if (candidate.candidateKind === "editable-value") {
         return buildEditableValueCandidate(candidate.element);
       }
+      if (candidate.candidateKind === "attribute-value") {
+        return buildAttributeValueCandidate(candidate.element, candidate.state?.attributeName);
+      }
       return candidate;
     })
     .filter(Boolean);
@@ -6351,6 +8968,18 @@ async function executeHotPathForCandidates(candidates, runReason) {
   const unitCandidates = collectUnitCandidates(analysisUnits);
 
   const startedAt = performance.now();
+  const pipelineSequence = ++latestPipelineSequence;
+  const preconcealCount = preConcealGoogleAnalysisUnits(analysisUnits, {
+    limit: GOOGLE_INITIAL_PRECONCEAL_LIMIT,
+    runReason
+  });
+  const localPreflight = applyLocalPreflightDecision(unitCandidates, analysisUnits, settings, {
+    generation: analysisGeneration,
+    settingsRevision: activeSettingsRevision,
+    startedAt,
+    pipelineSequence
+  });
+  let firstMaskLatencyMs = Number(localPreflight.firstMaskLatencyMs || 0);
   const hotPathMeta = await analyzePayloadWithRealtimeWorker(
     analysisUnits,
     settings,
@@ -6369,7 +8998,6 @@ async function executeHotPathForCandidates(candidates, runReason) {
     return { ok: true, stale: true };
   }
 
-  const pipelineSequence = ++latestPipelineSequence;
   const hostname = location.hostname || "unknown";
 
   if (!hotPathMeta.ok) {
@@ -6390,6 +9018,7 @@ async function executeHotPathForCandidates(candidates, runReason) {
       backendStatus: hotPathMeta.backendStatus || "ready"
     }
   );
+  recordWellbeingDetectionFromDecision(decision, "backend-foreground", pipelineSequence);
 
   if (Number(decision.maskedSpanCount || 0) > 0) {
     suppressMutationFeedback(180);
@@ -6406,8 +9035,9 @@ async function executeHotPathForCandidates(candidates, runReason) {
   );
   markSkippedCandidatesForRetryBackoff(analysisUnits, hotPathMeta.results, analysisGeneration);
 
-  const firstMaskLatencyMs =
-    Number(decision.maskedSpanCount || 0) > 0 ? Math.round(performance.now() - startedAt) : 0;
+  if (!firstMaskLatencyMs && Number(decision.maskedSpanCount || 0) > 0) {
+    firstMaskLatencyMs = Math.round(performance.now() - startedAt);
+  }
 
   scheduleHotPathStatsPersist({
     analyzedNodeCount: decision.analyzedNodeCount,
@@ -6450,6 +9080,8 @@ async function executeHotPathForCandidates(candidates, runReason) {
     hostname,
     hotPathLatencyMs: Number(hotPathMeta.durationMs || 0),
     maskedSpanCount: Number(decision.maskedSpanCount || 0),
+    localPreflightMaskedSpanCount: Number(localPreflight.decision?.maskedSpanCount || 0),
+    preconcealCount,
     pipelineSequence,
     reconcileQueueDepth: RECONCILE_QUEUE.size,
     runReason,
@@ -6591,6 +9223,7 @@ async function reconcileAnalysisUnitsWithBackend(
         backendStatus: fullMeta.backendStatus || "ready"
       }
     );
+    recordWellbeingDetectionFromDecision(decision, "backend-reconcile", pipelineSequence);
 
     suppressMutationFeedback(120);
     applyDecision(unitCandidates, decision, settings, {
@@ -6693,6 +9326,7 @@ async function executePipeline(runReason) {
 
   try {
     const settings = await loadSettings({ force: shouldForceSettingsLoadForRun(runReason) });
+    const settingsLoadedAt = performance.now();
     const activeSettingsRevision = settingsRevision;
     const hostname = location.hostname || "unknown";
 
@@ -6795,28 +9429,36 @@ async function executePipeline(runReason) {
       return { ok: true, stats };
     }
 
+    const candidateCollectStartedAt = performance.now();
     const immediateInputCandidates = runReason === "input" ? collectImmediateInputCandidates() : [];
-    let candidates = immediateInputCandidates.length > 0 ? immediateInputCandidates : collectCandidates();
+    let candidates = immediateInputCandidates.length > 0 ? immediateInputCandidates : collectCandidates(runReason);
     if (runReason === "settings-updated") {
       candidates = includeEditableCandidatesForSettingsRefresh(candidates);
     }
+    const candidatesCollectedAt = performance.now();
+    const dirtySelectStartedAt = performance.now();
     const dirtyCandidates = immediateInputCandidates.length > 0
       ? immediateInputCandidates
       : getDirtyCandidates(candidates, runReason);
+    const dirtySelectedAt = performance.now();
+    const prioritizeStartedAt = performance.now();
     const prioritizedCandidates = selectCandidatesForRun(
       dirtyCandidates,
       settings,
       runReason
     );
+    const prioritizedAt = performance.now();
     const analysisGeneration = ++latestAnalysisGeneration;
     markCandidatesAnalysisGeneration(prioritizedCandidates, analysisGeneration);
+    const foregroundSelectStartedAt = performance.now();
     const foregroundCandidates = selectForegroundWaveCandidates(
       prioritizedCandidates,
       settings,
       runReason
     );
+    const foregroundSelectedAt = performance.now();
     const foregroundUnitBuildStartedAt = performance.now();
-    const analysisUnits = buildHotPathAnalysisUnits(foregroundCandidates, {
+    let analysisUnits = buildHotPathAnalysisUnits(foregroundCandidates, {
       containerLimit: isBroadAnalysisReason(runReason)
         ? MAX_HOT_PATH_CONTAINERS
         : MAX_FOREGROUND_WAVE_CONTAINERS,
@@ -6826,6 +9468,9 @@ async function executePipeline(runReason) {
         runReason === "input-hot-path" ||
         runReason === "initial-editable-pass"
     });
+    if (runReason === "background-validation") {
+      analysisUnits = analysisUnits.slice(0, MAX_BACKGROUND_VALIDATION_ANALYSIS_UNITS);
+    }
     const unitCandidates = collectUnitCandidates(analysisUnits);
     const analyzedCandidateIds = new Set(unitCandidates.map((candidate) => candidate.nodeId));
     const foregroundUnitBuildMs = Math.round(performance.now() - foregroundUnitBuildStartedAt);
@@ -6895,6 +9540,7 @@ async function executePipeline(runReason) {
           items: []
         }
       };
+      maybeActivatePerformanceGuard(stats, runReason);
       if (shouldPersistEmptyPipelineRun(runReason)) {
         await persistDebug(payload, decision, stats);
       } else {
@@ -6922,6 +9568,22 @@ async function executePipeline(runReason) {
 
     let firstMaskLatencyMs = 0;
     const payload = buildPayload(foregroundCandidates, candidates.length, droppedCandidateCount);
+    const preBackendCompletedAt = performance.now();
+    const preconcealCount = preConcealGoogleAnalysisUnits(analysisUnits, {
+      limit: GOOGLE_INITIAL_PRECONCEAL_LIMIT,
+      runReason
+    });
+    const localPreflight = applyLocalPreflightDecision(unitCandidates, analysisUnits, settings, {
+      generation: analysisGeneration,
+      settingsRevision: activeSettingsRevision,
+      startedAt,
+      pipelineSequence
+    });
+    if (!firstMaskLatencyMs && Number(localPreflight.firstMaskLatencyMs || 0) > 0) {
+      firstMaskLatencyMs = Number(localPreflight.firstMaskLatencyMs || 0);
+    }
+    const localPreflightCompletedAt = performance.now();
+    const backendStartedAt = performance.now();
     const hotPathMeta = await analyzePayloadWithRealtimeWorker(
       analysisUnits,
       settings,
@@ -6969,6 +9631,7 @@ async function executePipeline(runReason) {
             : "foreground"
       }
     );
+    const backendCompletedAt = performance.now();
     let stats = null;
 
     if (!isSettingsRevisionCurrent(activeSettingsRevision)) {
@@ -7001,6 +9664,8 @@ async function executePipeline(runReason) {
         totalCandidateCount: candidates.length,
         requestedAnalysisCount: analysisUnits.length,
         cacheHitCount: 0,
+        localPreflightMaskedSpanCount: Number(localPreflight.decision?.maskedSpanCount || 0),
+        preconcealCount,
         lastDecisionSource: "backend-foreground-failed",
         sensitivityMode: getSensitivityMode(settings),
         lastForegroundDiagnostics: {
@@ -7046,6 +9711,7 @@ async function executePipeline(runReason) {
       };
     }
 
+    const decisionBuildStartedAt = performance.now();
     const decision = buildDecisionFromBackend(
       analysisUnits,
       hotPathMeta.results,
@@ -7056,17 +9722,21 @@ async function executePipeline(runReason) {
         backendStatus: hotPathMeta.backendStatus || "ready"
       }
     );
+    const decisionBuiltAt = performance.now();
+    recordWellbeingDetectionFromDecision(decision, "backend-foreground", pipelineSequence);
 
     if (Number(decision.maskedSpanCount || 0) > 0 && !firstMaskLatencyMs) {
       firstMaskLatencyMs = Math.round(performance.now() - startedAt);
     }
 
     suppressMutationFeedback(220);
-    applyDecision(unitCandidates, decision, settings, {
+    const maskApplyStartedAt = performance.now();
+    const applySummary = applyDecision(unitCandidates, decision, settings, {
       generation: analysisGeneration,
       stage: "foreground",
       settingsRevision: activeSettingsRevision
     });
+    const maskAppliedAt = performance.now();
     markCandidatesSettled(
       collectSettledCandidatesFromAnalysisUnits(analysisUnits, hotPathMeta.results),
       analysisGeneration
@@ -7094,12 +9764,35 @@ async function executePipeline(runReason) {
       );
     }
 
+    const backendInternalTimingSummary = summarizeAnalysisTimingResults(hotPathMeta.results);
+    const phaseTimings = {
+      settingsLoadMs: Math.round(settingsLoadedAt - startedAt),
+      candidateCollectMs: Math.round(candidatesCollectedAt - candidateCollectStartedAt),
+      dirtySelectMs: Math.round(dirtySelectedAt - dirtySelectStartedAt),
+      prioritizeMs: Math.round(prioritizedAt - prioritizeStartedAt),
+      foregroundSelectMs: Math.round(foregroundSelectedAt - foregroundSelectStartedAt),
+      parserMs: foregroundUnitBuildMs,
+      preBackendMs: Math.round(preBackendCompletedAt - startedAt),
+      localPreflightMs: Math.round(localPreflightCompletedAt - preBackendCompletedAt),
+      backendRoundTripMs: Math.round(backendCompletedAt - backendStartedAt),
+      backendReportedMs: Number(hotPathMeta.durationMs || 0),
+      decisionBuildMs: Math.round(decisionBuiltAt - decisionBuildStartedAt),
+      maskApplyMs: Math.round(maskAppliedAt - maskApplyStartedAt),
+      postBackendToMaskMs: Math.round(maskAppliedAt - backendCompletedAt),
+      totalToMaskMs: Math.round(maskAppliedAt - startedAt)
+    };
+
     stats = {
       hostname,
       analyzedNodeCount: decision.analyzedNodeCount,
       blockedNodeCount: decision.blockedNodeCount,
       matchedKeywordCount: decision.matchedKeywords.length,
       maskedSpanCount: Number(decision.maskedSpanCount || 0),
+      localPreflightMaskedSpanCount: Number(localPreflight.decision?.maskedSpanCount || 0),
+      preservedHighSignalMaskCount: Number(applySummary?.preservedHighSignalMaskCount || 0),
+      effectiveMaskedSpanCount:
+        Number(decision.maskedSpanCount || 0) +
+        Number(applySummary?.preservedHighSignalMaskCount || 0),
       durationMs: Math.round(performance.now() - startedAt),
       firstMaskLatencyMs,
       runReason,
@@ -7120,6 +9813,8 @@ async function executePipeline(runReason) {
       foregroundBackendQueueDepth: Number(hotPathMeta.backendQueueDepthAtEnqueue || 0),
       reconcileRequestCount: contextualReconcileCandidates.length > 0 ? 1 : 0,
       foregroundUnitBuildMs,
+      phaseTimings,
+      backendInternalTimingSummary,
       firstPaintMaskMs: firstMaskLatencyMs,
       hotPathLatencyMs: Number(hotPathMeta.durationMs || 0),
       foregroundBackendLatencyMs: Number(hotPathMeta.durationMs || 0),
@@ -7137,6 +9832,7 @@ async function executePipeline(runReason) {
       workerCacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
       returnedSpanCount: Number(decision.returnedSpanCount || 0),
       droppedSpanCount: Number(decision.droppedSpanCount || 0),
+      preconcealCount,
       sensitivityMode: getSensitivityMode(settings),
       lastDecisionSource: "backend-foreground",
       lastForegroundDiagnostics: buildAnalysisDiagnostics(
@@ -7160,16 +9856,22 @@ async function executePipeline(runReason) {
           backendRequestTimings: Array.isArray(hotPathMeta.backendRequestTimings)
             ? hotPathMeta.backendRequestTimings
             : [],
+          backendInternalTimingSummary,
           cacheHitCount: Number(hotPathMeta.cacheHitCount || 0),
           backendCacheHitCount: Number(hotPathMeta.backendCacheHitCount || 0),
           durationMs: Number(hotPathMeta.durationMs || 0),
           returnedSpanCount: Number(decision.returnedSpanCount || 0),
           appliedSpanCount: Number(decision.maskedSpanCount || 0),
+          preservedHighSignalMaskCount: Number(applySummary?.preservedHighSignalMaskCount || 0),
+          effectiveAppliedSpanCount:
+            Number(decision.maskedSpanCount || 0) +
+            Number(applySummary?.preservedHighSignalMaskCount || 0),
           droppedSpanCount: Number(decision.droppedSpanCount || 0)
         }
       )
     };
 
+    maybeActivatePerformanceGuard(stats, runReason);
     await persistDebug(payload, decision, stats);
 
     if (
@@ -7227,7 +9929,12 @@ function getPipelineScheduleDelayMs(reason) {
     return INPUT_PIPELINE_DEBOUNCE_MS;
   }
 
-  if (reason === "visibility" || reason === "mutation" || reason === "route-change") {
+  if (
+    reason === "visibility" ||
+    reason === "mutation" ||
+    reason === "route-change" ||
+    reason === "google-dynamic-content"
+  ) {
     return VISIBILITY_PIPELINE_DEBOUNCE_MS;
   }
 
@@ -7247,7 +9954,8 @@ function getPipelineReasonPriority(reason) {
   if (
     normalizedReason === "visibility" ||
     normalizedReason === "mutation" ||
-    normalizedReason === "route-change"
+    normalizedReason === "route-change" ||
+    normalizedReason === "google-dynamic-content"
   ) {
     return 5;
   }
@@ -7292,6 +10000,8 @@ function handleScheduledPipelineError(reason, error) {
 
 function schedulePipeline(reason) {
   if (extensionContextInvalidated || isUnsupportedPage()) return;
+  if (shouldSuppressPipelineForGoogleSearch(reason)) return;
+  if (shouldSuppressPipelineForPerformanceGuard(reason)) return;
 
   const delay = getPipelineScheduleDelayMs(reason);
   const deadlineMs = performance.now() + delay;
@@ -7333,8 +10043,24 @@ function cancelScheduledPipeline() {
   queuedReason = null;
 }
 
+function scheduleIdleStartupTask(callback) {
+  if (typeof callback !== "function") {
+    return;
+  }
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout: INITIAL_ANALYSIS_IDLE_TIMEOUT_MS });
+    return;
+  }
+
+  window.setTimeout(callback, INITIAL_ANALYSIS_IDLE_TIMEOUT_MS);
+}
+
 function scheduleStartupFollowupPipelines() {
   clearStartupFollowupPipelines();
+  if (isGoogleSearchPage()) {
+    return;
+  }
 
   for (const delayMs of STARTUP_FOLLOWUP_DELAYS_MS) {
     const timeoutId = window.setTimeout(() => {
@@ -7369,14 +10095,14 @@ function scheduleBackendWarmup(options = {}) {
   const runWarmup = async () => {
     try {
       const settings = await loadSettings();
-      if (!settings.enabled) {
+      if (!settings.enabled || settings.backendEnabled !== true) {
         return;
       }
 
       await safeRuntimeSendMessage({
-        type: "ANALYZE_TEXT_BATCH",
-        texts: BACKEND_WARMUP_TEXTS.slice(0, 1),
-        requestTimeoutMsOverride: 900,
+        type: "WARMUP_BACKEND_MODELS",
+        fallbackTexts: BACKEND_WARMUP_FALLBACK_TEXTS.slice(0, 2),
+        requestTimeoutMsOverride: BACKEND_WARMUP_REQUEST_TIMEOUT_MS,
         sensitivity: settings.sensitivity,
         analysisMode: "background-validation"
       });
@@ -7446,12 +10172,26 @@ function refreshCurrentRouteCandidates(options = {}) {
     return 0;
   }
 
+  if (isGoogleSearchPage()) {
+    cleanupDisconnectedStates();
+    scheduleGoogleSearchLightModeProtection(cachedSettings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: options.force === true
+    });
+    return 0;
+  }
+
+  scheduleSearchResultProtection(cachedSettings);
   cleanupDisconnectedStates();
   const markDirty = options.markDirty === true;
   const registeredCount = refreshVisibleCandidateRegistrations({
     markDirty,
     markHighSignalDirty: options.markHighSignalDirty === true,
     highSignalDirtyLimit: options.highSignalDirtyLimit
+  });
+  applyCachedLocalPreflightForVisiblePage({
+    limit: Math.min(18, Math.max(8, options.highSignalDirtyLimit || 12)),
+    startedAt: performance.now()
   });
   scheduleInitialEditablePass();
   if (options.scheduleStartupFollowups !== false) {
@@ -7462,6 +10202,15 @@ function refreshCurrentRouteCandidates(options = {}) {
 
 function runRouteRefreshWave(sequence, options = {}) {
   if (sequence !== routeRefreshSequence) {
+    return;
+  }
+
+  if (isGoogleSearchPage()) {
+    refreshCurrentRouteCandidates({
+      scheduleStartupFollowups: false,
+      markDirty: options.markDirty === true,
+      highSignalDirtyLimit: 0
+    });
     return;
   }
 
@@ -7600,6 +10349,9 @@ function initializeNavigationListeners() {
     if (extensionContextInvalidated || isUnsupportedPage()) {
       return;
     }
+    if (document.visibilityState !== "visible") {
+      return;
+    }
 
     if (String(location.href || "") !== lastObservedLocationHref) {
       scheduleRouteRefresh("location-poll");
@@ -7615,23 +10367,16 @@ function refreshVisibleCandidateRegistrations(options = {}) {
     ? Number(options.highSignalDirtyLimit)
     : undefined;
 
+  if (isPerformanceGuardActive()) {
+    return 0;
+  }
+
+  if (isGoogleImageSearchPage()) {
+    return 0;
+  }
+
   if (isGoogleSearchPage()) {
-    const containers = getGoogleVisibleAnalysisContainers(MAX_BACKGROUND_CONTAINERS);
-    for (const container of containers) {
-      registeredCount += registerTextNodesInTree(container, {
-        markDirty,
-        markHighSignalDirty,
-        highSignalDirtyLimit,
-        onlyVisible: true,
-        limit: MAX_GOOGLE_CANDIDATES_PER_CONTAINER
-      });
-    }
-    const highSignalDirtyCount = markGoogleHighSignalCandidatesDirty(
-      Math.min(16, Math.max(8, highSignalDirtyLimit || 16))
-    );
-    if (registeredCount > 0 || highSignalDirtyCount > 0) {
-      return registeredCount + highSignalDirtyCount;
-    }
+    return 0;
   }
 
   if (isYouTubePage()) {
@@ -7660,6 +10405,10 @@ function refreshVisibleCandidateRegistrations(options = {}) {
 }
 
 function runScrollVisibilityRefresh() {
+  if (isGoogleSearchPage() || isPerformanceGuardActive()) {
+    return;
+  }
+
   if (scrollVisibilityRefreshFrameId) {
     return;
   }
@@ -7675,12 +10424,20 @@ function runScrollVisibilityRefresh() {
       highSignalDirtyLimit: 32
     });
     if (registeredCount > 0) {
+      applyCachedLocalPreflightForVisiblePage({
+        limit: 12,
+        startedAt: performance.now()
+      });
       schedulePipeline("visibility");
     }
   });
 }
 
 function scheduleScrollVisibilityRefresh(options = {}) {
+  if (isGoogleSearchPage() || isPerformanceGuardActive()) {
+    return;
+  }
+
   runScrollVisibilityRefresh();
 
   if (options.withSettleRefresh === false) {
@@ -7722,6 +10479,60 @@ function scheduleSuppressedMutationRefresh() {
   }, delayMs);
 }
 
+function isGoogleDynamicAnalysisElement(element) {
+  if (!(element instanceof Element)) {
+    return false;
+  }
+
+  return Boolean(
+    element.closest(GOOGLE_DYNAMIC_CONTENT_SELECTOR) ||
+      element.querySelector(GOOGLE_DYNAMIC_CONTENT_SELECTOR)
+  );
+}
+
+function hasGoogleDynamicAnalysisText(node) {
+  if (node instanceof Text) {
+    if (!isGoogleDynamicAnalysisElement(node.parentElement)) {
+      return false;
+    }
+    return normalizeText(node.nodeValue || "").length >= 8;
+  }
+
+  if (node instanceof Element) {
+    if (!isGoogleDynamicAnalysisElement(node)) {
+      return false;
+    }
+    return normalizeText(node.textContent || node.getAttribute("aria-label") || "").length >= 8;
+  }
+
+  if (node instanceof DocumentFragment) {
+    return [...node.childNodes].some((child) => hasGoogleDynamicAnalysisText(child));
+  }
+
+  return false;
+}
+
+function shouldScheduleGoogleDynamicContentPipeline(mutationList) {
+  if (!isGoogleTextSearchAnalysisPage() || !Array.isArray(mutationList)) {
+    return false;
+  }
+
+  for (const mutation of mutationList) {
+    if (!mutation) continue;
+    if (mutation.type === "characterData" && hasGoogleDynamicAnalysisText(mutation.target)) {
+      return true;
+    }
+
+    for (const node of mutation.addedNodes || []) {
+      if (hasGoogleDynamicAnalysisText(node)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function markTextNodeDirty(textNode, options = {}) {
   if (!(textNode instanceof Text)) return false;
   const state = registerTextNode(textNode);
@@ -7736,6 +10547,10 @@ function markTextNodeDirty(textNode, options = {}) {
 }
 
 function markDirtyFromTarget(target, options = {}) {
+  if (isGoogleSearchPage() || isPerformanceGuardActive()) {
+    return false;
+  }
+
   const forceDirty = options.force === true;
 
   if (target instanceof Text) {
@@ -7746,7 +10561,7 @@ function markDirtyFromTarget(target, options = {}) {
   if (!(target instanceof Element)) return false;
   if (shouldSkipTextNodeParent(target)) return false;
   const shouldInspectGoogleMutation =
-    isGoogleSearchPage() &&
+    isGoogleTextSearchAnalysisPage() &&
     target !== document.body &&
     target !== document.documentElement &&
     isElementNearViewport(target.getBoundingClientRect());
@@ -7816,6 +10631,19 @@ function initializeObserver() {
     managedMutationSkipCount += mutationList.length - pageMutations.length;
     if (pageMutations.length === 0) return;
 
+    if (isGoogleSearchPage()) {
+      scheduleGoogleSearchLightModeProtection(cachedSettings, {
+        limit: MAX_DOMAIN_PRIORITY_CANDIDATES
+      });
+      if (shouldScheduleGoogleDynamicContentPipeline(pageMutations)) {
+        schedulePipeline("google-dynamic-content");
+      }
+      if (isGoogleTextSearchAnalysisPage()) {
+        scheduleSearchResultProtection(cachedSettings);
+      }
+      return;
+    }
+
     if (Date.now() < ignoreMutationsUntil) {
       scheduleSuppressedMutationRefresh();
       return;
@@ -7843,6 +10671,9 @@ function initializeObserver() {
 
     if (sawAddedContent && !shouldSchedule) {
       scheduleScrollVisibilityRefresh({ withSettleRefresh: false });
+    }
+    if (sawAddedContent && isGoogleTextSearchAnalysisPage()) {
+      scheduleSearchResultProtection(cachedSettings);
     }
   });
 
@@ -7873,6 +10704,9 @@ function initializeInputListeners() {
       }
 
       clearStaleEditableMaskForElement(target);
+      applyCachedLocalPreflightForCandidates([candidate], {
+        startedAt: performance.now()
+      });
       pendingImmediateInputElement = target;
       DIRTY_NODE_IDS.add(candidate.nodeId);
       scheduleImmediateInputPipeline(target, "input-hot-path");
@@ -7889,6 +10723,13 @@ function initializeInputListeners() {
       }
 
       clearStaleEditableMaskForElement(target);
+      const candidate = buildEditableValueCandidate(target);
+      if (candidate) {
+        applyCachedLocalPreflightForCandidates([candidate], {
+          startedAt: performance.now()
+        });
+        DIRTY_NODE_IDS.add(candidate.nodeId);
+      }
       pendingImmediateInputElement = target;
       scheduleImmediateInputPipeline(target, "input-hot-path");
     },
@@ -7986,6 +10827,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "RUN_GOOGLE_SEARCH_LIGHT_PROTECTION") {
+    try {
+      if (!isGoogleSearchPage()) {
+        sendResponse({
+          ok: false,
+          reason: "NOT_GOOGLE_SEARCH_PAGE",
+          href: String(location.href || "")
+        });
+        return false;
+      }
+
+      const lightProtection = applyGoogleSearchLightModeProtection(cachedSettings, {
+        force: true,
+        minIntervalMs: 0,
+        limit: Number.isFinite(message.limit)
+          ? Number(message.limit)
+          : MAX_DOMAIN_PRIORITY_CANDIDATES
+      });
+      sendResponse({
+        ok: true,
+        maskedSpanCount: Number(lightProtection?.maskedSpanCount || 0),
+        preconcealCount: Number(lightProtection?.preconcealCount || 0),
+        href: String(location.href || "")
+      });
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        reason: serializeFailureReason(error),
+        errorCode: String(error?.errorCode || "RUN_GOOGLE_SEARCH_LIGHT_PROTECTION_FAILED")
+      });
+    }
+    return false;
+  }
+
   if (message?.type === "RUN_PIPELINE" || message?.type === "RUN_FILTER") {
     executePipeline(message.reason || "manual")
       .then((result) => {
@@ -8038,6 +10913,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
 
   if (nextSettings.enabled === false) {
     removeSitePolicyOverlay();
+    clearSearchResultProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: false,
@@ -8050,11 +10926,9 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
     return { ok: true, enabled: false, sensitivityMode: "off" };
   }
 
-  requestCurrentSitePolicy().catch((error) => {
-    handleExtensionContextError(error);
-  });
-
   if (isFilteringSuppressedBySensitivity(nextSettings)) {
+    removeSitePolicyOverlay();
+    clearSearchResultProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: true,
@@ -8073,6 +10947,36 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
       reason: "SENSITIVITY_DISABLED"
     };
   }
+
+  requestCurrentSitePolicy().catch((error) => {
+    handleExtensionContextError(error);
+  });
+  if (nextSettings.backendEnabled === true) {
+    scheduleBackendWarmup({ immediate: isGoogleSearchPage() });
+  }
+  if (isGoogleSearchPage()) {
+    scheduleGoogleSearchLightModeProtection(nextSettings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: true
+    });
+    scheduleHotPathStatsPersist({
+      enabled: true,
+      runReason,
+      backendStatus: "ready",
+      sensitivityMode: getSensitivityMode(nextSettings),
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0,
+      lastDecisionSource: "google-search-light-mode"
+    });
+    return {
+      ok: true,
+      enabled: true,
+      sensitivityMode: getSensitivityMode(nextSettings),
+      skipped: true,
+      reason: "GOOGLE_SEARCH_LIGHT_MODE"
+    };
+  }
+  scheduleSearchResultProtection(nextSettings);
   scheduleInitialEditablePass();
   schedulePipeline(runReason);
   return {
@@ -8088,19 +10992,37 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   applySettingsSnapshot(changes.settings.newValue || {}, "settings-updated");
 });
 
-async function bootstrap() {
-  if (bootstrapStarted || extensionContextInvalidated || isUnsupportedPage()) return;
-  if (!document.body || !document.documentElement) return;
+async function runInitialPageAnalysis(initialSettings, scheduledAt) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return;
+  }
 
-  bootstrapStarted = true;
-  initializeVisibilityObserver();
-  initializeInputListeners();
-  initializeViewportListeners();
-  initializeNavigationListeners();
-  initializeLabSelfTestListeners();
-  requestCurrentSitePolicy().catch((error) => {
-    handleExtensionContextError(error);
-  });
+  const settings = await loadSettings().catch(() => initialSettings || getMergedSettings({}));
+  if (settings.enabled === false || normalizeSensitivity(settings.sensitivity) <= 0) {
+    removeSitePolicyOverlay();
+    clearSearchResultProtection();
+    initializeObserver();
+    return;
+  }
+
+  if (settings.backendEnabled === true) {
+    scheduleBackendWarmup();
+  }
+
+  if (isGoogleSearchPage()) {
+    applyGoogleSearchLightModeProtection(settings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: true
+    });
+    scheduleGoogleSearchLightModeProtection(settings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: true
+    });
+    initializeObserver();
+    return;
+  }
+
+  scheduleSearchResultProtection(settings);
   registerTextNodesInTree(document.body, {
     markDirty: true,
     onlyVisible: true,
@@ -8109,27 +11031,92 @@ async function bootstrap() {
   refreshVisibleCandidateRegistrations({
     markDirty: true,
     markHighSignalDirty: true,
-    highSignalDirtyLimit: 32
+    highSignalDirtyLimit: 18
   });
   scheduleInitialEditablePass();
   scheduleStartupFollowupPipelines();
-  scheduleBackendWarmup();
   initializeObserver();
+  scheduleHotPathStatsPersist({
+    startupDeferredMs: Math.round(performance.now() - Number(scheduledAt || performance.now())),
+    lastDecisionSource: "deferred-startup"
+  });
 
   executePipeline("initial-load").catch((error) => {
     if (!handleExtensionContextError(error)) {
       console.error("[청마루] initial-load pipeline error", error);
     }
   });
+}
 
-  window.requestAnimationFrame(() => {
-    schedulePipeline("visibility");
+function scheduleInitialPageAnalysis(initialSettings) {
+  if (initialPageAnalysisScheduled || initialPageAnalysisStarted) {
+    return;
+  }
+
+  initialPageAnalysisScheduled = true;
+  const scheduledAt = performance.now();
+  window.setTimeout(() => {
+    initialPageAnalysisScheduled = false;
+    if (initialPageAnalysisStarted) {
+      return;
+    }
+    initialPageAnalysisStarted = true;
+    runInitialPageAnalysis(initialSettings, scheduledAt).catch((error) => {
+      if (!handleExtensionContextError(error)) {
+        console.error("[청마루] initial page analysis failed", error);
+      }
+      initializeObserver();
+    });
   });
+}
+
+async function bootstrap() {
+  if (bootstrapStarted || extensionContextInvalidated || isUnsupportedPage()) return;
+  if (!document.body || !document.documentElement) return;
+
+  bootstrapStarted = true;
+  const initialSettings = await loadSettings({ force: true }).catch(() => getMergedSettings({}));
+  initializeVisibilityObserver();
+  initializeSearchResultProtectionClickGuard();
+  initializeInputListeners();
+  initializeViewportListeners();
+  initializeNavigationListeners();
+  initializeLabSelfTestListeners();
+
+  if (initialSettings.enabled === false || normalizeSensitivity(initialSettings.sensitivity) <= 0) {
+    removeSitePolicyOverlay();
+    clearSearchResultProtection();
+    initializeObserver();
+    return;
+  }
+
+  requestCurrentSitePolicy().catch((error) => {
+    handleExtensionContextError(error);
+  });
+  if (initialSettings.backendEnabled === true) {
+    scheduleBackendWarmup({ immediate: isGoogleSearchPage() });
+  }
+
+  if (isGoogleSearchPage()) {
+    applyGoogleSearchLightModeProtection(initialSettings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: true
+    });
+    scheduleGoogleSearchLightModeProtection(initialSettings, {
+      limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+      force: true
+    });
+    initializeObserver();
+    return;
+  }
+
+  scheduleSearchResultProtection(initialSettings);
+  scheduleInitialEditablePass();
+  scheduleInitialPageAnalysis(initialSettings);
 }
 
 function scheduleBootstrapWhenReady() {
   if (bootstrapStarted || extensionContextInvalidated) return;
-  scheduleBackendWarmup();
 
   if (document.body && document.documentElement) {
     bootstrap().catch((error) => {

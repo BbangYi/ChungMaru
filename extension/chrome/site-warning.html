@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>청마루 사이트 경고</title>
+    <link rel="stylesheet" href="site-warning.css" />
+  </head>
+  <body>
+    <main class="warning-shell" data-verdict="warning">
+      <section class="warning-panel">
+        <div class="face" aria-hidden="true">
+          <span class="brow left"></span>
+          <span class="brow right"></span>
+          <span class="eye left"></span>
+          <span class="eye right"></span>
+          <span class="mouth"></span>
+        </div>
+
+        <p class="eyebrow">청마루 사이트 보호</p>
+        <h1 id="warningTitle">접속 전 확인이 필요합니다</h1>
+        <p id="warningDescription" class="description">사이트 위험도를 확인하고 있습니다.</p>
+
+        <dl class="meta-list">
+          <div>
+            <dt>도메인</dt>
+            <dd id="warningDomain">-</dd>
+          </div>
+          <div>
+            <dt>분류</dt>
+            <dd id="warningCategory">-</dd>
+          </div>
+          <div>
+            <dt>위험도</dt>
+            <dd id="warningRisk">-</dd>
+          </div>
+        </dl>
+
+        <ul id="warningReasons" class="reason-list"></ul>
+
+        <div class="actions">
+          <button id="backButton" class="btn ghost" type="button">돌아가기</button>
+          <button id="continueButton" class="btn danger" type="button">위험 감수하고 계속</button>
+        </div>
+
+        <p id="warningStatus" class="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script src="site-warning.js"></script>
+  </body>
+</html>

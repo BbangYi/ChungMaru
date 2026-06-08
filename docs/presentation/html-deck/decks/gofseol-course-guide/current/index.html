@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>고프설 과제/제출 가이드 - Academic Report Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #f6f0e4;
+      --surface: #fffaf1;
+      --ink: #17201c;
+      --muted: #706a60;
+      --green: #153d33;
+      --green-2: #2c604d;
+      --amber: #b9853f;
+      --line: rgba(23, 32, 28, .18);
+      --line-strong: rgba(23, 32, 28, .4);
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", sans-serif;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      letter-spacing: 0;
+      word-break: keep-all;
+    }
+    button { font: inherit; }
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      background:
+        linear-gradient(90deg, rgba(21, 61, 51, .08) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(21, 61, 51, .06) 1px, transparent 1px),
+        var(--paper);
+      background-size: 30px 30px, 30px 30px, auto;
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      padding: clamp(4.1rem, 7vh, 5.2rem) clamp(2.6rem, 5.5vw, 5.8rem) clamp(2rem, 4.2vh, 3.1rem);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(1rem);
+      transition: opacity .34s var(--ease), transform .34s var(--ease);
+    }
+    .slide::before {
+      content: "";
+      position: absolute;
+      inset: clamp(1rem, 2vw, 1.6rem);
+      border: 1px solid rgba(23, 32, 28, .1);
+      pointer-events: none;
+    }
+    .slide.is-active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(0);
+      z-index: 2;
+    }
+    .chrome {
+      position: absolute;
+      top: clamp(1.2rem, 2.4vh, 1.8rem);
+      left: clamp(2.6rem, 5.5vw, 5.8rem);
+      right: clamp(2.6rem, 5.5vw, 5.8rem);
+      display: flex;
+      justify-content: space-between;
+      color: var(--green-2);
+      font: 700 clamp(.66rem, 1vw, .82rem) / 1 var(--mono);
+      text-transform: uppercase;
+      z-index: 6;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      max-width: 10ch;
+      color: var(--green);
+      font-size: clamp(3.7rem, 7.2vw, 7rem);
+      line-height: .98;
+      font-weight: 800;
+    }
+    h2 {
+      max-width: 13ch;
+      color: var(--green);
+      font-size: clamp(2.2rem, 4.7vw, 4.3rem);
+      line-height: 1.06;
+      font-weight: 800;
+    }
+    h3 {
+      color: var(--ink);
+      font-size: clamp(1rem, 1.7vw, 1.35rem);
+      line-height: 1.25;
+    }
+    .kicker {
+      margin-bottom: clamp(.7rem, 1.6vh, 1.05rem);
+      color: var(--amber);
+      font: 700 clamp(.68rem, 1vw, .84rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+    .lede {
+      max-width: 44ch;
+      color: var(--ink);
+      font-size: clamp(1rem, 1.8vw, 1.45rem);
+      line-height: 1.45;
+      font-weight: 650;
+    }
+    .small {
+      color: var(--muted);
+      font-size: clamp(.78rem, 1.15vw, .95rem);
+      line-height: 1.48;
+      font-weight: 600;
+    }
+    .split,
+    .title-layout {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(20rem, .82fr);
+      gap: clamp(1.4rem, 4vw, 4rem);
+      align-items: center;
+    }
+    .kpi-strip,
+    .card-grid,
+    .check-grid,
+    .report-flow {
+      display: grid;
+      gap: .78rem;
+    }
+    .kpi-strip {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: clamp(1.4rem, 3vh, 2rem);
+    }
+    .kpi,
+    .card,
+    .flow-step,
+    .check-item {
+      background: rgba(255, 250, 241, .88);
+      border: 1px solid var(--line);
+      box-shadow: 0 .6rem 1.8rem rgba(23, 32, 28, .07);
+    }
+    .kpi {
+      min-height: 5.2rem;
+      padding: .9rem;
+    }
+    .kpi b {
+      display: block;
+      color: var(--green);
+      font: 800 clamp(1.6rem, 3vw, 2.7rem) / 1 var(--mono);
+    }
+    .kpi span {
+      display: block;
+      margin-top: .38rem;
+      color: var(--muted);
+      font: 700 .75rem / 1.2 var(--mono);
+      text-transform: uppercase;
+    }
+    .card,
+    .check-item {
+      padding: clamp(.9rem, 1.8vw, 1.25rem);
+      display: grid;
+      gap: .45rem;
+    }
+    .card b,
+    .flow-step b,
+    .check-item b {
+      color: var(--amber);
+      font: 700 clamp(.68rem, 1vw, .82rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+    .card p,
+    .flow-step p,
+    .check-item p {
+      color: var(--muted);
+      font-size: clamp(.82rem, 1.2vw, .98rem);
+      line-height: 1.45;
+      font-weight: 600;
+    }
+    .report-flow {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      margin-top: clamp(1.4rem, 3vh, 2rem);
+    }
+    .flow-step {
+      min-height: 8rem;
+      padding: .85rem;
+      position: relative;
+    }
+    .flow-step::after {
+      content: ">";
+      position: absolute;
+      top: 50%;
+      right: -.62rem;
+      transform: translateY(-50%);
+      color: var(--amber);
+      font: 800 1rem / 1 var(--mono);
+    }
+    .flow-step:last-child::after { display: none; }
+    .check-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .check-item { min-height: 8.6rem; }
+    .dataframe {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255, 250, 241, .9);
+      border: 1px solid var(--line-strong);
+      font-size: clamp(.72rem, 1.05vw, .88rem);
+      line-height: 1.25;
+      box-shadow: 0 .8rem 2rem rgba(23, 32, 28, .08);
+    }
+    .dataframe th,
+    .dataframe td {
+      border-bottom: 1px solid var(--line);
+      padding: .55rem .65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .dataframe th {
+      background: rgba(21, 61, 51, .08);
+      color: var(--green);
+      font: 700 .72rem / 1 var(--mono);
+      text-transform: uppercase;
+    }
+    .progress {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: .34rem;
+      background: rgba(23, 32, 28, .12);
+      z-index: 40;
+    }
+    .progress span {
+      display: block;
+      height: 100%;
+      width: 12.5%;
+      background: linear-gradient(90deg, var(--green), var(--amber));
+      transition: width .25s var(--ease);
+    }
+    .nav,
+    .hub-link {
+      position: fixed;
+      bottom: .85rem;
+      z-index: 45;
+      display: inline-flex;
+      gap: .45rem;
+    }
+    .nav { right: 1rem; }
+    .hub-link {
+      left: 1rem;
+      height: 2rem;
+      align-items: center;
+      padding: 0 .75rem;
+      text-decoration: none;
+      border: 1px solid var(--ink);
+      background: rgba(255, 250, 241, .86);
+      color: var(--ink);
+      font: 700 .72rem / 1 var(--mono);
+      text-transform: uppercase;
+    }
+    .nav button {
+      width: 2rem;
+      height: 2rem;
+      border: 1px solid var(--ink);
+      background: rgba(255, 250, 241, .86);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .overview-panel {
+      position: fixed;
+      inset: clamp(1rem, 3vw, 2rem);
+      z-index: 90;
+      display: none;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .75rem;
+      padding: clamp(1rem, 2vw, 1.5rem);
+      overflow: auto;
+      border: 1px solid var(--line-strong);
+      background: rgba(246, 240, 228, .96);
+      box-shadow: 0 1.5rem 4rem rgba(23, 32, 28, .24);
+    }
+    .overview-panel.is-open { display: grid; }
+    .overview-panel button {
+      min-height: 4.2rem;
+      padding: .8rem;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      cursor: pointer;
+    }
+    .overview-panel b {
+      display: block;
+      color: var(--amber);
+      font: 700 .72rem / 1 var(--mono);
+      margin-bottom: .35rem;
+    }
+    .overview-panel span {
+      color: var(--green);
+      font-weight: 800;
+      line-height: 1.25;
+    }
+    @media (max-height: 700px) {
+      .slide { padding-top: 3.7rem; padding-bottom: 1.8rem; }
+      .flow-step { min-height: 7.2rem; }
+      .check-item { min-height: 7.7rem; }
+    }
+    @media (max-width: 900px) {
+      .slide { padding-left: 1.35rem; padding-right: 1.35rem; }
+      .chrome { left: 1.35rem; right: 1.35rem; }
+      .split,
+      .title-layout,
+      .report-flow,
+      .check-grid { grid-template-columns: 1fr; }
+      .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .flow-step::after { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .slide,
+      .progress span { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Gofseol course guide presentation">
+    <section class="slide is-active" data-title="표지">
+      <div class="chrome"><span>Academic Report Guide</span><span>01 / 08</span></div>
+      <div class="title-layout">
+        <div>
+          <div class="kicker">고급프로그래밍 설계</div>
+          <h1>과제 제안서에서 제출물까지</h1>
+          <p class="lede" style="margin-top:1.2rem;">제안서, 샘플 보고서, 실제 프로젝트 산출물을 연결한 제출 가이드.</p>
+        </div>
+        <div class="kpi-strip">
+          <div class="kpi"><b>1</b><span>proposal PDF</span></div>
+          <div class="kpi"><b>2</b><span>sample DOCX</span></div>
+          <div class="kpi"><b>1</b><span>project repo</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="자료 판정">
+      <div class="chrome"><span>Source Split</span><span>02 / 08</span></div>
+      <div class="split">
+        <div>
+          <div class="kicker">판단 결과</div>
+          <h2>프로젝트 발표와 과제 가이드는 분리하는 편이 낫다</h2>
+          <p class="lede" style="margin-top:1rem;">고프설 분석 repo는 발표 본문이고, 제안서·샘플 보고서는 제출 형식과 보고서 구조를 잡는 보조 자료다.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><b>프로젝트 발표</b><h3>gofseol-geopolitical</h3><p>문제, 데이터, 방법, 결과, 한계, 제출물.</p></article>
+          <article class="card"><b>수업/과제 가이드</b><h3>gofseol-course-guide</h3><p>제안서 요구와 보고서 작성 구조.</p></article>
+          <article class="card"><b>부족한 자료</b><h3>세부 채점 기준</h3><p>공식 루브릭, 분량, 발표 시간 제한은 자료 확인 필요.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="제안서 흐름">
+      <div class="chrome"><span>Proposal Flow</span><span>03 / 08</span></div>
+      <div>
+        <div class="kicker">PDF 기준</div>
+        <h2>제안서는 문제, 가설, 데이터, 수행계획을 요구한다</h2>
+        <div class="report-flow">
+          <article class="flow-step"><b>01</b><h3>주제</h3><p>지정학 충격과 금융시장 반응.</p></article>
+          <article class="flow-step"><b>02</b><h3>목적</h3><p>Threat vs Onset 비교.</p></article>
+          <article class="flow-step"><b>03</b><h3>가설</h3><p>위협 선반영, 산업 비대칭.</p></article>
+          <article class="flow-step"><b>04</b><h3>데이터</h3><p>GPR, FRED, ETF, 유가.</p></article>
+          <article class="flow-step"><b>05</b><h3>분석</h3><p>이벤트 스터디, 회귀.</p></article>
+          <article class="flow-step"><b>06</b><h3>활용</h3><p>리스크 관리와 보고서.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="샘플 보고서 구조">
+      <div class="chrome"><span>Sample Reports</span><span>04 / 08</span></div>
+      <div class="split">
+        <div>
+          <div class="kicker">DOCX 샘플 2개 공통점</div>
+          <h2>서론에서 결론까지 논문형 구조를 따른다</h2>
+          <p class="lede" style="margin-top:1rem;">공공자전거 샘플은 긴 설명형 문체지만, 발표 deck은 같은 구조를 짧은 라벨과 표 중심으로 압축한다.</p>
+        </div>
+        <table class="dataframe" aria-label="sample report structure">
+          <thead><tr><th>섹션</th><th>역할</th><th>고프설 적용</th></tr></thead>
+          <tbody>
+            <tr><td>서론</td><td>문제와 필요성</td><td>시장 전체 분석 한계</td></tr>
+            <tr><td>연구 배경</td><td>선행 연구와 차별점</td><td>Threat/Onset, 산업별 반응</td></tr>
+            <tr><td>데이터</td><td>수집·전처리</td><td>ETF, 전달 변수, proxy</td></tr>
+            <tr><td>분석 결과</td><td>표·그림·해석</td><td>CAR, Impact, dashboard</td></tr>
+            <tr><td>결론</td><td>시사점과 한계</td><td>모니터링 기준, 인과 보류</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide" data-title="보고서 체크리스트">
+      <div class="chrome"><span>Report Checklist</span><span>05 / 08</span></div>
+      <div>
+        <div class="kicker">Writing Gate</div>
+        <h2>데이터 분석형 보고서는 근거 경로가 보여야 한다</h2>
+        <div class="check-grid" style="margin-top:1.2rem;">
+          <article class="check-item"><b>Problem</b><h3>문제 정의</h3><p>단순 시장 하락 분석의 한계와 분석 질문을 분리.</p></article>
+          <article class="check-item"><b>Data</b><h3>데이터 출처</h3><p>티커, 기간, 이벤트 D0, 누락 처리 기준 명시.</p></article>
+          <article class="check-item"><b>Method</b><h3>계산식</h3><p>Excess Return, CAR, Pre-reflection Ratio.</p></article>
+          <article class="check-item"><b>Result</b><h3>표와 차트</h3><p>결과 수치와 시각화를 같은 용어로 연결.</p></article>
+          <article class="check-item"><b>Limit</b><h3>한계</h3><p>proxy, 데이터 품질, 인과 주장 보류.</p></article>
+          <article class="check-item"><b>Deliverable</b><h3>제출물</h3><p>보고서, 코드, notebook, dashboard, zip.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="현재 산출물 매핑">
+      <div class="chrome"><span>Deliverable Map</span><span>06 / 08</span></div>
+      <div>
+        <div class="kicker">Current Project Files</div>
+        <h2>실제 제출물은 이미 repo 안에 분리되어 있다</h2>
+        <table class="dataframe" style="margin-top:1.2rem;" aria-label="deliverable mapping">
+          <thead><tr><th>항목</th><th>경로</th><th>상태</th></tr></thead>
+          <tbody>
+            <tr><td>최종 보고서</td><td>reports/final_report.docx</td><td>보유</td></tr>
+            <tr><td>노트북</td><td>notebooks/01_final_event_study_analysis.ipynb</td><td>출력 저장</td></tr>
+            <tr><td>발표 자료 묶음</td><td>notebooklm_upload/</td><td>정리됨</td></tr>
+            <tr><td>대시보드</td><td>app/streamlit_app.py</td><td>실행 대상</td></tr>
+            <tr><td>제출 ZIP</td><td>geopolitical-risk-sector-dashboard_lms_submission.zip</td><td>보유</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide" data-title="아직 부족한 자료">
+      <div class="chrome"><span>Needs Check</span><span>07 / 08</span></div>
+      <div class="split">
+        <div>
+          <div class="kicker">자료 확인 필요</div>
+          <h2>내용보다 운영 조건이 아직 비어 있다</h2>
+          <p class="lede" style="margin-top:1rem;">분석 결과 자체는 충분하지만, 제출 방식과 발표 운영 조건은 별도 확인이 필요하다.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><b>Rubric</b><h3>세부 채점 기준</h3><p>공식 평가표가 있으면 슬라이드 강조점 조정.</p></article>
+          <article class="card"><b>Time</b><h3>발표 시간</h3><p>10분/15분/20분 여부에 따라 slide density 조정.</p></article>
+          <article class="card"><b>Submission</b><h3>LMS 업로드 규칙</h3><p>파일명, 압축 여부, 보고서/PPT 동시 제출 여부 확인.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-title="최종 정리">
+      <div class="chrome"><span>Summary</span><span>08 / 08</span></div>
+      <div class="split">
+        <div>
+          <div class="kicker">Use This Deck For Planning</div>
+          <h2>발표 덱은 분석 결과, 가이드 덱은 제출 구조</h2>
+          <p class="lede" style="margin-top:1rem;">두 덱을 분리하면 프로젝트 설명과 수업 제출 준비가 섞이지 않는다.</p>
+        </div>
+        <div class="card-grid">
+          <article class="card"><b>Now</b><h3>gofseol-geopolitical</h3><p>발표 초안의 주 덱.</p></article>
+          <article class="card"><b>Support</b><h3>gofseol-course-guide</h3><p>제안서/보고서 샘플 기반 체크 덱.</p></article>
+          <article class="card"><b>Next</b><h3>루브릭 반영</h3><p>공식 조건 확인 후 구조만 조정.</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <a class="hub-link" href="../../../index.html">Hub</a>
+  <div class="nav" aria-label="slide navigation">
+    <button type="button" data-dir="-1" aria-label="Previous slide">‹</button>
+    <button type="button" data-dir="1" aria-label="Next slide">›</button>
+  </div>
+  <div class="overview-panel" id="overview" aria-label="slide overview"></div>
+  <div class="progress" aria-hidden="true"><span></span></div>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll(".slide")];
+      const progress = document.querySelector(".progress span");
+      const navButtons = [...document.querySelectorAll("[data-dir]")];
+      const overview = document.querySelector("#overview");
+      let index = 0;
+
+      slides.forEach((slide, slideIndex) => {
+        const counter = slide.querySelector(".chrome span:last-child");
+        if (counter) counter.textContent = `${String(slideIndex + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.innerHTML = `<b>${String(slideIndex + 1).padStart(2, "0")}</b><span>${slide.dataset.title || "Slide"}</span>`;
+        button.addEventListener("click", () => {
+          overview.classList.remove("is-open");
+          show(slideIndex);
+        });
+        overview.appendChild(button);
+      });
+
+      function show(next) {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        slides.forEach((slide, slideIndex) => slide.classList.toggle("is-active", slideIndex === index));
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        history.replaceState(null, "", `#/${index + 1}`);
+      }
+
+      function fromHash() {
+        const match = location.hash.match(/#\/(\d+)/);
+        if (!match) return 0;
+        return Number(match[1]) - 1;
+      }
+
+      navButtons.forEach((button) => {
+        button.addEventListener("click", () => show(index + Number(button.dataset.dir)));
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (["ArrowRight", "PageDown", " "].includes(event.key)) show(index + 1);
+        if (["ArrowLeft", "PageUp"].includes(event.key)) show(index - 1);
+        if (event.key.toLowerCase() === "h") window.location.href = "../../../index.html";
+        if (event.key.toLowerCase() === "g") overview.classList.toggle("is-open");
+        if (event.key === "Escape") overview.classList.remove("is-open");
+        if (event.key === "Home") show(0);
+        if (event.key === "End") show(slides.length - 1);
+        if (event.key.toLowerCase() === "f") document.documentElement.requestFullscreen?.();
+      });
+
+      show(fromHash());
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+﻿run_id,label,first_frame,last_frame,start_seconds,end_seconds,duration_seconds
+chrome-google-youtube-demo-20260608-final6,settings: open options,1,240,0.0,8.0,8.0
+chrome-google-youtube-demo-20260608-final6,settings: open developer tools,241,300,8.0,10.0,2.0
+chrome-google-youtube-demo-20260608-final6,settings: enable backend,301,360,10.0,12.0,2.0
+chrome-google-youtube-demo-20260608-final6,settings: check backend connection,361,420,12.0,14.0,2.0
+chrome-google-youtube-demo-20260608-final6,settings: run site policy,421,480,14.0,16.0,2.0
+chrome-google-youtube-demo-20260608-final6,settings: apply wellbeing override,481,540,16.0,18.0,2.0
+chrome-google-youtube-demo-20260608-final6,settings: clear wellbeing override,541,600,18.0,20.0,2.0
+chrome-google-youtube-demo-20260608-final6,Google home,601,720,20.0,24.0,4.0
+chrome-google-youtube-demo-20260608-final6,mode showcase: protection off raw screen,721,780,24.0,26.0,2.0
+chrome-google-youtube-demo-20260608-final6,mode showcase: apply mask,781,801,26.0,26.7,0.7
+chrome-google-youtube-demo-20260608-final6,mode showcase: result mask,802,873,26.7,29.1,2.4
+chrome-google-youtube-demo-20260608-final6,mode showcase: hover mask,874,909,29.1,30.3,1.2
+chrome-google-youtube-demo-20260608-final6,mode showcase: apply blur,910,930,30.3,31.0,0.7
+chrome-google-youtube-demo-20260608-final6,mode showcase: result blur,931,1002,31.0,33.4,2.4
+chrome-google-youtube-demo-20260608-final6,mode showcase: hover blur,1003,1038,33.4,34.6,1.2
+chrome-google-youtube-demo-20260608-final6,mode showcase: apply hide,1039,1059,34.6,35.3,0.7
+chrome-google-youtube-demo-20260608-final6,mode showcase: result hide,1060,1131,35.3,37.7,2.4
+chrome-google-youtube-demo-20260608-final6,mode showcase: hover hide,1132,1167,37.7,38.9,1.2
+chrome-google-youtube-demo-20260608-final6,mode showcase: apply remove,1168,1188,38.9,39.6,0.7
+chrome-google-youtube-demo-20260608-final6,mode showcase: result remove,1189,1260,39.6,42.0,2.4
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ,1261,1261,42.0,42.033,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ댄,1262,1262,42.033,42.067,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ댄다,1263,1263,42.067,42.1,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ댄다 ,1264,1264,42.1,42.133,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ댄다 진,1265,1265,42.133,42.167,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: type ㅈ댄다 진짜,1266,1266,42.167,42.2,0.033
+chrome-google-youtube-demo-20260608-final6,search 1: typed query: ㅈ댄다 진짜,1267,1341,42.2,44.7,2.5
+chrome-google-youtube-demo-20260608-final6,search 1: result loaded: ㅈ댄다 진짜,1342,1401,44.7,46.7,2.0
+chrome-google-youtube-demo-20260608-final6,search 1: analysis request: ㅈ댄다 진짜,1402,1437,46.7,47.9,1.2
+chrome-google-youtube-demo-20260608-final6,search 1: masked results: ㅈ댄다 진짜,1438,1647,47.9,54.9,7.0
+chrome-google-youtube-demo-20260608-final6,search 1: hover mask evidence: ㅈ댄다 진짜,1648,1722,54.9,57.4,2.5
+chrome-google-youtube-demo-20260608-final6,search 1: scroll-down,1723,1740,57.4,58.0,0.6
+chrome-google-youtube-demo-20260608-final6,search 1: after scroll: ㅈ댄다 진짜,1741,1800,58.0,60.0,2.0
+chrome-google-youtube-demo-20260608-final6,search 1: scroll-up,1801,1809,60.0,60.3,0.3
+chrome-google-youtube-demo-20260608-final6,search 2: type 한,1810,1810,60.3,60.333,0.033
+chrome-google-youtube-demo-20260608-final6,search 2: type 한남,1811,1811,60.333,60.367,0.033
+chrome-google-youtube-demo-20260608-final6,search 2: type 한남충,1812,1812,60.367,60.4,0.033
+chrome-google-youtube-demo-20260608-final6,search 2: type 한남충 ,1813,1813,60.4,60.433,0.033
+chrome-google-youtube-demo-20260608-final6,search 2: type 한남충 뜻,1814,1814,60.433,60.467,0.033
+chrome-google-youtube-demo-20260608-final6,search 2: typed query: 한남충 뜻,1815,1889,60.467,62.967,2.5
+chrome-google-youtube-demo-20260608-final6,search 2: result loaded: 한남충 뜻,1890,1949,62.967,64.967,2.0
+chrome-google-youtube-demo-20260608-final6,search 2: analysis request: 한남충 뜻,1950,1985,64.967,66.167,1.2
+chrome-google-youtube-demo-20260608-final6,search 2: masked results: 한남충 뜻,1986,2195,66.167,73.167,7.0
+chrome-google-youtube-demo-20260608-final6,search 2: hover mask evidence: 한남충 뜻,2196,2270,73.167,75.667,2.5
+chrome-google-youtube-demo-20260608-final6,search 2: scroll-down,2271,2288,75.667,76.267,0.6
+chrome-google-youtube-demo-20260608-final6,search 2: after scroll: 한남충 뜻,2289,2348,76.267,78.267,2.0
+chrome-google-youtube-demo-20260608-final6,search 2: scroll-up,2349,2357,78.267,78.567,0.3
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽,2358,2358,78.567,78.6,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여,2359,2359,78.6,78.633,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버,2360,2360,78.633,78.667,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴,2361,2361,78.667,78.7,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴거,2362,2362,78.7,78.733,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴거야,2363,2363,78.733,78.767,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴거야 ,2364,2364,78.767,78.8,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴거야 협,2365,2365,78.8,78.833,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: type 죽여버릴거야 협박,2366,2366,78.833,78.867,0.033
+chrome-google-youtube-demo-20260608-final6,search 3: typed query: 죽여버릴거야 협박,2367,2441,78.867,81.367,2.5
+chrome-google-youtube-demo-20260608-final6,search 3: result loaded: 죽여버릴거야 협박,2442,2501,81.367,83.367,2.0
+chrome-google-youtube-demo-20260608-final6,search 3: analysis request: 죽여버릴거야 협박,2502,2537,83.367,84.567,1.2
+chrome-google-youtube-demo-20260608-final6,search 3: masked results: 죽여버릴거야 협박,2538,2747,84.567,91.567,7.0
+chrome-google-youtube-demo-20260608-final6,search 3: hover mask evidence: 죽여버릴거야 협박,2748,2822,91.567,94.067,2.5
+chrome-google-youtube-demo-20260608-final6,search 3: scroll-down,2823,2840,94.067,94.667,0.6
+chrome-google-youtube-demo-20260608-final6,search 3: after scroll: 죽여버릴거야 협박,2841,2900,94.667,96.667,2.0
+chrome-google-youtube-demo-20260608-final6,search 3: scroll-up,2901,2909,96.667,96.967,0.3
+chrome-google-youtube-demo-20260608-final6,youtube: search results: 시발 또 다시 보여줘야해?,2910,2969,96.967,98.967,2.0
+chrome-google-youtube-demo-20260608-final6,youtube: watch page loaded,2970,2999,98.967,99.967,1.0
+chrome-google-youtube-demo-20260608-final6,youtube: scroll-to-comments,3000,3023,99.967,100.767,0.8
+chrome-google-youtube-demo-20260608-final6,youtube: comments visible,3024,3113,100.767,103.767,3.0
+chrome-google-youtube-demo-20260608-final6,youtube: analysis request,3114,3149,103.767,104.967,1.2
+chrome-google-youtube-demo-20260608-final6,youtube: masked comments,3150,3299,104.967,109.967,5.0
+chrome-google-youtube-demo-20260608-final6,youtube: hover mask evidence,3300,3374,109.967,112.467,2.5
+chrome-google-youtube-demo-20260608-final6,youtube comments: scroll-down,3375,3386,112.467,112.867,0.4
+chrome-google-youtube-demo-20260608-final6,youtube: after comment scroll,3387,3446,112.867,114.867,2.0
+chrome-google-youtube-demo-20260608-final6,site warning: before navigation,3447,3506,114.867,116.867,2.0
+chrome-google-youtube-demo-20260608-final6,site warning,3507,3746,116.867,124.867,8.0
+chrome-google-youtube-demo-20260608-final6,final evidence review,3747,4500,124.867,150.0,25.133

@@ -1,0 +1,376 @@
+{
+  "epochs": [
+    {
+      "epoch": 1,
+      "train_loss": 0.6142,
+      "val_metrics": {
+        "profanity": {
+          "precision": 0.5483,
+          "recall": 0.662,
+          "f1": 0.5998,
+          "support": 1911,
+          "eval_rows": 15676
+        },
+        "toxicity": {
+          "precision": 0.7868,
+          "recall": 0.815,
+          "f1": 0.8007,
+          "support": 20252,
+          "eval_rows": 74808
+        },
+        "hate": {
+          "precision": 0.7353,
+          "recall": 0.7873,
+          "f1": 0.7604,
+          "support": 10291,
+          "eval_rows": 74808
+        },
+        "macro_f1": 0.7203
+      },
+      "thresholds": [
+        0.8,
+        0.56,
+        0.68
+      ],
+      "time_sec": 11982.5
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.5304,
+      "val_metrics": {
+        "profanity": {
+          "precision": 0.6147,
+          "recall": 0.697,
+          "f1": 0.6533,
+          "support": 1911,
+          "eval_rows": 15676
+        },
+        "toxicity": {
+          "precision": 0.7933,
+          "recall": 0.8464,
+          "f1": 0.819,
+          "support": 20252,
+          "eval_rows": 74808
+        },
+        "hate": {
+          "precision": 0.745,
+          "recall": 0.8013,
+          "f1": 0.7721,
+          "support": 10291,
+          "eval_rows": 74808
+        },
+        "macro_f1": 0.7481
+      },
+      "thresholds": [
+        0.7,
+        0.4,
+        0.72
+      ],
+      "time_sec": 12760.8
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.4939,
+      "val_metrics": {
+        "profanity": {
+          "precision": 0.6088,
+          "recall": 0.7132,
+          "f1": 0.6569,
+          "support": 1911,
+          "eval_rows": 15676
+        },
+        "toxicity": {
+          "precision": 0.7819,
+          "recall": 0.8583,
+          "f1": 0.8183,
+          "support": 20252,
+          "eval_rows": 74808
+        },
+        "hate": {
+          "precision": 0.7597,
+          "recall": 0.7918,
+          "f1": 0.7754,
+          "support": 10291,
+          "eval_rows": 74808
+        },
+        "macro_f1": 0.7502
+      },
+      "thresholds": [
+        0.8,
+        0.4,
+        0.72
+      ],
+      "time_sec": 12758.2
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.4628,
+      "val_metrics": {
+        "profanity": {
+          "precision": 0.6374,
+          "recall": 0.6944,
+          "f1": 0.6647,
+          "support": 1911,
+          "eval_rows": 15676
+        },
+        "toxicity": {
+          "precision": 0.7842,
+          "recall": 0.8443,
+          "f1": 0.8132,
+          "support": 20252,
+          "eval_rows": 74808
+        },
+        "hate": {
+          "precision": 0.7424,
+          "recall": 0.8066,
+          "f1": 0.7732,
+          "support": 10291,
+          "eval_rows": 74808
+        },
+        "macro_f1": 0.7504
+      },
+      "thresholds": [
+        0.8,
+        0.44,
+        0.68
+      ],
+      "time_sec": 11794.6
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.4364,
+      "val_metrics": {
+        "profanity": {
+          "precision": 0.6483,
+          "recall": 0.6907,
+          "f1": 0.6689,
+          "support": 1911,
+          "eval_rows": 15676
+        },
+        "toxicity": {
+          "precision": 0.7932,
+          "recall": 0.8339,
+          "f1": 0.8131,
+          "support": 20252,
+          "eval_rows": 74808
+        },
+        "hate": {
+          "precision": 0.7614,
+          "recall": 0.7868,
+          "f1": 0.7739,
+          "support": 10291,
+          "eval_rows": 74808
+        },
+        "macro_f1": 0.752
+      },
+      "thresholds": [
+        0.8,
+        0.5,
+        0.72
+      ],
+      "time_sec": 11515.7
+    }
+  ],
+  "final": {
+    "best_val_macro_f1": 0.752,
+    "best_thresholds": [
+      0.8,
+      0.5,
+      0.72
+    ],
+    "test": {
+      "profanity": {
+        "precision": 0.5342,
+        "recall": 0.7857,
+        "f1": 0.636,
+        "support": 1400,
+        "eval_rows": 23139
+      },
+      "toxicity": {
+        "precision": 0.8157,
+        "recall": 0.9006,
+        "f1": 0.8561,
+        "support": 19561,
+        "eval_rows": 36358
+      },
+      "hate": {
+        "precision": 0.7984,
+        "recall": 0.8285,
+        "f1": 0.8132,
+        "support": 13823,
+        "eval_rows": 36358
+      },
+      "macro_f1": 0.7684
+    },
+    "eval_temp": {
+      "profanity": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0,
+        "eval_rows": 30895
+      },
+      "toxicity": {
+        "precision": 0.7541,
+        "recall": 0.7241,
+        "f1": 0.7388,
+        "support": 17747,
+        "eval_rows": 30895
+      },
+      "hate": {
+        "precision": 0.5763,
+        "recall": 0.5759,
+        "f1": 0.5761,
+        "support": 12267,
+        "eval_rows": 30895
+      },
+      "macro_f1": 0.4383
+    },
+    "eval_codeswitch": {
+      "profanity": {
+        "precision": 0.7203,
+        "recall": 0.6622,
+        "f1": 0.69,
+        "support": 595,
+        "eval_rows": 1000
+      },
+      "toxicity": {
+        "precision": 1.0,
+        "recall": 0.957,
+        "f1": 0.978,
+        "support": 1000,
+        "eval_rows": 1000
+      },
+      "hate": {
+        "precision": 0.8479,
+        "recall": 0.8802,
+        "f1": 0.8638,
+        "support": 551,
+        "eval_rows": 1000
+      },
+      "macro_f1": 0.8439
+    },
+    "eval_codeswitch_by_pattern": {
+      "intra_word_mix": {
+        "profanity": {
+          "precision": 0.7913,
+          "recall": 0.6594,
+          "f1": 0.7194,
+          "support": 138,
+          "eval_rows": 200
+        },
+        "toxicity": {
+          "precision": 1.0,
+          "recall": 0.945,
+          "f1": 0.9717,
+          "support": 200,
+          "eval_rows": 200
+        },
+        "hate": {
+          "precision": 0.8364,
+          "recall": 0.8598,
+          "f1": 0.8479,
+          "support": 107,
+          "eval_rows": 200
+        },
+        "macro_f1": 0.8463
+      },
+      "inter_word_insert": {
+        "profanity": {
+          "precision": 0.7541,
+          "recall": 0.6715,
+          "f1": 0.7104,
+          "support": 137,
+          "eval_rows": 200
+        },
+        "toxicity": {
+          "precision": 1.0,
+          "recall": 0.985,
+          "f1": 0.9924,
+          "support": 200,
+          "eval_rows": 200
+        },
+        "hate": {
+          "precision": 0.8548,
+          "recall": 0.906,
+          "f1": 0.8797,
+          "support": 117,
+          "eval_rows": 200
+        },
+        "macro_f1": 0.8608
+      },
+      "qwerty_leak": {
+        "profanity": {
+          "precision": 0.947,
+          "recall": 0.7102,
+          "f1": 0.8117,
+          "support": 176,
+          "eval_rows": 200
+        },
+        "toxicity": {
+          "precision": 1.0,
+          "recall": 0.995,
+          "f1": 0.9975,
+          "support": 200,
+          "eval_rows": 200
+        },
+        "hate": {
+          "precision": 0.8468,
+          "recall": 0.9211,
+          "f1": 0.8824,
+          "support": 114,
+          "eval_rows": 200
+        },
+        "macro_f1": 0.8972
+      },
+      "ko_only_baseline": {
+        "profanity": {
+          "precision": 0.0541,
+          "recall": 1.0,
+          "f1": 0.1026,
+          "support": 4,
+          "eval_rows": 200
+        },
+        "toxicity": {
+          "precision": 1.0,
+          "recall": 0.91,
+          "f1": 0.9529,
+          "support": 200,
+          "eval_rows": 200
+        },
+        "hate": {
+          "precision": 0.8462,
+          "recall": 0.8381,
+          "f1": 0.8421,
+          "support": 105,
+          "eval_rows": 200
+        },
+        "macro_f1": 0.6325
+      },
+      "inter_word_swap": {
+        "profanity": {
+          "precision": 0.7885,
+          "recall": 0.5857,
+          "f1": 0.6721,
+          "support": 140,
+          "eval_rows": 200
+        },
+        "toxicity": {
+          "precision": 1.0,
+          "recall": 0.95,
+          "f1": 0.9744,
+          "support": 200,
+          "eval_rows": 200
+        },
+        "hate": {
+          "precision": 0.8545,
+          "recall": 0.8704,
+          "f1": 0.8624,
+          "support": 108,
+          "eval_rows": 200
+        },
+        "macro_f1": 0.8363
+      }
+    }
+  }
+}

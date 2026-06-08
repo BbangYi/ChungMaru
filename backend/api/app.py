@@ -32,6 +32,13 @@ class AnalyzeBatchRequest(BaseModel):
     sensitivity: int | None = None
 
 
+class WarmupRequest(BaseModel):
+    load_classifier: bool = True
+    load_span_detector: bool = True
+    run_span_probe: bool = True
+    sensitivity: int | None = None
+
+
 class BoundsInScreen(BaseModel):
     top: int
     bottom: int
@@ -229,6 +236,13 @@ def _require_text_pipeline() -> tuple[ProfanityPipeline, AgentService | None]:
             },
         )
     return pipeline, agent_service
+
+
+def _require_site_risk_agent() -> SiteRiskAgent:
+    global site_risk_agent
+    if site_risk_agent is None:
+        site_risk_agent = SiteRiskAgent()
+    return site_risk_agent
 
 
 _DOCS_RESPONSE_ENHANCER = r"""
@@ -501,17 +515,48 @@ async def swagger_ui_redirect():
 
 @app.get("/health")
 async def health():
-    intel_stats = site_risk_agent.store.stats() if site_risk_agent else None
+    ready_site_agent = _require_site_risk_agent()
+    intel_stats = ready_site_agent.store.stats()
     pipeline_status = pipeline.runtime_status() if pipeline is not None else None
+    model_ready = (
+        pipeline is not None
+        and pipeline_init_error is None
+        and bool((pipeline_status or {}).get("model_files_ready", False))
+    )
     return {
         "status": "ok",
+        "model_ready": model_ready,
         "site_intel": intel_stats,
         "text_pipeline_ready": pipeline is not None,
         "text_pipeline_error": pipeline_init_error,
+        "pipeline_error": pipeline_init_error,
         "pipeline_loaded": pipeline is not None,
         "agent_service_loaded": agent_service is not None,
+        "missing_model_files": (pipeline_status or {}).get("missing_model_files", []),
         "models": pipeline_status,
     }
+
+
+@app.post("/warmup")
+async def warmup(req: WarmupRequest):
+    """Load classifier/span models before live masking starts."""
+    ready_pipeline, _ = _require_text_pipeline()
+    started = time.perf_counter()
+    result = ready_pipeline.warmup(
+        load_classifier=req.load_classifier,
+        load_span_detector=req.load_span_detector,
+        run_span_probe=req.run_span_probe,
+        sensitivity=req.sensitivity,
+    )
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    result["endpoint_total_ms"] = round(elapsed_ms, 3)
+    print(
+        "[TIMING] /warmup "
+        f"total={elapsed_ms:.1f}ms "
+        f"classifier_loaded={result.get('after', {}).get('classifier_loaded')} "
+        f"span_detector_loaded={result.get('after', {}).get('span_detector_loaded')}"
+    )
+    return result
 
 
 @app.post("/analyze", response_model=AnalyzeResponse)
@@ -588,7 +633,8 @@ async def analyze_with_agent(req: AnalyzeRequest):
 @app.post("/site/check", response_model=SiteCheckResponse)
 async def check_site(req: SiteCheckRequest):
     """사이트 접속 전 위험도 판별 + 설명."""
-    result = site_risk_agent.check_site(
+    ready_site_agent = _require_site_risk_agent()
+    result = ready_site_agent.check_site(
         req.url,
         title=req.title or "",
         snippet=req.snippet or "",

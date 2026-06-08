@@ -1,0 +1,6 @@
+run_id_prefix	method_order	method_id	method_label	method_notes
+desktop-android-google-20260607T124031Z	1	risk_gate_baseline	Risk gate / broad provisional baseline	빠른 임시 마스크 기준선이지만 넓은 영역을 가리는 UX 문제가 있음
+desktop-android-google-20260607T130553Z	2	viewport_stable_no_scroll_translation	Viewport-stable browser overlay	브라우저 마스크를 스크롤에 따라 이동시키지 않고 안정화 후 재캡처
+desktop-android-google-20260607T134142Z	3	active_browser_root_exact_scan	Active browser root exact scan	브라우저 active root에서 정확 문자 후보를 직접 찾는 시도
+desktop-android-google-20260607T134626Z	4	scheduled_root_scan_after_scroll	Scheduled root scan after scroll/touch	스크롤/터치 이후 예약 scan으로 event delay를 우회하려는 시도
+desktop-android-google-20260607T134928Z	5	extended_polling_root_scan	Extended polling root scan	Google 결과 로딩 구간을 커버하기 위해 root scan polling 기간 확장

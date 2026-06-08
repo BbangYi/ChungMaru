@@ -1,0 +1,38 @@
+{
+  "baseUrl": "http://bbangyippt.kro.kr",
+  "updatedAt": "2026-05-31T21:40:49+09:00",
+  "decks": [
+    {
+      "id": "chungmaru-final",
+      "title": "청마루 캡스톤 발표",
+      "description": "KoHateMask v3 모델, 댓글 후보 추출, 화면 마스킹까지 실제 구현과 검증 근거를 보여주는 발표 덱.",
+      "theme": "Technical Editorial",
+      "status": "발표용 정리 중",
+      "sourcePath": "/Users/giminu0930/Documents/000 Project/Chungmaru/docs/presentation/html-deck/decks/chungmaru-final/current/index.html",
+      "publicPath": "http://bbangyippt.kro.kr/decks/chungmaru-final/current/",
+      "updatedAt": "2026-05-31T00:05:00+09:00"
+    },
+    {
+      "id": "chungmaru-meeting",
+      "title": "청마루 미팅 발표",
+      "description": "프로젝트 정체성, 서비스 흐름, 모델 개선, 근거 기반 중재, Chrome 부가기능, Android 적용 기술과 한계까지 정리한 미팅용 발표 덱.",
+      "theme": "Premium Capstone Cover",
+      "status": "28장 재구성",
+      "sourcePath": "/Users/giminu0930/Documents/000 Project/Chungmaru/docs/presentation/html-deck/decks/chungmaru-meeting/current/index.html",
+      "publicPath": "http://bbangyippt.kro.kr/decks/chungmaru-meeting/current/",
+      "qaPath": "http://bbangyippt.kro.kr/qa/chungmaru-meeting/contact-sheet.html",
+      "updatedAt": "2026-05-31T21:40:49+09:00"
+    },
+    {
+      "id": "gofseol-geopolitical",
+      "title": "지정학적 충격과 미국 섹터 ETF 반응 분석",
+      "description": "41개 지정학 이벤트와 7개 미국 섹터 ETF의 가격 반응, 조기경보, 로테이션 백테스트를 보고서 구조로 정리한 발표.",
+      "theme": "Market Intelligence Brief",
+      "status": "발표용 리빌드",
+      "sourcePath": "/Users/giminu0930/Documents/000 Project/30_학습자료/고프설/geopolitical-risk-sector-dashboard",
+      "publicPath": "http://bbangyippt.kro.kr/decks/gofseol-geopolitical/current/",
+      "qaPath": "http://bbangyippt.kro.kr/qa/gofseol-geopolitical/contact-sheet.html",
+      "updatedAt": "2026-05-30T23:30:00+09:00"
+    }
+  ]
+}

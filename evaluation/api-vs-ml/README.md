@@ -39,6 +39,22 @@ python3 evaluation/api-vs-ml/run_pipeline_eval.py --backend http://127.0.0.1:800
 python3 evaluation/api-vs-ml/run_pipeline_eval.py --json
 ```
 
+backend end-to-end 결과값을 파일로 남기려면 아래처럼 실행합니다.
+
+```bash
+python3 evaluation/api-vs-ml/run_pipeline_eval.py \
+  --backend http://127.0.0.1:8000 \
+  --sensitivity 60 \
+  --repeat 3 \
+  --output-dir evaluation/api-vs-ml/results/backend-e2e
+```
+
+생성 파일:
+
+- `backend-e2e-summary.json`: 전체 결과와 반복 실행 latency sample
+- `backend-e2e-rows.csv`: 케이스별 expected/actual, score, evidence span, timing
+- `backend-e2e-report.md`: 발표/보고서용 요약표
+
 이 스크립트는 backend 내부 함수를 직접 import하지 않고 public `/analyze_batch` 계약만 사용합니다.
 따라서 Chrome Extension, Android App과 같은 실제 클라이언트 관점에서 backend가 어떻게 응답하는지 확인할 수 있습니다.
 

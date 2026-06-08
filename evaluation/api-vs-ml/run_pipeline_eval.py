@@ -8,6 +8,7 @@ It is a reporting/evaluation helper, not a second implementation of the model.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 import time
@@ -201,9 +202,14 @@ def evaluate(
             {
                 "id": case.get("id"),
                 "group": group,
+                "text": case.get("text"),
+                "backend_original": result.get("original"),
                 "expected": expected_offensive,
                 "canonical_expected": canonical_expected_offensive,
                 "actual": actual_offensive,
+                "is_profane": bool(result.get("is_profane")),
+                "is_toxic": bool(result.get("is_toxic")),
+                "is_hate": bool(result.get("is_hate")),
                 "spans": span_texts(result),
                 "expected_spans": expected_spans,
                 "pass": passed,
@@ -215,7 +221,36 @@ def evaluate(
             }
         )
 
-    return {"totals": totals, "groups": groups, "latency": summarize_latency(rows), "rows": rows}
+    metrics = summarize_classification_metrics(rows)
+    return {
+        "totals": totals,
+        "metrics": metrics,
+        "groups": groups,
+        "latency": summarize_latency(rows),
+        "rows": rows,
+    }
+
+
+def summarize_classification_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    tp = sum(1 for row in rows if row["expected"] and row["actual"])
+    tn = sum(1 for row in rows if not row["expected"] and not row["actual"])
+    fp = sum(1 for row in rows if not row["expected"] and row["actual"])
+    fn = sum(1 for row in rows if row["expected"] and not row["actual"])
+    count = len(rows)
+    precision = tp / (tp + fp) if tp + fp else 0.0
+    recall = tp / (tp + fn) if tp + fn else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if precision + recall else 0.0
+    accuracy = (tp + tn) / count if count else 0.0
+    return {
+        "true_positive": tp,
+        "true_negative": tn,
+        "false_positive": fp,
+        "false_negative": fn,
+        "accuracy": round(accuracy, 4),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f1": round(f1, 4),
+    }
 
 
 def print_human_report(report: dict[str, Any], backend_ms: float, sensitivity: int) -> None:
@@ -230,6 +265,16 @@ def print_human_report(report: dict[str, Any], backend_ms: float, sensitivity: i
         f"{totals['false_negative']} FN, "
         f"{totals['span_fail']} span fail"
     )
+    metrics = report.get("metrics") or {}
+    if metrics:
+        print(
+            "- metrics: "
+            f"accuracy {metrics['accuracy']:.4f}, "
+            f"precision {metrics['precision']:.4f}, "
+            f"recall {metrics['recall']:.4f}, "
+            f"f1 {metrics['f1']:.4f}, "
+            f"TP {metrics['true_positive']}, TN {metrics['true_negative']}"
+        )
     print()
     print("Group summary")
     for group, stats in sorted(report["groups"].items()):
@@ -347,6 +392,231 @@ def print_repeated_report(summary: dict[str, Any]) -> None:
     print(f"- samples: {', '.join(f'{value}ms' for value in summary['backend_ms_samples'])}")
 
 
+def backend_decision(row: dict[str, Any]) -> str:
+    if not row.get("actual"):
+        return "allow"
+    if row.get("spans"):
+        return "span_mask"
+    return "review_no_span"
+
+
+def score_value(row: dict[str, Any], label: str) -> float | None:
+    scores = row.get("scores") or {}
+    value = scores.get(label) if isinstance(scores, dict) else None
+    return as_float(value)
+
+
+def write_artifacts(output_dir: Path, summaries: list[dict[str, Any]]) -> dict[str, Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "summaries": summaries,
+    }
+
+    json_path = output_dir / "backend-e2e-summary.json"
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    csv_path = output_dir / "backend-e2e-rows.csv"
+    fieldnames = [
+        "sensitivity",
+        "run_index",
+        "case_id",
+        "group",
+        "text",
+        "expected_offensive",
+        "actual_offensive",
+        "pass",
+        "backend_decision",
+        "is_profane",
+        "is_toxic",
+        "is_hate",
+        "score_profanity",
+        "score_toxicity",
+        "score_hate",
+        "expected_spans",
+        "evidence_spans",
+        "timing_ms",
+        "model_timing_ms",
+        "llm_timing_ms",
+        "notes",
+    ]
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for summary in summaries:
+            for run_index, run in enumerate(summary.get("runs") or [], start=1):
+                for row in run.get("rows") or []:
+                    writer.writerow(
+                        {
+                            "sensitivity": run.get("sensitivity"),
+                            "run_index": run_index,
+                            "case_id": row.get("id"),
+                            "group": row.get("group"),
+                            "text": row.get("text"),
+                            "expected_offensive": row.get("expected"),
+                            "actual_offensive": row.get("actual"),
+                            "pass": row.get("pass"),
+                            "backend_decision": backend_decision(row),
+                            "is_profane": row.get("is_profane"),
+                            "is_toxic": row.get("is_toxic"),
+                            "is_hate": row.get("is_hate"),
+                            "score_profanity": score_value(row, "profanity"),
+                            "score_toxicity": score_value(row, "toxicity"),
+                            "score_hate": score_value(row, "hate"),
+                            "expected_spans": " | ".join(str(value) for value in row.get("expected_spans") or []),
+                            "evidence_spans": " | ".join(str(value) for value in row.get("spans") or []),
+                            "timing_ms": row.get("timing_ms"),
+                            "model_timing_ms": row.get("model_timing_ms"),
+                            "llm_timing_ms": row.get("llm_timing_ms"),
+                            "notes": row.get("notes"),
+                        }
+                    )
+
+    md_path = output_dir / "backend-e2e-report.md"
+    md_path.write_text(render_markdown_report(payload), encoding="utf-8")
+    return {"json": json_path, "csv": csv_path, "markdown": md_path}
+
+
+def md_cell(value: Any) -> str:
+    text = str(value if value is not None else "-")
+    return text.replace("\n", " ").replace("|", "\\|")
+
+
+def render_markdown_report(payload: dict[str, Any]) -> str:
+    lines = [
+        "# Backend E2E Test Report",
+        "",
+        f"- generated_at: `{payload['generated_at']}`",
+        "- contract: public `POST /analyze_batch`",
+        "",
+        "## Summary",
+        "",
+        "| Sensitivity | Repeat | Pass | Fail | Accuracy | Precision | Recall | F1 | FP | FN | Span Fail | Backend ms avg |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for summary in payload.get("summaries") or []:
+        runs = list(summary.get("runs") or [])
+        if not runs:
+            continue
+        first = runs[0]
+        totals = first.get("totals") or {}
+        metrics = first.get("metrics") or {}
+        lines.append(
+            "| "
+            f"{first.get('sensitivity')} | "
+            f"{summary.get('repeat')} | "
+            f"{totals.get('pass')} | "
+            f"{totals.get('fail')} | "
+            f"{metrics.get('accuracy')} | "
+            f"{metrics.get('precision')} | "
+            f"{metrics.get('recall')} | "
+            f"{metrics.get('f1')} | "
+            f"{totals.get('false_positive')} | "
+            f"{totals.get('false_negative')} | "
+            f"{totals.get('span_fail')} | "
+            f"{summary.get('backend_ms_avg')} |"
+        )
+
+    lines.extend([
+        "",
+        "## Group Summary",
+        "",
+        "| Sensitivity | Group | Pass | Count |",
+        "| --- | --- | ---: | ---: |",
+    ])
+    for summary in payload.get("summaries") or []:
+        runs = list(summary.get("runs") or [])
+        if not runs:
+            continue
+        first = runs[0]
+        for group, stats in sorted((first.get("groups") or {}).items()):
+            lines.append(
+                f"| {first.get('sensitivity')} | {md_cell(group)} | {stats.get('pass')} | {stats.get('count')} |"
+            )
+
+    lines.extend([
+        "",
+        "## Latency",
+        "",
+        "| Sensitivity | Backend round-trip samples | Pipeline avg | Pipeline p95 | Pipeline max | Model avg | Model p95 | Model max |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ])
+    for summary in payload.get("summaries") or []:
+        runs = list(summary.get("runs") or [])
+        if not runs:
+            continue
+        first = runs[0]
+        latency = first.get("latency") or {}
+        pipeline = latency.get("timing_ms") or {}
+        model = latency.get("model_timing_ms") or {}
+        samples = md_cell(", ".join(f"{value}ms" for value in summary.get("backend_ms_samples") or []))
+        lines.append(
+            "| "
+            f"{first.get('sensitivity')} | "
+            f"{samples} | "
+            f"{pipeline.get('avg')} | "
+            f"{pipeline.get('p95')} | "
+            f"{pipeline.get('max')} | "
+            f"{model.get('avg')} | "
+            f"{model.get('p95')} | "
+            f"{model.get('max')} |"
+        )
+
+    lines.extend([
+        "",
+        "## Slowest Cases",
+        "",
+        "| Sensitivity | Case | Group | Pipeline ms | Model ms | Decision | Evidence spans |",
+        "| --- | --- | --- | ---: | ---: | --- | --- |",
+    ])
+    for summary in payload.get("summaries") or []:
+        runs = list(summary.get("runs") or [])
+        if not runs:
+            continue
+        first = runs[0]
+        rows_by_id = {row.get("id"): row for row in first.get("rows") or []}
+        for row in (first.get("latency") or {}).get("slowest") or []:
+            full_row = rows_by_id.get(row.get("id"), row)
+            spans = md_cell(", ".join(str(value) for value in full_row.get("spans") or []))
+            lines.append(
+                "| "
+                f"{first.get('sensitivity')} | "
+                f"{md_cell(row.get('id'))} | "
+                f"{md_cell(row.get('group'))} | "
+                f"{row.get('timing_ms')} | "
+                f"{row.get('model_timing_ms')} | "
+                f"{md_cell(backend_decision(full_row))} | "
+                f"{spans or '-'} |"
+            )
+
+    failed_rows = []
+    for summary in payload.get("summaries") or []:
+        for run in summary.get("runs") or []:
+            failed_rows.extend((run.get("sensitivity"), row) for row in run.get("rows") or [] if not row.get("pass"))
+    lines.extend([
+        "",
+        "## Failed Cases",
+        "",
+    ])
+    if failed_rows:
+        lines.extend([
+            "| Sensitivity | Case | Group | Expected | Actual | Expected spans | Evidence spans |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ])
+        for sensitivity, row in failed_rows:
+            expected_spans = md_cell(", ".join(str(value) for value in row.get("expected_spans") or []))
+            spans = md_cell(", ".join(str(value) for value in row.get("spans") or []))
+            lines.append(
+                f"| {sensitivity} | {md_cell(row.get('id'))} | {md_cell(row.get('group'))} | {row.get('expected')} | "
+                f"{row.get('actual')} | {expected_spans or '-'} | {spans or '-'} |"
+            )
+    else:
+        lines.append("No failed cases.")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", default="http://127.0.0.1:8000", help="Backend base URL")
@@ -360,6 +630,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repeat", type=int, default=1, help="Repeat each sensitivity to capture cold/warm latency")
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Write backend E2E summary JSON, row CSV, and Markdown report to this directory",
+    )
     return parser.parse_args()
 
 
@@ -389,6 +664,13 @@ def main() -> int:
                 print("=" * 72)
                 print()
             print_repeated_report(summary)
+
+    if args.output_dir:
+        paths = write_artifacts(args.output_dir, summaries)
+        print()
+        print("Artifacts")
+        for label, path in paths.items():
+            print(f"- {label}: {path}")
 
     return 0 if all(summary.get("all_passed") for summary in summaries) else 1
 

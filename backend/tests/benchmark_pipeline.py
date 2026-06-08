@@ -158,7 +158,7 @@ def main():
     bench = texts[WARMUP_SAMPLES:]
 
     init_t0 = time.perf_counter()
-    classifier = TextClassifier(model_path=str(ROOT / "add" / "backend" / "models" / "v2"))
+    classifier = TextClassifier(model_path=str(ROOT / "add" / "backend" / "v3"))
     classifier_init = time.perf_counter() - init_t0
 
     init_t1 = time.perf_counter()
@@ -167,7 +167,7 @@ def main():
 
     init_t2 = time.perf_counter()
     pipe = ProfanityPipeline(
-        classifier_path=str(ROOT / "add" / "backend" / "models" / "v2"),
+        classifier_path=str(ROOT / "add" / "backend" / "v3"),
         span_model_path=str(ROOT / "add" / "backend" / "models" / "span_large_combined_crf"),
     )
     pipeline_init = time.perf_counter() - init_t2

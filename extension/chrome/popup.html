@@ -4,20 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>청마루</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <main class="popup-shell">
-      <header class="hero">
+    <main class="popup-shell" data-state="ready">
+      <header class="topbar">
         <div>
           <p class="eyebrow">청마루</p>
-          <h1>실시간 필터</h1>
+          <h1>브라우저 보호</h1>
         </div>
         <label class="power-switch" title="필터링 활성화">
           <input id="enabledToggle" type="checkbox" />
@@ -25,63 +19,69 @@
         </label>
       </header>
 
-      <section class="panel runtime">
-        <h2>실동작 상태</h2>
-        <ul class="runtime-list">
-          <li><span>마지막 분석 시각</span><strong id="runtimeLastRun">-</strong></li>
-          <li><span>분석 노드 수</span><strong id="runtimeAnalyzed">0</strong></li>
-          <li><span>차단 노드 수</span><strong id="runtimeBlocked">0</strong></li>
-          <li><span>첫 마스크 지연</span><strong id="runtimeFirstMask">-</strong></li>
-          <li><span>foreground 백엔드</span><strong id="runtimeHotPath">-</strong></li>
-          <li><span>foreground 상태</span><strong id="runtimeHotPathState">-</strong></li>
-          <li><span>foreground 오류</span><strong id="runtimeHotPathError">-</strong></li>
-          <li><span>foreground source</span><strong id="runtimeWorkerInit">-</strong></li>
-          <li><span>백엔드 후속 확인</span><strong id="runtimeBackendLatency">-</strong></li>
-          <li><span>마스킹 span 수</span><strong id="runtimeMaskedSpans">0</strong></li>
-          <li><span>재조정 큐 깊이</span><strong id="runtimeQueueDepth">0</strong></li>
-          <li><span>판정 출처</span><strong id="runtimeDecisionSource">-</strong></li>
-          <li><span>현재 페이지 hostname</span><strong id="runtimeHostname">-</strong></li>
-          <li><span>백엔드 주소</span><strong id="runtimeBackend">-</strong></li>
-          <li><span>백엔드 상태</span><strong id="runtimeBackendState">-</strong></li>
-        </ul>
+      <section class="status-panel">
+        <div class="status-head">
+          <div>
+            <p id="currentDomain" class="domain">현재 사이트</p>
+            <strong id="protectionSummary">상태 확인 중</strong>
+          </div>
+          <span id="siteVerdictBadge" class="verdict-badge">확인 중</span>
+        </div>
+
+        <div class="usage-grid">
+          <article>
+            <span>오늘 웹 사용</span>
+            <strong id="todayUsage">0분</strong>
+          </article>
+          <article>
+            <span>현재 페이지 감지</span>
+            <strong id="siteDetections">0개</strong>
+          </article>
+        </div>
+
+        <div id="backendStatusCard" class="backend-status" data-status="checking">
+          <div>
+            <span>분석 서버</span>
+            <strong id="backendStatusText">확인 중</strong>
+            <small id="backendStatusDetail">-</small>
+          </div>
+          <button id="backendRefreshButton" type="button">재확인</button>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="control-panel settings-panel">
         <div class="panel-head">
-          <h2>민감도</h2>
+          <div>
+            <h2>필터 강도</h2>
+            <p id="sensitivityHint">보통</p>
+          </div>
           <strong id="sensitivityLabel">60</strong>
         </div>
         <input id="sensitivityRange" type="range" min="0" max="100" step="5" />
-      </section>
 
-      <section class="panel">
-        <h2>카테고리</h2>
-        <div class="grid checks">
-          <label><input id="catAbuse" type="checkbox" />유해</label>
-          <label><input id="catHate" type="checkbox" />혐오</label>
-          <label><input id="catInsult" type="checkbox" />모욕</label>
-          <label><input id="catSpam" type="checkbox" />스팸</label>
+        <div class="setting-block">
+          <h2>감지 범위</h2>
+          <div class="chip-grid">
+            <label><input id="catInsult" type="checkbox" />욕설</label>
+            <label><input id="catAbuse" type="checkbox" />공격</label>
+            <label><input id="catHate" type="checkbox" />혐오</label>
+          </div>
         </div>
-      </section>
 
-      <section class="panel">
-        <h2>개입 방식</h2>
-        <div class="mode-row">
-          <label><input type="radio" name="mode" value="mask" />마스킹</label>
-          <label><input type="radio" name="mode" value="hide" />숨김</label>
+        <div class="setting-block">
+          <h2>처리 방식</h2>
+          <div class="mode-row">
+            <label><input type="radio" name="mode" value="mask" />가리기</label>
+            <label><input type="radio" name="mode" value="blur" />흐리기</label>
+            <label><input type="radio" name="mode" value="hide" />숨기기</label>
+            <label><input type="radio" name="mode" value="remove" />삭제</label>
+          </div>
         </div>
-      </section>
-
-      <section class="panel preview">
-        <h2>즉시 미리보기</h2>
-        <p id="previewLine" class="preview-line">
-          진짜 열받네 이건 완전 스팸이야 너는 왜 그렇게 말해
-        </p>
       </section>
 
       <footer class="actions">
-        <button id="applyNowButton" class="btn primary">현재 탭 즉시 분석</button>
-        <button id="openOptionsButton" class="btn ghost">상세 설정</button>
+        <button id="applyNowButton" class="btn primary" type="button">현재 페이지 검사</button>
+        <button id="openOptionsButton" class="btn ghost" type="button">상세 설정</button>
       </footer>
 
       <p id="statusMessage" class="status" aria-live="polite"></p>

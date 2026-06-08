@@ -68,6 +68,7 @@
   - Chrome Extension 마스킹 UI 연결
   - API 초안 및 판단 응답 형식 정리
   - 플랫폼별 수집 흐름 테스트
+  - 사이트 보호, 검색 결과 보호, 웰빙 위젯 연결
 - 3차 평가/발표 정리
   - pipeline 비교 실험 정리
   - Demo 시나리오 확정
@@ -81,7 +82,7 @@
 - 1차 기반 정리: 완료
   - 저장소 구조, 공통 계약/정책, Android 수집 기반 정리
 - 2차 실사용 연결: 완료 + 고도화
-  - Backend API, Chrome exact span, 입력창 처리, sensitivity/cache/stale response guard 개선
+  - Backend API, Chrome exact span, 입력창 처리, site guard, 검색 결과 보호, 웰빙 위젯, sensitivity/cache/stale response guard 개선
 - 3차 평가/발표 정리: 진행 중
   - 1007건 모델 평가 스냅샷, FP/FN 실패 유형 분석, pipeline 비교 프레임, 발표자료 정리
 - 4차 통합 검증: 남은 검증
@@ -91,9 +92,9 @@
 - Backend API
   - `/analyze_batch`, `/analyze_android`, evidence_spans 중심 계약
 - Chrome Extension
-  - DOM exact span 마스킹, 입력창 UX, stale response guard
+  - DOM exact span 마스킹, 입력창 UX, site-warning page, 검색 결과 보호, 웰빙 위젯, stale response guard
 - Android App
-  - 접근성 후보 수집, 분석 API 연동, overlay planner, OCR ROI 구조
+  - 접근성 후보 수집, 분석 API 연동, overlay planner, OCR ROI 구조, browser title compact provisional mask
 - Evaluation
   - 1007건 평가 스냅샷, FP/FN 실패 유형 분석, pipeline 비교 프레임
 - Docs / PPT Assets
@@ -124,11 +125,15 @@
 - Chrome DOM과 Android 접근성/OCR은 좌표 체계가 다르다.
 - Android OCR/overlay는 실기기 latency와 정확도 검증이 남아 있다.
 - backend가 positive를 반환해도 evidence span이나 bbox가 없으면 안전하게 화면에 적용하기 어렵다.
+- Chrome site guard와 wellbeing widget은 발표용 warning/search/widget screenshot pack이 필요하다.
+- Android browser title compact mask는 title 1줄 후보에 한정하고, estimated range는 직접 overlay에 쓰지 않는다.
 
 7. 앞으로의 계획:
 - KOLD clean FP와 우회 표현 FN 회귀셋 보강
 - keyword-only, ML-only, ML+normalization, ML+safe-context, full pipeline 단계별 비교표 완성
 - Android OCR bbox와 backend evidence span 투영 검증
+- Chrome site warning, 검색 결과 보호, wellbeing widget screenshot pack 정리
+- Android browser title compact mask 실기기 검증
 - Chrome/Android 통합 demo 정리
 - 최종 보고서에 문제-제약-선택-검증-남은 리스크 흐름 반영
 
@@ -138,11 +143,13 @@
 3. 개발 진행상황: 완료 / 완료+고도화 / 진행 중 / 남은 검증
 4. 완료된 산출 지점: Backend, Chrome, Android, Evaluation, Docs
 5. 시스템 구조: Chrome + Android + Backend
-6. 모델 평가: 1007건, 정확도 78.55%, FP 86, FN 130
-7. 실패 유형: kold_clean FP, offensive_other FN, hate FN
-8. 제약 사항 / 어려운 부분
-9. 앞으로의 계획
-10. 결론: 청마루는 욕설 단어 차단 도구가 아니라 문맥과 플랫폼 제약을 관리하는 중재 시스템
+6. Chrome 확장 고도화: DOM exact span, site guard, 검색 결과 보호, wellbeing widget
+7. Android masking 제약: boundsInScreen, OCR ROI, browser title compact mask
+8. 모델 평가: 1007건, 정확도 78.55%, FP 86, FN 130
+9. 실패 유형: kold_clean FP, offensive_other FN, hate FN
+10. 제약 사항 / 어려운 부분
+11. 앞으로의 계획
+12. 결론: 청마루는 욕설 단어 차단 도구가 아니라 문맥과 플랫폼 제약을 관리하는 중재 시스템
 
 우선 사용할 이미지 에셋:
 - docs/presentation/ppt-assets/15_final_ppt_flow_order.png

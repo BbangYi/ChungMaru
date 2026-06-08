@@ -73,6 +73,14 @@ class VisualTextOcrCandidateFilterTest {
     }
 
     @Test
+    fun findAnalysisRanges_keepsGaegatCompoundForBrowserCharacterRangeFallback() {
+        val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("문제 댓글: 이건 개같아서 보기 힘들다는 표현입니다.")
+
+        assertEquals(listOf("개같"), ranges.map { it.analysisText })
+        assertEquals(listOf("개같"), ranges.map { it.visualText })
+    }
+
+    @Test
     fun findAnalysisRanges_canonicalizesCommonOcrMisreadsForBackend() {
         val samples = listOf(
             "Tlakf",
@@ -124,6 +132,14 @@ class VisualTextOcrCandidateFilterTest {
 
         assertEquals(listOf("C발"), ranges.map { it.analysisText })
         assertEquals(listOf("C발"), ranges.map { it.visualText })
+    }
+
+    @Test
+    fun findAnalysisRanges_canonicalizesOcrAbeeMisreadAsSibalInitials() {
+        val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges("캔버스 안 욕설 테스트: A비 너무 화남")
+
+        assertEquals(listOf("ㅅㅂ"), ranges.map { it.analysisText })
+        assertEquals(listOf("A비"), ranges.map { it.visualText })
     }
 
     @Test
@@ -189,6 +205,20 @@ class VisualTextOcrCandidateFilterTest {
         assertEquals("browser-text-node", decoded?.source)
         assertEquals(BoundsRect(left = 24, top = 140, right = 680, bottom = 320), decoded?.roiBoundsInScreen)
         assertEquals("시발", decoded?.visualText)
+    }
+
+    @Test
+    fun visualTextOcrMetadataCodec_supportsBrowserVisualRegionSource() {
+        val encoded = VisualTextOcrMetadataCodec.encode(
+            source = "browser-visual-region",
+            roiBoundsInScreen = BoundsRect(left = 104, top = 702, right = 982, bottom = 1195),
+            visualText = "A비"
+        )
+        val decoded = VisualTextOcrMetadataCodec.decode(encoded)
+
+        assertEquals("browser-visual-region", decoded?.source)
+        assertEquals(BoundsRect(left = 104, top = 702, right = 982, bottom = 1195), decoded?.roiBoundsInScreen)
+        assertEquals("A비", decoded?.visualText)
     }
 
     @Test

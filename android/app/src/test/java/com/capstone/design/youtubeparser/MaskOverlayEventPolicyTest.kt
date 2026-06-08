@@ -145,6 +145,42 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldThrottleRecentVisualRefresh_onlyForSameActiveVisualSignatureInsideCooldown() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldThrottleRecentVisualRefresh(
+                hasActiveMasks = true,
+                currentVisualSignature = "browser-visual-region:104,694,982,1187",
+                lastVisualSignature = "browser-visual-region:104,694,982,1187",
+                elapsedSinceLastRefreshMs = 700L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldThrottleRecentVisualRefresh(
+                hasActiveMasks = false,
+                currentVisualSignature = "browser-visual-region:104,694,982,1187",
+                lastVisualSignature = "browser-visual-region:104,694,982,1187",
+                elapsedSinceLastRefreshMs = 700L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldThrottleRecentVisualRefresh(
+                hasActiveMasks = true,
+                currentVisualSignature = "browser-visual-region:104,694,982,1187",
+                lastVisualSignature = "browser-visual-region:104,1240,982,1733",
+                elapsedSinceLastRefreshMs = 700L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldThrottleRecentVisualRefresh(
+                hasActiveMasks = true,
+                currentVisualSignature = "browser-visual-region:104,694,982,1187",
+                lastVisualSignature = "browser-visual-region:104,694,982,1187",
+                elapsedSinceLastRefreshMs = 1600L
+            )
+        )
+    }
+
+    @Test
     fun shouldRetryAfterStaleOverlayResult_retriesOnlyForOkStaleAnalysis() {
         assertTrue(
             MaskOverlayEventPolicy.shouldRetryAfterStaleOverlayResult(
@@ -212,6 +248,14 @@ class MaskOverlayEventPolicyTest {
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
                 hasResolvedScrollDelta = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = false,
+                overlayUpdatedRecently = true
             )
         )
         assertFalse(
@@ -387,6 +431,38 @@ class MaskOverlayEventPolicyTest {
                 eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 visualAnalysisInFlight = true,
                 elapsedSinceVisualAnalysisStartMs = 250L
+            )
+        )
+    }
+
+    @Test
+    fun shouldDeferVisualInvalidationForFreshCapture_ignoresImmediateScrollNoise() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldDeferVisualInvalidationForFreshCapture(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                visualAnalysisInFlight = true,
+                elapsedSinceVisualAnalysisStartMs = 120L
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldDeferVisualInvalidationForFreshCapture(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                visualAnalysisInFlight = true,
+                elapsedSinceVisualAnalysisStartMs = 120L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldDeferVisualInvalidationForFreshCapture(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                visualAnalysisInFlight = true,
+                elapsedSinceVisualAnalysisStartMs = 640L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldDeferVisualInvalidationForFreshCapture(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                visualAnalysisInFlight = false,
+                elapsedSinceVisualAnalysisStartMs = 120L
             )
         )
     }

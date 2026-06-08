@@ -18,6 +18,8 @@ internal object MaskOverlayEventPolicy {
     private const val MIN_SCREENSHOT_REQUEST_INTERVAL_MS = 380L
     private const val SCREENSHOT_RETRY_GRACE_MS = 64L
     private const val VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS = 180L
+    private const val VISUAL_SCROLL_INVALIDATION_GRACE_MS = 450L
+    private const val VISUAL_REFRESH_COOLDOWN_MS = 1200L
 
     fun resolveScrollTranslationDelta(
         eventType: Int,
@@ -97,11 +99,13 @@ internal object MaskOverlayEventPolicy {
     fun shouldHideOnUnresolvedScrollDelta(
         eventType: Int,
         hasActiveMasks: Boolean,
-        hasResolvedScrollDelta: Boolean
+        hasResolvedScrollDelta: Boolean,
+        overlayUpdatedRecently: Boolean = false
     ): Boolean {
         return eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED &&
             hasActiveMasks &&
-            !hasResolvedScrollDelta
+            !hasResolvedScrollDelta &&
+            !overlayUpdatedRecently
     }
 
     fun shouldDeferClearForVisualOnlyAnalysis(
@@ -146,6 +150,24 @@ internal object MaskOverlayEventPolicy {
             elapsedSinceVisualAnalysisStartMs in 0..VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS
     }
 
+    fun shouldDeferVisualInvalidationForFreshCapture(
+        eventType: Int,
+        visualAnalysisInFlight: Boolean,
+        elapsedSinceVisualAnalysisStartMs: Long
+    ): Boolean {
+        if (!visualAnalysisInFlight || elapsedSinceVisualAnalysisStartMs < 0L) {
+            return false
+        }
+
+        return when (eventType) {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ->
+                elapsedSinceVisualAnalysisStartMs <= VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS
+            AccessibilityEvent.TYPE_VIEW_SCROLLED ->
+                elapsedSinceVisualAnalysisStartMs <= VISUAL_SCROLL_INVALIDATION_GRACE_MS
+            else -> false
+        }
+    }
+
     fun shouldRunVisualRefreshForDuplicateSnapshot(
         hasRenderableVisualRois: Boolean,
         visualAnalysisInFlight: Boolean,
@@ -154,6 +176,18 @@ internal object MaskOverlayEventPolicy {
         return hasRenderableVisualRois &&
             !visualAnalysisInFlight &&
             !hasReusableVisualSupplement
+    }
+
+    fun shouldThrottleRecentVisualRefresh(
+        hasActiveMasks: Boolean,
+        currentVisualSignature: String,
+        lastVisualSignature: String?,
+        elapsedSinceLastRefreshMs: Long
+    ): Boolean {
+        return hasActiveMasks &&
+            currentVisualSignature.isNotBlank() &&
+            currentVisualSignature == lastVisualSignature &&
+            elapsedSinceLastRefreshMs in 0..VISUAL_REFRESH_COOLDOWN_MS
     }
 
     fun isLikelySelfContentChange(

@@ -27,7 +27,7 @@ object AndroidAnalysisClient {
 
     private const val TAG = "AndroidAnalysisClient"
     private const val CONNECT_TIMEOUT_MS = 500
-    private const val READ_TIMEOUT_MS = 1200
+    private const val READ_TIMEOUT_MS = 2500
     private const val RESPONSE_CACHE_LIMIT = 512
     private const val RESPONSE_CACHE_TTL_MS = 30_000L
     private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
@@ -472,6 +472,7 @@ object AndroidAnalysisClient {
             sourceKey.startsWith("ocr:youtube-visible-band:") ||
             sourceKey.startsWith("ocr:youtube-comment-panel:") ||
             sourceKey.startsWith("ocr:browser-text-node:") ||
+            sourceKey.startsWith("ocr:browser-visual-region:") ||
             sourceKey.startsWith("ocr:youtube-semantic-card:")
     }
 

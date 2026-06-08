@@ -290,7 +290,7 @@ class MaskOverlayPlannerTest {
         assertEquals(1, specs.size)
         assertTrue(specs.single().debugSource.startsWith("android-accessibility-browser-compact:"))
         assertTrue(specs.single().width <= 120)
-        assertTrue(specs.single().allowScrollTranslation)
+        assertFalse(specs.single().allowScrollTranslation)
     }
 
     @Test
@@ -482,6 +482,39 @@ class MaskOverlayPlannerTest {
         )
 
         assertEquals(listOf(nextSpec), merged)
+    }
+
+    @Test
+    fun mergeWithPreservedPreciseVisualSpecs_keepsBrowserVisualOcrDuringBackendRefresh() {
+        val backendSafeRefreshSpec = MaskOverlaySpec(
+            left = 500,
+            top = 772,
+            width = 104,
+            height = 56,
+            label = "***",
+            allowScrollTranslation = true,
+            debugSource = "android-accessibility-char-range:browser:title:ㅅㅂ span=ㅅㅂ"
+        )
+        val browserVisualOcrSpec = MaskOverlaySpec(
+            left = 524,
+            top = 927,
+            width = 88,
+            height = 56,
+            label = "***",
+            allowScrollTranslation = true,
+            debugSource = "ocr:browser-visual-region:104,697,982,1189:A비 span=ㅅㅂ rect=524,917,612,993 text=ㅅㅂ"
+        )
+
+        val merged = AndroidMaskOverlayPlanner.mergeWithPreservedPreciseVisualSpecs(
+            newSpecs = listOf(backendSafeRefreshSpec),
+            existingSpecs = listOf(browserVisualOcrSpec),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertEquals(2, merged.size)
+        assertTrue(merged.any { it.debugSource.startsWith("android-accessibility-char-range:browser:") })
+        assertTrue(merged.any { it.debugSource.startsWith("ocr:browser-visual-region:") })
     }
 
     @Test
@@ -1119,6 +1152,86 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_acceptsBrowserCharacterRangeHeightFromChromeTextNodes() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(597, 961, 699, 1028),
+                spans = listOf(EvidenceSpan("ㅈ같", 0, 2, 0.99)),
+                original = "ㅈ같",
+                authorId = "android-accessibility-char-range:browser:title:ㅈ같"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertEquals(597, specs.single().left)
+        assertEquals(961, specs.single().top)
+        assertFalse(specs.single().allowScrollTranslation)
+        assertTrue(specs.single().debugSource.startsWith("android-accessibility-char-range:browser:"))
+    }
+
+    @Test
+    fun buildSpecs_capsBrowserMasksToFocusedVisibleSet() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 420, 140, 482),
+                spans = listOf(EvidenceSpan("꺼져", 0, 2, 0.99)),
+                original = "꺼져",
+                authorId = "android-accessibility-char-range:browser:title:꺼져"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 620, 140, 682),
+                spans = listOf(EvidenceSpan("병신", 0, 2, 0.99)),
+                original = "병신",
+                authorId = "android-accessibility-char-range:browser:snippet:병신"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 820, 140, 882),
+                spans = listOf(EvidenceSpan("뒤져", 0, 2, 0.99)),
+                original = "뒤져",
+                authorId = "android-accessibility-char-range:browser:snippet:뒤져"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(40, 1020, 140, 1082),
+                spans = listOf(EvidenceSpan("죽여", 0, 2, 0.99)),
+                original = "죽여",
+                authorId = "android-accessibility-char-range:browser:snippet:죽여"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(3, specs.size)
+        assertTrue(specs.all { spec -> !spec.allowScrollTranslation })
+    }
+
+    @Test
+    fun buildSpecs_masksShortBrowserCharacterRangeEvenWhenBackendSpanIsMissing() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(597, 961, 699, 1028),
+                spans = emptyList(),
+                original = "ㅈ같",
+                authorId = "android-accessibility-char-range:browser:title:ㅈ같"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertEquals(597, specs.single().left)
+        assertEquals(961, specs.single().top)
+        assertTrue(specs.single().width <= 220)
+    }
+
+    @Test
     fun translateSpecs_doesNotDragEstimatedAccessibilityRangeMasksDuringScroll() {
         val translated = AndroidMaskOverlayPlanner.translateSpecs(
             specs = listOf(
@@ -1367,6 +1480,31 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
 
         assertTrue(specs.isEmpty())
+    }
+
+    @Test
+    fun buildSpecs_rendersBrowserVisualRegionOcrWithExactLineBounds() {
+        val authorId = VisualTextOcrMetadataCodec.encode(
+            source = "browser-visual-region",
+            roiBoundsInScreen = BoundsRect(104, 702, 982, 1195),
+            visualText = "A비"
+        )
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(526, 924, 610, 988),
+                spans = listOf(EvidenceSpan("ㅅㅂ", 0, 2, 0.99)),
+                original = "ㅅㅂ",
+                authorId = authorId
+            )
+        )
+
+        val plan = AndroidMaskOverlayPlanner.buildPlan(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, plan.candidateCount)
+        assertEquals(0, plan.skippedUnstableCount)
+        assertEquals(1, plan.specs.size)
+        assertTrue(plan.specs.single().debugSource.startsWith("ocr:browser-visual-region:"))
     }
 
     @Test

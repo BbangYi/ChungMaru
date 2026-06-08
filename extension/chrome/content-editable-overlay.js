@@ -203,9 +203,19 @@ function buildEditableVisibleMaskReplacement(text) {
   return "*".repeat(Math.max(2, Math.min(12, graphemeCount || 2)));
 }
 
+function getEditableInterventionMode(settings) {
+  const mode = String(settings?.interventionMode || "mask").trim();
+  return ["mask", "blur", "hide", "remove"].includes(mode) ? mode : "mask";
+}
+
 // Locked Google search input path. See the contract above before changing this.
 function shouldUseFixedEditableTokenOverlay(element, settings) {
-  return settings?.interventionMode !== "hide" && shouldUseHardEditableConcealment(element);
+  const interventionMode = getEditableInterventionMode(settings);
+  return (
+    interventionMode !== "hide" &&
+    interventionMode !== "remove" &&
+    shouldUseHardEditableConcealment(element)
+  );
 }
 
 function buildEditableFixedTokenReplacement(text, spans) {
@@ -551,7 +561,7 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
     delete state.overlayRoot.dataset.shieldtextFixedEditable;
   }
   const shouldUseFullSpanLayout =
-    settings?.interventionMode === "hide" &&
+    getEditableInterventionMode(settings) === "hide" &&
     doSpansCoverFullText(spans, text) &&
     !usesHardEditableConcealment;
   if (shouldUseFullSpanLayout) {
@@ -564,10 +574,11 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
 
   if (!state.overlayContent) return;
 
+  const interventionMode = getEditableInterventionMode(settings);
   const renderKey = JSON.stringify({
     text,
     spans,
-    interventionMode: settings?.interventionMode || "mask",
+    interventionMode,
     fixedToken: shouldUseFixedTokenOverlay,
     fullSpanMaskWidthPx: shouldUseFullSpanLayout
       ? getEditableFullSpanMaskWidthPx(state.element, text)
@@ -614,9 +625,19 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       fragment.appendChild(safeSegment);
     }
 
+    if (interventionMode === "remove") {
+      cursor = span.end;
+      continue;
+    }
+
     const mask = document.createElement("span");
-    const shouldHide = settings?.interventionMode === "hide";
-    mask.className = shouldHide ? "shieldtext-editable-hide" : "shieldtext-editable-mask";
+    const shouldHide = interventionMode === "hide";
+    const shouldBlur = interventionMode === "blur";
+    mask.className = shouldHide
+      ? "shieldtext-editable-hide"
+      : shouldBlur
+        ? "shieldtext-editable-blur"
+        : "shieldtext-editable-mask";
     const shouldUseMeasuredFullSpanBox =
       shouldHide && doSpansCoverFullText(spans, text) && !usesHardEditableConcealment;
     if (shouldUseMeasuredFullSpanBox) {
@@ -647,6 +668,9 @@ function renderEditableOverlay(state, text, spans, settings, tooltip) {
       hiddenText.style.setProperty("-webkit-text-fill-color", "transparent", "important");
       hiddenText.style.setProperty("text-shadow", "none", "important");
       mask.appendChild(hiddenText);
+    } else if (shouldBlur) {
+      mask.textContent = text.slice(span.start, span.end);
+      mask.setAttribute("aria-label", "흐림 처리됨");
     } else if (!shouldHide) {
       mask.textContent = buildEditableVisibleMaskReplacement(text.slice(span.start, span.end));
       mask.setAttribute("aria-label", "마스킹됨");
@@ -764,7 +788,7 @@ function renderEditableValueOutcome(candidate, outcome, settings) {
   const decisionKey = JSON.stringify({
     text: candidate.text,
     categories: outcome.categories,
-    interventionMode: settings?.interventionMode || "mask",
+    interventionMode: getEditableInterventionMode(settings),
     tooltip,
     spans,
     nativeMask: shouldUseNativeFullMask

@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0">
+  <meta http-equiv="Pragma" content="no-cache">
+  <title>지정학 충격과 미국 섹터 ETF 반응</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #eef3ee;
+      --grid: rgba(56, 103, 76, .11);
+      --board: #fdfefc;
+      --board-soft: #f4f8f3;
+      --ink: #17211c;
+      --muted: #58665d;
+      --muted-2: #758178;
+      --line: rgba(39, 70, 51, .2);
+      --green: #345c43;
+      --green-2: #789c7e;
+      --green-3: #aec7b1;
+      --green-pale: #d7e4d8;
+      --amber: #b77b35;
+      --red: #b85a4c;
+      --shadow: 0 clamp(.7rem, 1.4vw, 1rem) clamp(1.4rem, 2.4vw, 2.2rem) rgba(32, 44, 36, .14);
+      --hard-shadow: clamp(.38rem, .8vw, .58rem) clamp(.38rem, .8vw, .58rem) 0 rgba(79, 122, 96, .55);
+      --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+    }
+
+    * { box-sizing: border-box; }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      letter-spacing: 0;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+
+    button { font: inherit; }
+    img { display: block; max-width: 100%; }
+    h1, h2, h3, p, figure { margin: 0; }
+
+    .deck {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      isolation: isolate;
+      background:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+        radial-gradient(circle at 12% 18%, rgba(120, 156, 126, .24), transparent 24rem),
+        radial-gradient(circle at 85% 72%, rgba(183, 123, 53, .1), transparent 22rem),
+        var(--bg);
+      background-size:
+        clamp(1.7rem, 3vw, 2.6rem) clamp(1.7rem, 3vw, 2.6rem),
+        clamp(1.7rem, 3vw, 2.6rem) clamp(1.7rem, 3vw, 2.6rem),
+        auto,
+        auto,
+        auto;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      padding: clamp(1.05rem, 2.2vh, 1.55rem) clamp(1.1rem, 2.35vw, 1.9rem) clamp(1.05rem, 2.2vh, 1.55rem);
+      display: grid;
+      place-items: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateX(clamp(.5rem, 1vw, 1rem)) scale(.994);
+      transition: opacity .34s var(--ease), transform .34s var(--ease), visibility .34s var(--ease);
+      z-index: 1;
+    }
+
+    .slide.is-active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateX(0) scale(1);
+      z-index: 2;
+    }
+
+    .chrome {
+      position: absolute;
+      top: clamp(.48rem, 1.15vh, .72rem);
+      left: clamp(1.1rem, 2.35vw, 1.9rem);
+      right: clamp(1.1rem, 2.35vw, 1.9rem);
+      z-index: 8;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      color: rgba(23, 33, 28, .48);
+      font: 700 clamp(.56rem, .8vw, .72rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .board {
+      width: min(1760px, calc(100vw - clamp(2.2rem, 4.7vw, 3.8rem)));
+      height: min(980px, calc(100dvh - clamp(2.7rem, 5.8vh, 4.1rem)));
+      min-height: 0;
+      position: relative;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: clamp(.55rem, 1.25vh, .9rem);
+      padding: clamp(1.1rem, 2.35vw, 2.2rem) clamp(1.15rem, 2.9vw, 2.6rem);
+      background: rgba(253, 254, 252, .95);
+      border: 2px solid rgba(52, 92, 67, .64);
+      box-shadow: var(--hard-shadow), 0 clamp(1rem, 2.2vw, 1.8rem) clamp(2.3rem, 4vw, 3.2rem) rgba(31, 44, 37, .13);
+    }
+
+    .board::before {
+      content: "";
+      position: absolute;
+      inset: clamp(.45rem, 1vw, .8rem);
+      border: 1px solid rgba(52, 92, 67, .14);
+      pointer-events: none;
+    }
+
+    .board::after {
+      content: "";
+      position: absolute;
+      right: clamp(1.1rem, 3vw, 2.2rem);
+      top: calc(-1 * clamp(.38rem, .8vw, .62rem));
+      width: clamp(3.7rem, 7vw, 5.9rem);
+      height: clamp(1.05rem, 2.2vw, 1.55rem);
+      border: 2px solid rgba(23, 33, 28, .54);
+      background: #a9c3a8;
+      box-shadow: .28rem .28rem 0 rgba(52, 92, 67, .28);
+      pointer-events: none;
+    }
+
+    .slide.report-blue {
+      background:
+        linear-gradient(180deg, #f7faff 0%, #eef4fb 100%);
+    }
+
+    .slide.report-blue .chrome {
+      color: rgba(38, 58, 87, .58);
+    }
+
+    .slide.report-blue .board {
+      width: min(1760px, calc(100vw - clamp(3.9rem, 6.2vw, 5.7rem)));
+      height: min(990px, calc(100dvh - clamp(3rem, 6vh, 4.4rem)));
+      padding: clamp(1.55rem, 3.35vw, 3.35rem) clamp(1.75rem, 3.95vw, 4.15rem);
+      background: rgba(255, 255, 255, .96);
+      border: 1px solid rgba(88, 112, 145, .24);
+      box-shadow: 0 clamp(1rem, 2.4vw, 2.2rem) clamp(2.2rem, 4vw, 4.5rem) rgba(35, 52, 76, .13);
+    }
+
+    .slide.report-blue .board::before,
+    .slide.report-blue .board::after {
+      display: none;
+    }
+
+    .report-cover {
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(1.2rem, 3vh, 2.4rem);
+    }
+
+    .report-cover-main {
+      display: grid;
+      place-items: center;
+      text-align: center;
+      align-content: center;
+      gap: clamp(1rem, 2.4vh, 1.7rem);
+      min-height: 0;
+    }
+
+    .report-kicker {
+      color: #3e638f;
+      font: 800 clamp(.72rem, 1vw, .92rem) / 1 var(--mono);
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .report-title {
+      color: #12243b;
+      font-size: clamp(3rem, 6.2vw, 6.35rem);
+      line-height: 1.08;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .report-title .line { display: block; }
+
+    .report-subtitle {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(1rem, 1.55vw, 1.45rem);
+      line-height: 1.46;
+      font-weight: 650;
+    }
+
+    .report-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-top: clamp(.8rem, 1.7vh, 1.2rem);
+      border-top: 1px solid rgba(88, 112, 145, .26);
+      color: rgba(25, 44, 70, .7);
+      font-size: clamp(.78rem, 1.05vw, .95rem);
+      font-weight: 650;
+    }
+
+    .report-footer strong {
+      color: #12243b;
+      font-weight: 800;
+    }
+
+    .report-board {
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: clamp(.9rem, 1.85vh, 1.45rem);
+    }
+
+    .report-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: clamp(1rem, 2vw, 2rem);
+      padding-bottom: clamp(.8rem, 1.6vh, 1.2rem);
+      border-bottom: 1px solid rgba(88, 112, 145, .2);
+    }
+
+    .report-head h2 {
+      color: #12243b;
+      font-size: clamp(2.45rem, 4.25vw, 4.8rem);
+      line-height: 1.08;
+    }
+
+    .report-message {
+      margin-top: clamp(.42rem, .9vh, .68rem);
+      color: rgba(25, 44, 70, .74);
+      font-size: clamp(1.08rem, 1.45vw, 1.42rem);
+      line-height: 1.42;
+      font-weight: 700;
+      max-width: 58ch;
+    }
+
+    .report-page {
+      color: rgba(62, 99, 143, .72);
+      font: 800 clamp(1.4rem, 3vw, 2.8rem) / 1 var(--mono);
+    }
+
+    .motivation-grid {
+      display: grid;
+      grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr);
+      gap: clamp(1rem, 2.6vw, 2.3rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .flow-panel,
+    .analysis-panel,
+    .research-card,
+    .final-goal {
+      border: 1px solid rgba(88, 112, 145, .2);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(245, 249, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+    }
+
+    .flow-panel,
+    .analysis-panel {
+      padding: clamp(1rem, 2vw, 1.7rem);
+      display: grid;
+      align-content: center;
+      gap: clamp(.8rem, 1.7vh, 1.25rem);
+      min-height: 0;
+    }
+
+    .flow-title,
+    .panel-title {
+      color: #3e638f;
+      font: 800 clamp(.7rem, .9vw, .84rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .flow-chain {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: clamp(.45rem, .9vw, .85rem);
+      align-items: center;
+    }
+
+    .flow-node {
+      min-height: clamp(5.2rem, 14vh, 8.4rem);
+      display: grid;
+      place-items: center;
+      padding: clamp(.7rem, 1.4vw, 1rem);
+      border: 1px solid rgba(88, 112, 145, .28);
+      background: #fff;
+      color: #12243b;
+      font-size: clamp(1rem, 1.35vw, 1.35rem);
+      line-height: 1.25;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .flow-arrow {
+      color: rgba(62, 99, 143, .7);
+      font: 800 clamp(1.25rem, 2vw, 1.8rem) / 1 var(--mono);
+    }
+
+    .reason-list {
+      display: grid;
+      gap: clamp(.55rem, 1.2vh, .82rem);
+      color: rgba(25, 44, 70, .75);
+      font-size: clamp(.98rem, 1.24vw, 1.18rem);
+      line-height: 1.42;
+      font-weight: 650;
+    }
+
+    .reason-list p {
+      padding-left: clamp(.7rem, 1vw, .9rem);
+      border-left: 3px solid rgba(62, 99, 143, .36);
+    }
+
+    .question-box {
+      padding: clamp(1rem, 2.1vw, 1.7rem);
+      border: 2px solid rgba(45, 76, 116, .4);
+      background: #f6f9fd;
+      display: grid;
+      gap: clamp(.55rem, 1.2vh, .85rem);
+    }
+
+    .question-box b {
+      color: #3e638f;
+      font: 800 clamp(.72rem, .95vw, .86rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .question-box p {
+      color: #12243b;
+      font-size: clamp(1.35rem, 2.3vw, 2.25rem);
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .speaker-note {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.92rem, 1.16vw, 1.06rem);
+      line-height: 1.48;
+      font-weight: 650;
+    }
+
+    .motivation-lenses {
+      display: grid;
+      gap: clamp(.55rem, 1.1vh, .8rem);
+    }
+
+    .lens-row {
+      display: grid;
+      grid-template-columns: clamp(5.5rem, 9vw, 7rem) minmax(0, 1fr);
+      gap: clamp(.65rem, 1.3vw, 1rem);
+      align-items: center;
+      padding: clamp(.65rem, 1.25vw, .92rem);
+      border: 1px solid rgba(88, 112, 145, .2);
+      background: rgba(255, 255, 255, .68);
+    }
+
+    .lens-row b {
+      color: #3e638f;
+      font: 800 clamp(.76rem, .98vw, .9rem) / 1.15 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .lens-row span {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.98rem, 1.18vw, 1.1rem);
+      line-height: 1.34;
+      font-weight: 750;
+    }
+
+    .research-card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(.85rem, 1.8vw, 1.5rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .research-card {
+      padding: clamp(1rem, 2vw, 1.8rem);
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: clamp(.62rem, 1.25vh, .95rem);
+      min-height: clamp(13rem, 34vh, 18.5rem);
+    }
+
+    .research-card .card-no {
+      color: rgba(62, 99, 143, .48);
+      font: 800 clamp(.92rem, 1.25vw, 1.18rem) / 1 var(--mono);
+    }
+
+    .research-card h3 {
+      color: #12243b;
+      font-size: clamp(2.25rem, 3.25vw, 3.65rem);
+      line-height: 1;
+    }
+
+    .research-card p {
+      color: rgba(25, 44, 70, .74);
+      font-size: clamp(1.05rem, 1.32vw, 1.24rem);
+      line-height: 1.42;
+      font-weight: 700;
+    }
+
+    .research-points {
+      display: grid;
+      gap: clamp(.38rem, .8vh, .55rem);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      align-self: end;
+    }
+
+    .research-points li {
+      color: rgba(25, 44, 70, .62);
+      font-size: clamp(.92rem, 1.12vw, 1.05rem);
+      line-height: 1.32;
+      font-weight: 700;
+      padding-left: .8rem;
+      border-left: 3px solid rgba(62, 99, 143, .26);
+    }
+
+    .final-goal {
+      margin-top: clamp(.9rem, 1.8vh, 1.4rem);
+      padding: clamp(.9rem, 1.8vw, 1.35rem) clamp(1rem, 2vw, 1.6rem);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      color: #12243b;
+      font-size: clamp(1.04rem, 1.36vw, 1.28rem);
+      line-height: 1.36;
+      font-weight: 800;
+      border-left: clamp(.28rem, .6vw, .42rem) solid #3e638f;
+    }
+
+    .proxy-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(1rem, 2.4vw, 2rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .scope-box {
+      padding: clamp(1.1rem, 2.2vw, 1.9rem);
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: clamp(.8rem, 1.6vh, 1.2rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+    }
+
+    .scope-box.is-target {
+      border-color: rgba(62, 99, 143, .44);
+      box-shadow: inset .38rem 0 0 #3e638f, 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+    }
+
+    .scope-box h3 {
+      color: #12243b;
+      font-size: clamp(1.32rem, 2vw, 1.9rem);
+      line-height: 1.15;
+    }
+
+    .scope-summary {
+      color: rgba(25, 44, 70, .66);
+      font-size: clamp(1rem, 1.22vw, 1.14rem);
+      line-height: 1.38;
+      font-weight: 700;
+      max-width: 42ch;
+    }
+
+    .scope-list {
+      display: grid;
+      gap: clamp(.62rem, 1.25vh, .95rem);
+      align-content: start;
+    }
+
+    .scope-list li {
+      list-style: none;
+      display: flex;
+      gap: .65rem;
+      color: rgba(25, 44, 70, .78);
+      font-size: clamp(1rem, 1.26vw, 1.2rem);
+      line-height: 1.38;
+      font-weight: 700;
+    }
+
+    .scope-list li::before {
+      content: "";
+      flex: 0 0 clamp(.42rem, .75vw, .56rem);
+      width: clamp(.42rem, .75vw, .56rem);
+      height: clamp(.42rem, .75vw, .56rem);
+      margin-top: .42em;
+      border-radius: 50%;
+      background: rgba(123, 146, 173, .55);
+    }
+
+    .scope-box.is-target .scope-list li::before {
+      background: #3e638f;
+    }
+
+    .scope-foot {
+      align-self: end;
+      padding-top: clamp(.85rem, 1.6vh, 1.2rem);
+      border-top: 1px solid rgba(88, 112, 145, .18);
+      color: rgba(25, 44, 70, .7);
+      font-size: clamp(1rem, 1.18vw, 1.1rem);
+      line-height: 1.35;
+      font-weight: 800;
+    }
+
+    .role-table-wrap {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(17rem, .36fr);
+      gap: clamp(1rem, 2.4vw, 2rem);
+      align-items: stretch;
+      min-height: 0;
+    }
+
+    .simple-role-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid rgba(88, 112, 145, .24);
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+    }
+
+    .simple-role-table th,
+    .simple-role-table td {
+      padding: clamp(.72rem, 1.45vw, 1.08rem) clamp(.8rem, 1.6vw, 1.2rem);
+      text-align: left;
+      border-bottom: 1px solid rgba(88, 112, 145, .16);
+      vertical-align: top;
+    }
+
+    .simple-role-table th {
+      color: #3e638f;
+      font: 800 clamp(.78rem, .96vw, .9rem) / 1 var(--mono);
+      text-transform: uppercase;
+      background: #f5f8fc;
+    }
+
+    .simple-role-table td {
+      color: rgba(25, 44, 70, .78);
+      font-size: clamp(.98rem, 1.2vw, 1.16rem);
+      line-height: 1.4;
+      font-weight: 700;
+    }
+
+    .simple-role-table td:first-child {
+      color: #12243b;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .formula-panel {
+      padding: clamp(1rem, 2vw, 1.55rem);
+      display: grid;
+      align-content: center;
+      gap: clamp(.75rem, 1.4vh, 1.05rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #f8fbff;
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+    }
+
+    .formula-panel b {
+      color: #3e638f;
+      font: 800 clamp(.8rem, 1vw, .92rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .formula-panel strong {
+      color: #12243b;
+      font-size: clamp(1.25rem, 1.75vw, 1.75rem);
+      line-height: 1.22;
+      font-weight: 800;
+    }
+
+    .formula-panel p {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.98rem, 1.18vw, 1.1rem);
+      line-height: 1.44;
+      font-weight: 650;
+    }
+
+    .method-layout {
+      display: grid;
+      gap: clamp(1rem, 2vh, 1.45rem);
+      min-height: 0;
+    }
+
+    .timeline-band {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(.75rem, 1.6vw, 1.2rem);
+      align-items: stretch;
+      position: relative;
+    }
+
+    .timeline-band::before {
+      content: "";
+      position: absolute;
+      left: 2%;
+      right: 2%;
+      top: clamp(1.82rem, 4vh, 2.55rem);
+      height: 2px;
+      background: rgba(62, 99, 143, .28);
+    }
+
+    .time-card {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: clamp(.55rem, 1.1vh, .85rem);
+      padding: clamp(1rem, 2vw, 1.7rem);
+      min-height: clamp(11rem, 30vh, 16rem);
+      background: #fff;
+      border: 1px solid rgba(88, 112, 145, .24);
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+    }
+
+    .time-card::before {
+      content: "";
+      width: clamp(.72rem, 1.1vw, .95rem);
+      height: clamp(.72rem, 1.1vw, .95rem);
+      border-radius: 50%;
+      background: #3e638f;
+      border: 3px solid #fff;
+      box-shadow: 0 0 0 1px rgba(62, 99, 143, .32);
+    }
+
+    .time-card h3 {
+      color: #12243b;
+      font-size: clamp(1.5rem, 2.5vw, 2.45rem);
+      line-height: 1;
+    }
+
+    .time-card strong {
+      color: #3e638f;
+      font: 800 clamp(.92rem, 1.08vw, 1.02rem) / 1 var(--mono);
+    }
+
+    .time-card p {
+      color: rgba(25, 44, 70, .74);
+      font-size: clamp(.98rem, 1.18vw, 1.12rem);
+      line-height: 1.42;
+      font-weight: 700;
+    }
+
+    .method-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(.65rem, 1.4vw, 1rem);
+    }
+
+    .method-pill {
+      padding: clamp(.72rem, 1.3vw, 1rem);
+      border: 1px solid rgba(88, 112, 145, .2);
+      background: #f8fbff;
+      color: rgba(25, 44, 70, .76);
+      font-size: clamp(.98rem, 1.16vw, 1.08rem);
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .method-pill b {
+      display: block;
+      color: #12243b;
+      font-size: clamp(.98rem, 1.14vw, 1.08rem);
+      margin-bottom: .25rem;
+    }
+
+    .result-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.32fr) minmax(17rem, .58fr);
+      gap: clamp(1rem, 2.4vw, 2rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .result-layout.wide-chart {
+      grid-template-columns: minmax(0, 1.42fr) minmax(16rem, .52fr);
+    }
+
+    .result-layout.chart-dominant {
+      grid-template-columns: minmax(0, 1.52fr) minmax(15.5rem, .48fr);
+      gap: clamp(.85rem, 1.9vw, 1.5rem);
+    }
+
+    .result-layout.chart-dominant.wide-chart {
+      grid-template-columns: minmax(0, 1.62fr) minmax(15rem, .42fr);
+    }
+
+    .result-figure {
+      position: relative;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(.42rem, .85vh, .65rem);
+      padding: clamp(.72rem, 1.35vw, 1.05rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #fff;
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .06);
+      overflow: hidden;
+    }
+
+    .chart-dominant .result-figure {
+      padding: clamp(.45rem, .95vw, .72rem);
+      gap: clamp(.28rem, .6vh, .42rem);
+    }
+
+    .result-figure img {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      object-fit: contain;
+      background: #fff;
+    }
+
+    .result-figure figcaption {
+      color: rgba(25, 44, 70, .54);
+      font: 800 clamp(.78rem, .94vw, .86rem) / 1.25 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .chart-legend-overlay {
+      position: absolute;
+      top: clamp(2.25rem, 5.2vh, 3.25rem);
+      right: clamp(1rem, 1.8vw, 1.35rem);
+      z-index: 2;
+      display: grid;
+      gap: clamp(.28rem, .55vh, .42rem);
+      width: clamp(12.8rem, 20vw, 17rem);
+      padding: clamp(.48rem, .85vw, .72rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #fff;
+      box-shadow: 0 .45rem 1rem rgba(35, 52, 76, .08);
+      pointer-events: none;
+    }
+
+    .legend-item {
+      display: grid;
+      grid-template-columns: .72rem minmax(0, 1fr);
+      gap: .45rem;
+      align-items: center;
+      color: rgba(25, 44, 70, .76);
+      font-size: clamp(.82rem, .98vw, .9rem);
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .legend-swatch {
+      width: .72rem;
+      height: .72rem;
+      background: var(--legend-color);
+    }
+
+    .result-insights {
+      display: grid;
+      gap: clamp(.72rem, 1.45vh, 1.05rem);
+      align-content: center;
+      min-height: 0;
+    }
+
+    .chart-dominant .result-insights {
+      gap: clamp(.55rem, 1.1vh, .82rem);
+    }
+
+    .result-card {
+      padding: clamp(.9rem, 1.75vw, 1.35rem);
+      display: grid;
+      gap: clamp(.38rem, .8vh, .62rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+    }
+
+    .chart-dominant .result-card {
+      padding: clamp(.78rem, 1.35vw, 1.05rem);
+      gap: clamp(.28rem, .62vh, .48rem);
+    }
+
+    .result-card b {
+      color: #3e638f;
+      font: 800 clamp(.82rem, 1.02vw, .96rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .result-card strong {
+      color: #12243b;
+      font-size: clamp(1.24rem, 1.58vw, 1.52rem);
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .result-card p {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.95rem, 1.14vw, 1.06rem);
+      line-height: 1.4;
+      font-weight: 650;
+    }
+
+    .type-map {
+      display: grid;
+      gap: clamp(.62rem, 1.25vh, .92rem);
+      align-content: center;
+    }
+
+    .type-row {
+      display: grid;
+      grid-template-columns: minmax(8rem, .7fr) minmax(0, 1fr);
+      gap: clamp(.65rem, 1.3vw, 1rem);
+      align-items: center;
+      padding: clamp(.75rem, 1.45vw, 1rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #f8fbff;
+    }
+
+    .type-row b {
+      color: #12243b;
+      font-size: clamp(1rem, 1.22vw, 1.14rem);
+      line-height: 1.25;
+    }
+
+    .type-row span {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.94rem, 1.12vw, 1.04rem);
+      line-height: 1.36;
+      font-weight: 700;
+    }
+
+    .monitor-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(18rem, .92fr);
+      gap: clamp(1rem, 2.4vw, 2rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .priority-flow {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      align-items: stretch;
+    }
+
+    .priority-step {
+      position: relative;
+      display: grid;
+      grid-template-columns: clamp(4.6rem, 7vw, 6.4rem) minmax(0, .82fr) minmax(0, 1.18fr);
+      align-content: center;
+      align-items: center;
+      gap: clamp(.45rem, .95vh, .7rem);
+      min-height: clamp(3.2rem, 7.6vh, 4.55rem);
+      padding: clamp(.62rem, 1.2vw, .85rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+    }
+
+    .priority-step:not(:last-child)::after {
+      content: none;
+    }
+
+    .priority-connector {
+      display: grid;
+      grid-template-columns: clamp(4.6rem, 7vw, 6.4rem) minmax(0, 1fr);
+      min-height: clamp(.95rem, 1.85vh, 1.32rem);
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .priority-connector span {
+      position: relative;
+      z-index: 2;
+      grid-column: 1 / -1;
+      grid-row: 1;
+      justify-self: center;
+      display: grid;
+      place-items: center;
+      width: clamp(1.05rem, 1.7vw, 1.32rem);
+      height: clamp(1.05rem, 1.7vw, 1.32rem);
+      border-radius: 50%;
+      background: #3e638f;
+      color: #fff;
+      box-shadow: 0 0 0 3px #f7faff;
+      font: 800 clamp(.68rem, 1vw, .82rem) / 1 var(--mono);
+    }
+
+    .priority-connector::before {
+      content: "";
+      grid-column: 1 / -1;
+      grid-row: 1;
+      justify-self: center;
+      width: 2px;
+      height: 100%;
+      background: rgba(62, 99, 143, .38);
+      z-index: 1;
+    }
+
+    .priority-step b {
+      color: #3e638f;
+      font: 800 clamp(.76rem, .98vw, .9rem) / 1.2 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .priority-step strong {
+      color: #12243b;
+      font-size: clamp(1.18rem, 1.5vw, 1.42rem);
+      line-height: 1.22;
+      font-weight: 800;
+    }
+
+    .priority-step span {
+      color: rgba(25, 44, 70, .66);
+      font-size: clamp(.9rem, 1.06vw, .98rem);
+      line-height: 1.36;
+      font-weight: 650;
+    }
+
+    .priority-examples {
+      display: grid;
+      gap: clamp(.65rem, 1.35vh, .95rem);
+      align-content: center;
+      min-height: 0;
+    }
+
+    .priority-example {
+      display: grid;
+      grid-template-columns: minmax(9rem, .72fr) minmax(0, 1fr);
+      gap: clamp(.7rem, 1.35vw, 1rem);
+      align-items: center;
+      padding: clamp(.75rem, 1.35vw, 1rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #f8fbff;
+    }
+
+    .priority-example b {
+      color: #12243b;
+      font-size: clamp(1rem, 1.22vw, 1.12rem);
+      line-height: 1.22;
+    }
+
+    .priority-example span {
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.92rem, 1.08vw, 1rem);
+      line-height: 1.34;
+      font-weight: 700;
+    }
+
+    .support-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: clamp(.8rem, 1.65vw, 1.2rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .support-card {
+      display: grid;
+      grid-template-rows: auto auto auto;
+      gap: clamp(.55rem, 1.1vh, .8rem);
+      align-content: center;
+      min-height: 0;
+      padding: clamp(1rem, 1.8vw, 1.35rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+    }
+
+    .support-card b {
+      color: #3e638f;
+      font: 800 clamp(.8rem, .98vw, .92rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .support-card strong {
+      color: #12243b;
+      font-size: clamp(1.2rem, 1.75vw, 1.65rem);
+      line-height: 1.18;
+      font-weight: 800;
+    }
+
+    .support-card p {
+      color: rgba(25, 44, 70, .7);
+      font-size: clamp(.98rem, 1.2vw, 1.12rem);
+      line-height: 1.44;
+      font-weight: 650;
+    }
+
+    .support-card p + p {
+      color: rgba(25, 44, 70, .58);
+      font-size: clamp(.9rem, 1.08vw, 1rem);
+      line-height: 1.38;
+    }
+
+    .limits-layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(1rem, 2.4vw, 2rem);
+      min-height: 0;
+      align-items: stretch;
+    }
+
+    .limits-stack {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(.8rem, 1.6vh, 1.15rem);
+      min-height: 0;
+    }
+
+    .defense-column {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: clamp(.75rem, 1.5vh, 1rem);
+      padding: clamp(1rem, 1.8vw, 1.35rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+    }
+
+    .defense-column h3 {
+      color: #12243b;
+      font-size: clamp(1.32rem, 1.75vw, 1.65rem);
+    }
+
+    .defense-summary {
+      color: rgba(25, 44, 70, .66);
+      font-size: clamp(.96rem, 1.14vw, 1.08rem);
+      line-height: 1.36;
+      font-weight: 700;
+      padding-left: clamp(.75rem, 1.2vw, 1rem);
+      border-left: 3px solid rgba(62, 99, 143, .32);
+    }
+
+    .defense-list {
+      display: grid;
+      gap: clamp(.55rem, 1.05vh, .78rem);
+      align-content: start;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .defense-list li {
+      display: grid;
+      grid-template-columns: clamp(1.2rem, 2vw, 1.55rem) minmax(0, 1fr);
+      gap: clamp(.55rem, 1vw, .8rem);
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(1rem, 1.2vw, 1.12rem);
+      line-height: 1.36;
+      font-weight: 700;
+    }
+
+    .defense-list li::before {
+      content: "";
+      width: .48rem;
+      height: .48rem;
+      margin-top: .42em;
+      background: #3e638f;
+    }
+
+    .limits-note {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: clamp(1rem, 2vw, 1.5rem);
+      padding: clamp(.85rem, 1.5vw, 1.1rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #f8fbff;
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.98rem, 1.2vw, 1.08rem);
+      line-height: 1.38;
+      font-weight: 700;
+    }
+
+    .limits-note b {
+      color: #3e638f;
+      font: 800 clamp(.78rem, .98vw, .9rem) / 1 var(--mono);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .conclusion-layout {
+      display: grid;
+      grid-template-rows: auto auto auto auto;
+      gap: clamp(.9rem, 1.8vh, 1.3rem);
+      min-height: 0;
+    }
+
+    .conclusion-statement {
+      padding: clamp(1rem, 2vw, 1.45rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: linear-gradient(180deg, rgba(250, 252, 255, .98), rgba(244, 248, 253, .96));
+      box-shadow: 0 .75rem 1.7rem rgba(35, 52, 76, .05);
+      color: #12243b;
+      font-size: clamp(1.58rem, 2.45vw, 2.3rem);
+      line-height: 1.25;
+      font-weight: 800;
+    }
+
+    .conclusion-cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(.75rem, 1.55vw, 1.1rem);
+      align-items: start;
+    }
+
+    .conclusion-card {
+      display: grid;
+      gap: clamp(.38rem, .8vh, .58rem);
+      align-content: start;
+      min-height: clamp(6.2rem, 14vh, 7.8rem);
+      padding: clamp(.85rem, 1.55vw, 1.15rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: #f8fbff;
+    }
+
+    .conclusion-card b {
+      color: #3e638f;
+      font: 800 clamp(.76rem, .94vw, .86rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .conclusion-card strong {
+      color: #12243b;
+      font-size: clamp(1.08rem, 1.32vw, 1.24rem);
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .conclusion-card span {
+      color: rgba(25, 44, 70, .68);
+      font-size: clamp(.9rem, 1.06vw, .98rem);
+      line-height: 1.36;
+      font-weight: 650;
+    }
+
+    .closing-path {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(.75rem, 1.55vw, 1.1rem);
+    }
+
+    .closing-path article {
+      display: grid;
+      gap: clamp(.28rem, .65vh, .45rem);
+      padding: clamp(.85rem, 1.45vw, 1.1rem);
+      border: 1px solid rgba(88, 112, 145, .22);
+      background: rgba(248, 251, 255, .82);
+      border-top: 4px solid rgba(62, 99, 143, .56);
+    }
+
+    .closing-path b {
+      color: #3e638f;
+      font: 800 clamp(.76rem, .94vw, .86rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .closing-path strong {
+      color: #12243b;
+      font-size: clamp(1.08rem, 1.32vw, 1.24rem);
+      line-height: 1.22;
+      font-weight: 800;
+    }
+
+    .closing-path span {
+      color: rgba(25, 44, 70, .66);
+      font-size: clamp(.9rem, 1.06vw, .98rem);
+      line-height: 1.34;
+      font-weight: 650;
+    }
+
+    .qa-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: clamp(1rem, 2vw, 1.5rem);
+      padding-top: clamp(.8rem, 1.5vh, 1rem);
+      border-top: 1px solid rgba(88, 112, 145, .22);
+      color: rgba(25, 44, 70, .68);
+      font-size: clamp(1rem, 1.28vw, 1.18rem);
+      font-weight: 700;
+    }
+
+    .qa-footer strong {
+      color: #12243b;
+      font-size: clamp(1.25rem, 2vw, 1.75rem);
+      font-weight: 800;
+    }
+
+    .board-head {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: clamp(4.8rem, 10.6vw, 8.4rem) minmax(0, 1fr);
+      gap: clamp(.7rem, 1.7vw, 1.45rem);
+      align-items: end;
+      min-width: 0;
+    }
+
+    .slide-no {
+      color: rgba(52, 92, 67, .25);
+      font: 800 clamp(3.6rem, 8.6vw, 7.5rem) / .82 var(--sans);
+      letter-spacing: 0;
+      transform: translateY(.1em);
+      white-space: nowrap;
+    }
+
+    .head-copy {
+      min-width: 0;
+      display: grid;
+      gap: clamp(.28rem, .8vh, .55rem);
+    }
+
+    .kicker,
+    .caption,
+    .mini,
+    .chip,
+    .metric-label,
+    .panel-label,
+    .step-id {
+      font-family: var(--mono);
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .kicker {
+      color: var(--amber);
+      font-size: clamp(.62rem, .9vw, .78rem);
+      font-weight: 700;
+    }
+
+    h1,
+    h2 {
+      color: var(--ink);
+      font-size: clamp(2.25rem, 4.8vw, 5.05rem);
+      line-height: 1.03;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    h2 { font-size: clamp(1.95rem, 4.15vw, 4.3rem); }
+
+    h3 {
+      color: var(--ink);
+      font-size: clamp(.96rem, 1.35vw, 1.16rem);
+      line-height: 1.24;
+      font-weight: 800;
+    }
+
+    .thesis {
+      max-width: 64ch;
+      color: rgba(23, 33, 28, .74);
+      font-size: clamp(.88rem, 1.28vw, 1.12rem);
+      line-height: 1.42;
+      font-weight: 700;
+    }
+
+    .body {
+      color: rgba(23, 33, 28, .68);
+      font-size: clamp(.72rem, 1.02vw, .9rem);
+      line-height: 1.42;
+      font-weight: 650;
+    }
+
+    .mini {
+      color: rgba(23, 33, 28, .52);
+      font-size: clamp(.52rem, .72vw, .66rem);
+      line-height: 1.35;
+      font-weight: 700;
+    }
+
+    .board-body {
+      position: relative;
+      z-index: 1;
+      min-height: 0;
+      display: grid;
+      gap: clamp(.55rem, 1.25vh, .92rem);
+      align-items: stretch;
+      align-content: stretch;
+    }
+
+    .two-col {
+      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+      align-items: center;
+    }
+
+    .two-col.wide-left { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); }
+    .two-col.wide-right { grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); }
+    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .row-stack,
+    .note-stack,
+    .metric-stack,
+    .table-stack {
+      min-height: 0;
+      display: grid;
+      gap: clamp(.55rem, 1.25vh, .8rem);
+      align-content: center;
+    }
+
+    .hero-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(.55rem, 1.4vw, .9rem);
+    }
+
+    .metric,
+    .note,
+    .step,
+    .table-box {
+      min-width: 0;
+      background: rgba(255, 255, 255, .78);
+      border: 1px solid var(--line);
+      box-shadow: 0 .45rem 1.1rem rgba(30, 43, 35, .07);
+    }
+
+    .metric {
+      display: grid;
+      gap: clamp(.25rem, .7vh, .42rem);
+      padding: clamp(.75rem, 1.45vw, 1.1rem);
+    }
+
+    .metric strong {
+      color: var(--green);
+      font: 800 clamp(1.75rem, 4.1vw, 3.25rem) / .95 var(--sans);
+      letter-spacing: 0;
+    }
+
+    .metric span {
+      color: rgba(23, 33, 28, .62);
+      font: 700 clamp(.58rem, .78vw, .72rem) / 1.25 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .note {
+      display: grid;
+      grid-template-columns: clamp(4.7rem, 8vw, 6.4rem) minmax(0, 1fr);
+      gap: clamp(.55rem, 1.2vw, .9rem);
+      align-items: center;
+      padding: clamp(.65rem, 1.3vw, .95rem);
+    }
+
+    .note b {
+      min-height: clamp(2.2rem, 5vh, 3rem);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--green-2);
+      border: 2px solid rgba(52, 92, 67, .65);
+      box-shadow: .18rem .18rem 0 rgba(52, 92, 67, .24);
+      font-size: clamp(.76rem, 1vw, .92rem);
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .note p {
+      color: rgba(23, 33, 28, .72);
+      font-size: clamp(.78rem, 1.08vw, .98rem);
+      line-height: 1.38;
+      font-weight: 750;
+    }
+
+    .note small {
+      display: block;
+      margin-top: .18rem;
+      color: rgba(23, 33, 28, .5);
+      font-size: clamp(.62rem, .82vw, .75rem);
+      line-height: 1.32;
+      font-weight: 650;
+    }
+
+    .figure {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: clamp(.4rem, .8vh, .55rem);
+      padding: clamp(.58rem, 1.1vw, .88rem);
+      background: rgba(255, 255, 255, .88);
+      border: 1px solid var(--line);
+      box-shadow: 0 .7rem 1.5rem rgba(30, 43, 35, .08);
+      overflow: hidden;
+    }
+
+    .figure img {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      object-fit: contain;
+      background: #fff;
+    }
+
+    .figure.fill img { object-fit: cover; }
+    .figure.top img { object-position: top center; }
+    .figure.left img { object-position: left center; }
+
+    .caption {
+      color: rgba(23, 33, 28, .52);
+      font-size: clamp(.52rem, .72vw, .64rem);
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .cover-body {
+      grid-template-columns: minmax(0, .74fr) minmax(0, 1.26fr);
+      align-items: center;
+      min-height: 0;
+    }
+
+    .cover-title h1 {
+      max-width: 9ch;
+      font-size: clamp(2.75rem, 6.4vw, 6.4rem);
+    }
+
+    .cover-title .thesis {
+      max-width: 34ch;
+      font-size: clamp(1rem, 1.55vw, 1.35rem);
+    }
+
+    .cover-chart {
+      min-height: 0;
+      height: 100%;
+    }
+
+    .question-row {
+      display: grid;
+      grid-template-columns: clamp(4.8rem, 8vw, 6.2rem) minmax(0, 1fr) clamp(7rem, 12vw, 9rem);
+      gap: clamp(.55rem, 1.2vw, .85rem);
+      align-items: center;
+      padding: clamp(.62rem, 1.25vw, .92rem);
+      background: rgba(255, 255, 255, .74);
+      border: 1px solid var(--line);
+    }
+
+    .question-row b {
+      color: var(--green);
+      font: 800 clamp(1.15rem, 2.2vw, 1.85rem) / 1 var(--mono);
+    }
+
+    .question-row strong {
+      display: block;
+      color: var(--ink);
+      font-size: clamp(.9rem, 1.25vw, 1.1rem);
+      line-height: 1.22;
+      font-weight: 800;
+    }
+
+    .question-row span {
+      color: rgba(23, 33, 28, .62);
+      font-size: clamp(.68rem, .92vw, .82rem);
+      line-height: 1.34;
+      font-weight: 650;
+    }
+
+    .question-row em {
+      justify-self: end;
+      color: var(--amber);
+      font: 700 clamp(.56rem, .74vw, .68rem) / 1.2 var(--mono);
+      font-style: normal;
+      text-transform: uppercase;
+      text-align: right;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      font-size: clamp(.7rem, .98vw, .86rem);
+      line-height: 1.32;
+      font-weight: 700;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: clamp(.42rem, .8vw, .65rem);
+      border: 1px solid rgba(52, 92, 67, .17);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .data-table th {
+      color: #fff;
+      background: var(--green);
+      font-family: var(--mono);
+      text-transform: uppercase;
+    }
+
+    .data-table td:first-child {
+      color: var(--green);
+      font-family: var(--mono);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: clamp(.45rem, 1vw, .7rem);
+      align-items: stretch;
+    }
+
+    .step {
+      display: grid;
+      gap: clamp(.4rem, .8vh, .55rem);
+      align-content: start;
+      min-height: clamp(7.4rem, 20vh, 10.4rem);
+      padding: clamp(.68rem, 1.35vw, .98rem);
+      position: relative;
+    }
+
+    .step-id {
+      color: var(--amber);
+      font-size: clamp(.58rem, .78vw, .68rem);
+      font-weight: 800;
+    }
+
+    .step p {
+      color: rgba(23, 33, 28, .6);
+      font-size: clamp(.68rem, .92vw, .8rem);
+      line-height: 1.34;
+      font-weight: 650;
+    }
+
+    .window-board {
+      grid-template-columns: minmax(0, .58fr) minmax(0, 1fr);
+      align-items: center;
+    }
+
+    .window-rows {
+      display: grid;
+      gap: clamp(.75rem, 1.8vh, 1.1rem);
+    }
+
+    .window-row {
+      display: grid;
+      grid-template-columns: clamp(10rem, 22vw, 15.8rem) clamp(3.2rem, 6vw, 4.6rem) minmax(0, 1fr);
+      gap: clamp(.8rem, 2vw, 1.4rem);
+      align-items: center;
+    }
+
+    .window-label {
+      min-height: clamp(3rem, 7.2vh, 4.25rem);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--green-2);
+      border: 2px solid var(--green);
+      box-shadow: .28rem .28rem 0 rgba(52, 92, 67, .2);
+      font-size: clamp(.95rem, 1.7vw, 1.4rem);
+      font-weight: 800;
+    }
+
+    .window-row:nth-child(1) .window-label { background: var(--green-3); }
+    .window-row:nth-child(2) .window-label { background: #8dae91; }
+    .window-row:nth-child(3) .window-label { background: #6f9272; }
+
+    .line-icon {
+      width: clamp(2.2rem, 4vw, 3.2rem);
+      height: clamp(2.2rem, 4vw, 3.2rem);
+      color: var(--green);
+    }
+
+    .line-icon * {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .window-text {
+      color: rgba(23, 33, 28, .72);
+      font-size: clamp(.86rem, 1.3vw, 1.12rem);
+      line-height: 1.36;
+      font-weight: 800;
+    }
+
+    .window-text small {
+      display: block;
+      margin-top: .14rem;
+      color: rgba(23, 33, 28, .5);
+      font-size: clamp(.66rem, .9vw, .78rem);
+      line-height: 1.3;
+      font-weight: 650;
+    }
+
+    .chart-focus {
+      grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
+      align-items: stretch;
+    }
+
+    .case-pair {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-items: stretch;
+    }
+
+    .case-pair .note-stack {
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-content: stretch;
+    }
+
+    .case-pair .note {
+      grid-template-columns: clamp(4.3rem, 7vw, 5.5rem) minmax(0, 1fr);
+      padding: clamp(.55rem, 1vw, .75rem);
+    }
+
+    .case-pair .note b {
+      min-height: clamp(2rem, 4.7vh, 2.6rem);
+      font-size: clamp(.66rem, .84vw, .78rem);
+    }
+
+    .heatmap-board {
+      grid-template-columns: minmax(0, .82fr) minmax(0, 1.18fr);
+      align-items: stretch;
+    }
+
+    .heatmap-board .figure {
+      min-height: clamp(20rem, 53vh, 29rem);
+    }
+
+    .transmission-board {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      align-items: stretch;
+    }
+
+    .transmission-board .note-stack {
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-content: stretch;
+    }
+
+    .warning-grid {
+      grid-template-columns: minmax(0, .98fr) minmax(0, 1.02fr);
+      align-items: stretch;
+    }
+
+    .signal-row {
+      display: grid;
+      grid-template-columns: clamp(7rem, 12vw, 9rem) minmax(0, 1fr);
+      gap: clamp(.6rem, 1.1vw, .9rem);
+      align-items: center;
+      padding: clamp(.62rem, 1.2vw, .9rem);
+      background: rgba(255, 255, 255, .76);
+      border: 1px solid var(--line);
+    }
+
+    .signal-row b {
+      color: var(--green);
+      font-size: clamp(1.35rem, 2.8vw, 2.35rem);
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .signal-row strong {
+      display: block;
+      color: var(--ink);
+      font-size: clamp(.82rem, 1.08vw, .96rem);
+      line-height: 1.25;
+      font-weight: 800;
+    }
+
+    .signal-row span {
+      color: rgba(23, 33, 28, .58);
+      font-size: clamp(.64rem, .88vw, .76rem);
+      line-height: 1.32;
+      font-weight: 650;
+    }
+
+    .closing-list {
+      grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
+      align-items: center;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(.6rem, 1.3vw, .85rem);
+    }
+
+    .decision {
+      min-height: clamp(5.5rem, 13vh, 7.2rem);
+      display: grid;
+      gap: .25rem;
+      align-content: center;
+      padding: clamp(.7rem, 1.3vw, .95rem);
+      background: rgba(255, 255, 255, .78);
+      border: 1px solid var(--line);
+    }
+
+    .decision b {
+      color: var(--amber);
+      font: 800 clamp(.7rem, .92vw, .82rem) / 1 var(--mono);
+      text-transform: uppercase;
+    }
+
+    .decision strong {
+      color: var(--ink);
+      font-size: clamp(.95rem, 1.36vw, 1.18rem);
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .decision span {
+      color: rgba(23, 33, 28, .56);
+      font-size: clamp(.66rem, .9vw, .78rem);
+      line-height: 1.3;
+      font-weight: 650;
+    }
+
+    .hub-link {
+      position: fixed;
+      left: clamp(.38rem, .78vw, .6rem);
+      bottom: clamp(.35rem, .75vw, .58rem);
+      z-index: 20;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: clamp(2.5rem, 4.3vw, 3.2rem);
+      height: clamp(2.5rem, 4.3vw, 3.2rem);
+      color: #fff;
+      background: var(--green);
+      border: 1px solid rgba(255, 255, 255, .55);
+      text-decoration: none;
+      font: 800 clamp(.62rem, .85vw, .72rem) / 1 var(--mono);
+      box-shadow: var(--shadow);
+      opacity: .28;
+      transition: opacity .18s var(--ease), transform .18s var(--ease);
+    }
+
+    .hub-link:hover,
+    .hub-link:focus-visible { opacity: 1; transform: translateY(-.08rem); }
+
+    body[data-control-theme="blue"] .hub-link,
+    body[data-control-theme="blue"] .nav button {
+      background: #425d7c;
+      border-color: rgba(255, 255, 255, .72);
+      box-shadow: 0 .7rem 1.6rem rgba(35, 52, 76, .18);
+    }
+
+    .nav {
+      position: fixed;
+      right: clamp(.38rem, .78vw, .6rem);
+      bottom: clamp(.35rem, .75vw, .58rem);
+      z-index: 20;
+      display: flex;
+      gap: .45rem;
+      opacity: .32;
+      transition: opacity .18s var(--ease);
+    }
+
+    .nav:hover,
+    .nav:focus-within { opacity: 1; }
+
+    .nav button {
+      width: clamp(2.5rem, 4.3vw, 3.2rem);
+      height: clamp(2.5rem, 4.3vw, 3.2rem);
+      border: 1px solid rgba(255, 255, 255, .55);
+      color: #fff;
+      background: var(--green);
+      cursor: pointer;
+      font-size: clamp(1.25rem, 2.2vw, 1.7rem);
+      box-shadow: var(--shadow);
+    }
+
+    .slide.is-active .board {
+      animation: board-settle .34s var(--ease) both;
+    }
+
+    .slide.is-active .figure img {
+      animation: image-focus .42s var(--ease) both;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      z-index: 21;
+      width: 100%;
+      height: .22rem;
+      background: rgba(52, 92, 67, .15);
+    }
+
+    .progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: var(--green);
+      transition: width .28s var(--ease);
+    }
+
+    body[data-control-theme="blue"] .progress {
+      background: rgba(66, 93, 124, .14);
+    }
+
+    body[data-control-theme="blue"] .progress span {
+      background: #3e638f;
+    }
+
+    .overview-panel {
+      position: fixed;
+      inset: clamp(2rem, 5vw, 4rem);
+      z-index: 30;
+      display: none;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(.6rem, 1.2vw, .9rem);
+      padding: clamp(1rem, 2vw, 1.4rem);
+      background: rgba(253, 254, 252, .96);
+      border: 2px solid rgba(52, 92, 67, .64);
+      box-shadow: 0 1.5rem 4rem rgba(23, 33, 28, .24);
+    }
+
+    .overview-panel.is-open { display: grid; }
+
+    .overview-panel button {
+      display: grid;
+      gap: .45rem;
+      align-content: start;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .78);
+      color: var(--ink);
+      padding: clamp(.65rem, 1.2vw, .9rem);
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .overview-panel b {
+      color: var(--green);
+      font: 800 clamp(.82rem, 1.2vw, 1.05rem) / 1 var(--mono);
+    }
+
+    .overview-panel span {
+      font-size: clamp(.68rem, .94vw, .8rem);
+      line-height: 1.25;
+      font-weight: 750;
+    }
+
+    .shortcut-toggle {
+      position: fixed;
+      right: clamp(5.6rem, 9.2vw, 7rem);
+      bottom: clamp(.35rem, .75vw, .58rem);
+      z-index: 20;
+      width: clamp(2.5rem, 4.3vw, 3.2rem);
+      height: clamp(2.5rem, 4.3vw, 3.2rem);
+      border: 1px solid rgba(255, 255, 255, .55);
+      color: #fff;
+      background: var(--green);
+      cursor: pointer;
+      font: 900 clamp(1rem, 1.7vw, 1.35rem) / 1 var(--mono);
+      box-shadow: var(--shadow);
+      opacity: .36;
+      transition: opacity .18s var(--ease), transform .18s var(--ease);
+    }
+
+    .shortcut-toggle:hover,
+    .shortcut-toggle:focus-visible { opacity: 1; transform: translateY(-.08rem); }
+
+    body[data-control-theme="blue"] .shortcut-toggle {
+      background: #425d7c;
+      border-color: rgba(255, 255, 255, .72);
+      box-shadow: 0 .7rem 1.6rem rgba(35, 52, 76, .18);
+    }
+
+    .shortcut-panel {
+      position: fixed;
+      right: clamp(1.1rem, 2.4vw, 2rem);
+      bottom: clamp(4.05rem, 6.8vw, 5.2rem);
+      z-index: 31;
+      display: none;
+      width: min(31rem, calc(100vw - 2.2rem));
+      padding: clamp(1rem, 2vw, 1.35rem);
+      border: 1px solid rgba(88, 112, 145, .34);
+      background: rgba(250, 252, 255, .97);
+      box-shadow: 0 1.35rem 3.5rem rgba(35, 52, 76, .24);
+      color: #12243b;
+    }
+
+    .shortcut-panel.is-open { display: grid; gap: clamp(.8rem, 1.6vh, 1rem); }
+
+    .shortcut-panel h3 {
+      margin: 0;
+      color: #12243b;
+      font-size: clamp(1.15rem, 1.55vw, 1.45rem);
+    }
+
+    .shortcut-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: clamp(.48rem, .9vw, .72rem);
+    }
+
+    .shortcut-grid span {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .65rem .7rem;
+      border: 1px solid rgba(88, 112, 145, .18);
+      background: #f6f9fd;
+      color: rgba(25, 44, 70, .72);
+      font-size: clamp(.88rem, 1.04vw, .98rem);
+      font-weight: 700;
+    }
+
+    .shortcut-grid kbd {
+      min-width: 2.2rem;
+      padding: .28rem .42rem;
+      border: 1px solid rgba(62, 99, 143, .28);
+      background: #fff;
+      color: #3e638f;
+      font: 900 .78rem / 1 var(--mono);
+      text-align: center;
+    }
+
+    [data-anim] {
+      opacity: 1;
+      transform: none;
+    }
+
+    @keyframes rise {
+      to {
+        opacity: 1;
+        transform: translate(0, 0);
+      }
+    }
+
+    @keyframes board-settle {
+      from { transform: translateY(.35rem) scale(.996); }
+      to { transform: translateY(0) scale(1); }
+    }
+
+    @keyframes image-focus {
+      from { transform: scale(1.015); filter: saturate(.92); }
+      to { transform: scale(1); filter: saturate(1); }
+    }
+
+    @media (max-width: 980px) {
+      .board {
+        height: calc(100dvh - clamp(4.8rem, 10vh, 7.2rem));
+      }
+      .board-head {
+        grid-template-columns: clamp(4.6rem, 11vw, 7rem) minmax(0, 1fr);
+      }
+      .two-col,
+      .two-col.wide-left,
+      .two-col.wide-right,
+      .cover-body,
+      .window-board,
+      .chart-focus,
+      .heatmap-board,
+      .warning-grid,
+      .closing-list {
+        grid-template-columns: 1fr;
+      }
+      .pipeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .case-pair,
+      .transmission-board {
+        grid-template-columns: 1fr;
+      }
+      .case-pair .note-stack,
+      .transmission-board .note-stack,
+      .hero-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .overview-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-height: 700px) {
+      .slide {
+        padding-top: clamp(1.8rem, 4.8vh, 2.45rem);
+        padding-bottom: clamp(1.55rem, 3.5vh, 2.1rem);
+      }
+      .board {
+        height: calc(100dvh - clamp(3.8rem, 8vh, 5rem));
+        padding: clamp(1rem, 2.4vw, 1.8rem) clamp(1.1rem, 2.8vw, 2.35rem);
+        gap: clamp(.5rem, 1.3vh, .75rem);
+      }
+      .board-head {
+        grid-template-columns: clamp(4.5rem, 10vw, 7.2rem) minmax(0, 1fr);
+      }
+      .slide-no {
+        font-size: clamp(3.35rem, 8.5vw, 6.8rem);
+      }
+      h1 { font-size: clamp(2.15rem, 5.5vw, 4.9rem); }
+      h2 { font-size: clamp(1.7rem, 3.6vw, 3.35rem); }
+      .cover-title h1 { font-size: clamp(2.35rem, 6vw, 5.4rem); }
+      .metric strong { font-size: clamp(1.55rem, 3.2vw, 2.5rem); }
+      .figure { padding: clamp(.42rem, .9vw, .65rem); }
+      .step { min-height: clamp(5.8rem, 16vh, 8rem); }
+    }
+
+    @media (max-height: 590px) {
+      .chrome,
+      .hub-link,
+      .nav,
+      .shortcut-toggle,
+      .shortcut-panel,
+      .progress { display: none; }
+      .slide { padding: clamp(1rem, 3vh, 1.4rem); }
+      .board { height: calc(100dvh - clamp(2rem, 6vh, 2.8rem)); }
+      .thesis { font-size: clamp(.74rem, 1.1vw, .9rem); }
+      .body { font-size: clamp(.62rem, .86vw, .74rem); }
+      .caption { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .slide,
+      .progress span,
+      [data-anim] {
+        transition: none;
+        animation: none !important;
+        opacity: 1;
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Geopolitical risk sector ETF presentation">
+    <section class="slide report-blue is-active" data-title="표지">
+      <div class="chrome"><span>Advanced Programming Design</span><span>01 / 15</span></div>
+      <div class="board report-cover">
+        <div class="report-cover-main">
+          <div class="report-kicker" data-anim="rise" style="--delay:40ms">Geopolitical Risk · Sector ETF Analysis</div>
+          <h1 class="report-title" data-anim="rise" style="--delay:90ms">
+            <span class="line">지정학 리스크 발생 시</span>
+            <span class="line">산업별 시장 반응과</span>
+            <span class="line">대응 우선순위 분석</span>
+          </h1>
+          <p class="report-subtitle" data-anim="rise" style="--delay:160ms">미국 섹터 ETF와 전달 변수 기반 모니터링 프레임워크</p>
+        </div>
+        <footer class="report-footer" data-anim="rise" style="--delay:230ms">
+          <span><strong>고급프로그래밍 설계</strong></span>
+          <span>팀원: 정선재 · 김민우 · 정창교</span>
+          <span>2025</span>
+        </footer>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="왜 이 연구를 했는가">
+      <div class="chrome"><span>Research Motivation</span><span>02 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">왜 이 연구를 했는가</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">전체 지수보다 중요한 것은 산업별 민감도와 선반응 여부.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">02</div>
+        </header>
+        <div class="motivation-grid">
+          <section class="flow-panel" data-anim="left" style="--delay:180ms">
+            <div class="flow-title">Market Reaction Path</div>
+            <div class="flow-chain" aria-label="지정학 사건에서 산업별 반응까지의 흐름">
+              <div class="flow-node">지정학<br>사건</div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">시장<br>충격</div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-node">산업별<br>차별 반응</div>
+            </div>
+            <div class="reason-list">
+              <p>전쟁 · 분쟁 · 테러 · 무역 갈등: 시장 위험 인식 확대</p>
+              <p>산업별 방향과 강도의 차별 반응</p>
+              <p>전체 지수만으로는 취약/수혜 후보 분리 한계</p>
+            </div>
+          </section>
+          <section class="analysis-panel" data-anim="right" style="--delay:210ms">
+            <div class="panel-title">Core Question</div>
+            <div class="question-box">
+              <b>핵심 질문</b>
+              <p>사건 발생 후 무엇을 먼저 확인해야 하는가?</p>
+            </div>
+            <div class="motivation-lenses" aria-label="연구 동기 비교">
+              <div class="lens-row"><b>News</b><span>뉴스만 보면 사건 설명에 머문다.</span></div>
+              <div class="lens-row"><b>Index</b><span>전체 지수만 보면 산업별 차이가 숨는다.</span></div>
+              <div class="lens-row"><b>Focus</b><span>섹터 반응과 전달 변수를 함께 본다.</span></div>
+            </div>
+            <p class="speaker-note">목표: 사건 해설이 아니라, 먼저 확인할 산업과 변수의 순서 정리.</p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="연구 질문">
+      <div class="chrome"><span>Research Questions</span><span>03 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">연구 질문</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">분석 축은 산업 · 시점 · 변수.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">03</div>
+        </header>
+        <div>
+          <div class="research-card-grid">
+            <article class="research-card" data-anim="rise" style="--delay:170ms">
+              <span class="card-no">Q1</span>
+              <h3>산업</h3>
+              <p>어떤 산업이 지정학 리스크에 더 민감하게 반응하는가?</p>
+              <ul class="research-points">
+                <li>XLE · JETS · ITA의 반복 반응 후보 확인</li>
+                <li>상승/하락보다 섹터 간 상대 민감도 비교</li>
+              </ul>
+            </article>
+            <article class="research-card" data-anim="rise" style="--delay:210ms">
+              <span class="card-no">Q2</span>
+              <h3>시점</h3>
+              <p>반응은 실제 발발일 이후에 나타나는가, 아니면 위협 단계에서 먼저 나타나는가?</p>
+              <ul class="research-points">
+                <li>Threat · Onset · Post 구간을 분리</li>
+                <li>D0만 보면 놓치는 선반영 흔적 확인</li>
+              </ul>
+            </article>
+            <article class="research-card" data-anim="rise" style="--delay:250ms">
+              <span class="card-no">Q3</span>
+              <h3>변수</h3>
+              <p>사건 유형별로 어떤 시장 변수를 우선 확인해야 하는가?</p>
+              <ul class="research-points">
+                <li>Brent · Gold · Dollar · VIX를 전달 변수로 사용</li>
+                <li>사건 유형별 우선 확인 순서 도출</li>
+              </ul>
+            </article>
+          </div>
+          <div class="final-goal" data-anim="rise" style="--delay:310ms">
+            <span>최종 목표</span>
+            <strong>모니터링 우선순위 도출</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="분석 범위와 Proxy 선택">
+      <div class="chrome"><span>Scope and Proxy Choice</span><span>04 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">분석 범위와 Proxy 선택</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">섹터 ETF는 산업별 시장 반응을 관찰하기 위한 거래 proxy.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">04</div>
+        </header>
+        <div class="proxy-grid">
+          <section class="scope-box" data-anim="left" style="--delay:170ms">
+            <h3>연구 대상 아님</h3>
+            <p class="scope-summary">이 발표는 가격평가나 투자 추천이 아니라, 사건 전후 반응의 관찰 범위를 정리한다.</p>
+            <ul class="scope-list">
+              <li>개별 기업 가치평가</li>
+              <li>ETF 가격 괴리율 분석</li>
+              <li>투자 수익 보장 모델</li>
+              <li>장기 지수 proxy의 직접 대체 해석</li>
+            </ul>
+            <p class="scope-foot">범위 밖: 가치평가 · 추천 · 수익 보장</p>
+          </section>
+          <section class="scope-box is-target" data-anim="right" style="--delay:210ms">
+            <h3>연구 대상</h3>
+            <p class="scope-summary">거래 가능한 섹터 ETF를 proxy로 두고, 시장 대비 산업별 상대 반응을 비교한다.</p>
+            <ul class="scope-list">
+              <li>산업별 시장 반응</li>
+              <li>섹터 간 상대 비교</li>
+              <li>우선 확인 변수 도출</li>
+              <li>리스크 모니터링 프레임워크</li>
+            </ul>
+            <p class="scope-foot">분석 렌즈: SPY 대비 초과수익률</p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="데이터와 변수 역할">
+      <div class="chrome"><span>Data and Variable Roles</span><span>05 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">데이터와 변수 역할</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">산업 ETF, 시장 기준, 전달 변수를 분리한 사건 전후 비교 구조.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">05</div>
+        </header>
+        <div class="role-table-wrap">
+          <table class="simple-role-table" data-anim="left" style="--delay:170ms" aria-label="데이터와 변수 역할">
+            <thead>
+              <tr><th>구분</th><th>변수</th><th>역할</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>시장 기준</td><td>SPY</td><td>시장 전체 움직임 제거</td></tr>
+              <tr><td>산업 ETF</td><td>XLE, ITA, JETS 등</td><td>산업별 반응 비교</td></tr>
+              <tr><td>전달 변수</td><td>Brent, Gold, Dollar, VIX</td><td>충격 전달 경로 확인</td></tr>
+              <tr><td>사건 구간</td><td>Threat, Onset, Post</td><td>반응 시점 비교</td></tr>
+            </tbody>
+          </table>
+          <aside class="formula-panel" data-anim="right" style="--delay:210ms">
+            <b>핵심 비교</b>
+            <strong>Sector ETF Return - SPY Return</strong>
+            <p>시장 전체 상승·하락을 제외한 산업 고유의 상대 반응.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="분석 방법">
+      <div class="chrome"><span>Event Window Method</span><span>06 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">분석 방법</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">사건 전후 세 구간의 누적 초과수익률 비교.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">06</div>
+        </header>
+        <div class="method-layout">
+          <div class="timeline-band" data-anim="rise" style="--delay:170ms">
+            <article class="time-card">
+              <h3>Threat</h3>
+              <strong>D-30 ~ D-1</strong>
+              <p>발발 전 가격 흔적과 긴장 고조 구간.</p>
+            </article>
+            <article class="time-card">
+              <h3>Onset</h3>
+              <strong>D0 ~ D+5</strong>
+              <p>공개 직후 재가격화와 방향 전환.</p>
+            </article>
+            <article class="time-card">
+              <h3>Post</h3>
+              <strong>D+6 ~ D+30</strong>
+              <p>반전, 지속, 과잉 반응의 조정 구간.</p>
+            </article>
+          </div>
+          <div class="method-metrics" data-anim="rise" style="--delay:240ms">
+            <div class="method-pill"><b>Excess Return</b>시장 대비 산업 반응</div>
+            <div class="method-pill"><b>CAR</b>구간별 누적 반응</div>
+            <div class="method-pill"><b>Impact Score</b>반응 강도 비교</div>
+            <div class="method-pill"><b>Pre-reflection</b>Threat 선반영 판단</div>
+          </div>
+          <div class="final-goal" data-anim="rise" style="--delay:300ms">
+            <span>분석 목적</span>
+            <strong>반응 강도 · 반응 시점 · 산업별 차이</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="반복 민감 섹터">
+      <div class="chrome"><span>Sector Response Comparison</span><span>07 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">반복 민감 섹터</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">에너지와 항공은 지정학 이벤트 전후 반복 반응이 뚜렷한 관찰 축.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">07</div>
+        </header>
+        <div class="result-layout chart-dominant">
+          <figure class="result-figure" data-anim="left" style="--delay:170ms">
+            <img src="assets/cross_event_sector_profile.png" alt="Average sector impact score across events by ETF">
+            <figcaption>평균 Impact Score · 7개 섹터 ETF 비교</figcaption>
+          </figure>
+          <aside class="result-insights" data-anim="right" style="--delay:210ms">
+            <article class="result-card"><b>XLE</b><strong>공급망 충격 민감도</strong><p>평균 Impact Score 상위 축. 에너지 충격에서 반응 폭 확대.</p></article>
+            <article class="result-card"><b>JETS</b><strong>항공 취약 반응</strong><p>평균 Total CAR 음수와 취약 분류가 반복되는 섹터.</p></article>
+            <article class="result-card"><b>ITA</b><strong>안보 이벤트 한정 반응</strong><p>방산 기대가 붙는 사건에서만 선택적으로 강해지는 후보.</p></article>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="Threat 구간 선반영">
+      <div class="chrome"><span>Response Timing</span><span>08 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">Threat 구간 선반영</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">D0 이후보다 Threat 구간에서 먼저 잡힌 움직임이 더 많은 구조.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">08</div>
+        </header>
+        <div class="result-layout wide-chart chart-dominant">
+          <figure class="result-figure" data-anim="left" style="--delay:170ms">
+            <img src="assets/response_timing_distribution.png" alt="Threat-driven, onset-driven and mixed response distribution">
+            <figcaption>Threat-driven · Onset-driven · Mixed 관측치 분포</figcaption>
+          </figure>
+          <aside class="result-insights" data-anim="right" style="--delay:210ms">
+            <article class="result-card"><b>Timing</b><strong>Threat 구간 우세</strong><p>발발일 이전 가격 흔적이 더 자주 포착되는 패턴.</p></article>
+            <article class="result-card"><b>D0 Limit</b><strong>사건 당일 단독 해석 한계</strong><p>D0만 보면 이미 반영된 움직임 누락 가능.</p></article>
+            <article class="result-card"><b>Signal</b><strong>발발 전 가격 흔적</strong><p>모니터링 초점은 사건 이후 설명보다 사전 신호 포착.</p></article>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="사건 유형별 민감 산업">
+      <div class="chrome"><span>Event Type Response</span><span>09 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">사건 유형별 민감 산업</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">에너지 연계 전쟁과 지역 분쟁은 서로 다른 산업·전달 변수 조합.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">09</div>
+        </header>
+        <div class="result-layout chart-dominant">
+          <figure class="result-figure event-type-chart" data-anim="left" style="--delay:170ms">
+            <img src="assets/event_type_sector_impact.png" alt="Sector impact by event type">
+            <div class="chart-legend-overlay" aria-hidden="true">
+              <span class="legend-item"><i class="legend-swatch" style="--legend-color:#5f78a7"></i>지역 분쟁 / 안전자산</span>
+              <span class="legend-item"><i class="legend-swatch" style="--legend-color:#cf8a60"></i>에너지 연계 전쟁</span>
+              <span class="legend-item"><i class="legend-swatch" style="--legend-color:#62a06e"></i>무역 긴장 충격</span>
+            </div>
+            <figcaption>사건 유형별 평균 섹터 Impact Score</figcaption>
+          </figure>
+          <aside class="type-map" data-anim="right" style="--delay:210ms">
+            <div class="type-row"><b>에너지 연계 전쟁</b><span>XLE · Brent</span></div>
+            <div class="type-row"><b>지역 분쟁 / 안전자산 충격</b><span>JETS · Gold · Dollar</span></div>
+            <div class="type-row"><b>안보 위협</b><span>ITA · VIX · Dollar</span></div>
+            <div class="result-card"><b>Core Pattern</b><strong>민감 산업은 사건 유형을 따라 이동</strong><p>같은 ETF라도 사건 성격에 따라 다른 반응 강도와 방향.</p></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="러시아-우크라이나 에너지 충격">
+      <div class="chrome"><span>Case 1 · Russia-Ukraine</span><span>10 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">러시아-우크라이나: 에너지 공급망 충격</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">자원·에너지 노출이 큰 사건에서 XLE와 Brent가 먼저 움직이는 축.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">10</div>
+        </header>
+        <div class="result-layout chart-dominant">
+          <figure class="result-figure" data-anim="left" style="--delay:170ms">
+            <img src="assets/cumulative_excess_returns_russia_ukraine.png" alt="Cumulative excess returns for Russia Ukraine war">
+            <figcaption>러시아-우크라이나 · XLE / ITA / JETS 누적 초과수익률</figcaption>
+          </figure>
+          <aside class="result-insights" data-anim="right" style="--delay:210ms">
+            <article class="result-card"><b>Event Type</b><strong>자원·에너지 공급망</strong><p>전체 지수보다 에너지 노출과 운송 취약성이 핵심 축.</p></article>
+            <article class="result-card"><b>XLE</b><strong>Threat · Total CAR 확대</strong><p>발발 전부터 누적된 에너지 섹터 반응.</p></article>
+            <article class="result-card"><b>Monitoring Pair</b><strong>XLE · Brent / JETS</strong><p>에너지 가격 충격과 운송 취약성을 분리해 관찰.</p></article>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="이스라엘-하마스 항공·안전자산">
+      <div class="chrome"><span>Case 2 · Israel-Hamas</span><span>11 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">이스라엘-하마스: 항공·안전자산 반응</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">지역 분쟁에서는 항공 취약성과 안전자산 선호가 함께 나타나는 구조.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">11</div>
+        </header>
+        <div class="result-layout chart-dominant">
+          <figure class="result-figure" data-anim="left" style="--delay:170ms">
+            <img src="assets/cumulative_excess_returns_israel_hamas.png" alt="Cumulative excess returns for Israel Hamas conflict">
+            <figcaption>이스라엘-하마스 · XLE / ITA / JETS 누적 초과수익률</figcaption>
+          </figure>
+          <aside class="result-insights" data-anim="right" style="--delay:210ms">
+            <article class="result-card"><b>Event Type</b><strong>지역 분쟁 · 안전자산 선호</strong><p>항공 수요 충격과 안전자산 이동이 동시에 부각.</p></article>
+            <article class="result-card"><b>JETS</b><strong>Total CAR 취약 축</strong><p>분쟁 전후 누적 초과수익률이 약한 섹터.</p></article>
+            <article class="result-card"><b>Monitoring Pair</b><strong>JETS · Gold · Dollar</strong><p>XLE는 Onset 양수 이후 Post 약세로 고정 수혜 단정 불가.</p></article>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="사건 대응 모니터링 플로우">
+      <div class="chrome"><span>Monitoring Framework</span><span>12 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">사건 대응 모니터링 플로우</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">사건 성격을 먼저 나누고, 산업·전달 변수·가격 반응을 같은 순서로 압축.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">12</div>
+        </header>
+        <div class="monitor-layout">
+          <div class="priority-flow" data-anim="left" style="--delay:170ms">
+            <div class="priority-step"><b>Step 01</b><strong>이벤트 감지</strong><span>전쟁 · 분쟁 · 테러 · 무역 갈등</span></div>
+            <div class="priority-connector" aria-hidden="true"><span>↓</span></div>
+            <div class="priority-step"><b>Step 02</b><strong>사건 유형</strong><span>에너지 · 지역 분쟁 · 안보 위협</span></div>
+            <div class="priority-connector" aria-hidden="true"><span>↓</span></div>
+            <div class="priority-step"><b>Step 03</b><strong>민감 섹터</strong><span>XLE · JETS · ITA 등 우선 관찰군</span></div>
+            <div class="priority-connector" aria-hidden="true"><span>↓</span></div>
+            <div class="priority-step"><b>Step 04</b><strong>전달 변수</strong><span>Brent · Gold · Dollar · VIX</span></div>
+            <div class="priority-connector" aria-hidden="true"><span>↓</span></div>
+            <div class="priority-step"><b>Step 05</b><strong>반응 우선순위</strong><span>관찰 순서와 위험 축 정리</span></div>
+          </div>
+          <aside class="priority-examples" data-anim="right" style="--delay:210ms">
+            <div class="priority-example"><b>에너지 전쟁</b><span>XLE, JETS → Brent, VIX</span></div>
+            <div class="priority-example"><b>지역 분쟁</b><span>JETS, XLK → Gold, Dollar</span></div>
+            <div class="priority-example"><b>안보 위협</b><span>ITA → VIX, Dollar</span></div>
+            <article class="result-card"><b>Output</b><strong>사건 유형별 관찰 순서</strong><p>섹터와 전달 변수를 한 줄로 압축한 모니터링 목록.</p></article>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="보조 검증의 위치">
+      <div class="chrome"><span>Supplementary Checks</span><span>13 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">보조 검증의 위치</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">VAR/Granger, OLS, Sobel은 Event Study 결과를 보강하는 검산 파트.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">13</div>
+        </header>
+        <div class="support-grid">
+          <article class="support-card" data-anim="rise" style="--delay:150ms">
+            <b>VAR / Granger</b>
+            <strong>GPR 단독 선행성 약함</strong>
+            <p>섹터 ETF를 직접 예측하는 핵심 근거가 아니라 방향성 점검용.</p>
+            <p>따라서 GPR 조기경보 모델이 아니라 Event Study 결과의 보조 검산으로 둔다.</p>
+          </article>
+          <article class="support-card" data-anim="rise" style="--delay:190ms">
+            <b>OLS</b>
+            <strong>Brent-XLE / Dollar-JETS 연결</strong>
+            <p>사례 해석에 필요한 전달 변수 축을 보조적으로 점검.</p>
+            <p>에너지·항공 사례에서 어떤 변수를 먼저 볼지 정하는 근거로 활용한다.</p>
+          </article>
+          <article class="support-card" data-anim="rise" style="--delay:230ms">
+            <b>Sobel</b>
+            <strong>강한 매개 경로 불충분</strong>
+            <p>전달 변수를 완전한 매개 경로로 단정하기에는 통계 근거 부족.</p>
+            <p>전달 변수는 설명 축이지, 모든 사건을 관통하는 단일 원인으로 제시하지 않는다.</p>
+          </article>
+          <article class="support-card" data-anim="rise" style="--delay:270ms">
+            <b>Placebo / BHAR</b>
+            <strong>우연성 · 장기반응 점검</strong>
+            <p>핵심 결론이 아니라 Event Study 결과의 방어력 보강.</p>
+            <p>짧은 이벤트 윈도우 결과가 우연인지, 장기 반응과 충돌하는지 확인한다.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="연구 한계와 보완 과제">
+      <div class="chrome"><span>Limitations & Next Checks</span><span>14 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">연구 한계와 보완 과제</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">ETF proxy와 이벤트 표본 제약을 전제로 한 산업별 반응 관찰.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">14</div>
+        </header>
+        <div class="limits-stack">
+          <div class="limits-layout">
+            <section class="defense-column" data-anim="left" style="--delay:160ms">
+              <h3>한계</h3>
+              <p class="defense-summary">결론은 인과 증명이 아니라, 거래 가능한 proxy에서 관찰된 상대 반응이다.</p>
+              <ul class="defense-list">
+                <li>섹터 ETF: 산업 이론가치가 아닌 거래 가능한 proxy</li>
+                <li>ETF 가격과 NAV의 일시적 괴리 가능성</li>
+                <li>유동성, 스프레드, LP 활동에 따른 단기 왜곡 가능성</li>
+                <li>이벤트 표본 수와 사건 분류 기준 제약</li>
+                <li>인과 증명보다 사건 전후 관찰 패턴</li>
+              </ul>
+            </section>
+            <section class="defense-column" data-anim="right" style="--delay:200ms">
+              <h3>보완 방향</h3>
+              <p class="defense-summary">다음 단계는 proxy 검증, 표본 확대, 실시간 신호 결합으로 신뢰도를 높이는 것이다.</p>
+              <ul class="defense-list">
+                <li>섹터 지수 또는 구성 종목 가중 포트폴리오 비교</li>
+                <li>ETF NAV 자료 기반 괴리율 점검</li>
+                <li>이벤트 표본 확대와 사건 유형별 안정성 검토</li>
+                <li>사건 유형 분류 체계 세분화</li>
+                <li>실시간 뉴스, GDELT 등 외부 신호 결합</li>
+              </ul>
+            </section>
+          </div>
+          <div class="limits-note" data-anim="rise" style="--delay:240ms">
+            <b>Defense Point</b>
+            <span>ETF 괴리율 평가가 아니라, 거래 가능한 산업 proxy의 상대 반응 비교.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide report-blue" data-title="결론과 Q&A">
+      <div class="chrome"><span>Conclusion & Q&A</span><span>15 / 15</span></div>
+      <div class="board report-board">
+        <header class="report-head">
+          <div>
+            <h2 data-anim="left" style="--delay:60ms">결론: 우선순위 프레임워크</h2>
+            <p class="report-message" data-anim="left" style="--delay:120ms">예측 모델보다 사건 발생 후 먼저 볼 산업과 전달 변수를 정리한 분석 프레임.</p>
+          </div>
+          <div class="report-page" data-anim="right" style="--delay:80ms">15</div>
+        </header>
+        <div class="conclusion-layout">
+          <div class="conclusion-statement" data-anim="rise" style="--delay:150ms">
+            전체 지수보다 산업별 반응과 전달 변수 조합으로 먼저 압축.
+          </div>
+          <div class="conclusion-cards" data-anim="rise" style="--delay:210ms">
+            <article class="conclusion-card"><b>01</b><strong>산업별 반응 차별화</strong><span>같은 지정학 사건에서도 방향과 강도 차이.</span></article>
+            <article class="conclusion-card"><b>02</b><strong>XLE · JETS 반복 민감</strong><span>에너지와 항공은 우선 관찰 섹터.</span></article>
+            <article class="conclusion-card"><b>03</b><strong>Threat 구간 선반영</strong><span>D0 이전 가격 흔적의 중요성.</span></article>
+            <article class="conclusion-card"><b>04</b><strong>유형별 관찰 순서 분기</strong><span>사건 성격에 따라 산업과 변수를 분리.</span></article>
+          </div>
+          <div class="closing-path" data-anim="rise" style="--delay:245ms">
+            <article><b>Step 1</b><strong>사건 유형</strong><span>에너지 전쟁 · 지역 분쟁 · 안보 위협을 먼저 구분</span></article>
+            <article><b>Step 2</b><strong>우선 섹터</strong><span>XLE · JETS · ITA 중심으로 민감 후보 압축</span></article>
+            <article><b>Step 3</b><strong>전달 변수</strong><span>Brent · Gold · Dollar · VIX와 함께 해석</span></article>
+          </div>
+          <div class="qa-footer" data-anim="rise" style="--delay:270ms">
+            <span>정답 예측보다 불확실한 시장에서 관찰 범위 축소.</span>
+            <strong>감사합니다 · Q&A</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <a class="hub-link" href="../../../index.html">Hub</a>
+  <div class="nav" aria-label="slide navigation">
+    <button type="button" data-dir="-1" aria-label="Previous slide">‹</button>
+    <button type="button" data-dir="1" aria-label="Next slide">›</button>
+  </div>
+  <button class="shortcut-toggle" type="button" aria-label="Keyboard shortcuts" aria-controls="shortcuts" aria-expanded="false">?</button>
+  <div class="overview-panel" id="overview" aria-label="slide overview"></div>
+  <aside class="shortcut-panel" id="shortcuts" aria-label="keyboard shortcuts">
+    <h3>Keyboard Shortcuts</h3>
+    <div class="shortcut-grid">
+      <span><kbd>←/→</kbd> slide</span>
+      <span><kbd>Space</kbd> next</span>
+      <span><kbd>O/G</kbd> overview</span>
+      <span><kbd>F</kbd> fullscreen</span>
+      <span><kbd>H</kbd> hub</span>
+      <span><kbd>?</kbd> help</span>
+    </div>
+  </aside>
+  <div class="progress" aria-hidden="true"><span></span></div>
+
+  <script>
+    (() => {
+      const slides = [...document.querySelectorAll(".slide")];
+      const progress = document.querySelector(".progress span");
+      const navButtons = [...document.querySelectorAll("[data-dir]")];
+      const overview = document.querySelector("#overview");
+      const shortcuts = document.querySelector("#shortcuts");
+      const shortcutToggle = document.querySelector(".shortcut-toggle");
+      let index = 0;
+
+      slides.forEach((slide, slideIndex) => {
+        const counter = slide.querySelector(".chrome span:last-child");
+        if (counter) counter.textContent = `${String(slideIndex + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.innerHTML = `<b>${String(slideIndex + 1).padStart(2, "0")}</b><span>${slide.dataset.title || "Slide"}</span>`;
+        button.addEventListener("click", () => {
+          overview.classList.remove("is-open");
+          show(slideIndex);
+        });
+        overview.appendChild(button);
+      });
+
+      function retriggerAnimations(slide) {
+        slide.querySelectorAll("[data-anim]").forEach((element) => {
+          element.style.animation = "none";
+          element.offsetHeight;
+          element.style.animation = "";
+        });
+      }
+
+      function show(next) {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        slides.forEach((slide, slideIndex) => {
+          const active = slideIndex === index;
+          slide.classList.toggle("is-active", active);
+          if (active) retriggerAnimations(slide);
+        });
+        document.body.dataset.controlTheme = slides[index]?.classList.contains("report-blue") ? "blue" : "green";
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        history.replaceState(null, "", `#/${index + 1}`);
+      }
+
+      function fromHash() {
+        const match = location.hash.match(/#\/(\d+)/);
+        if (!match) return 0;
+        return Number(match[1]) - 1;
+      }
+
+      navButtons.forEach((button) => {
+        button.addEventListener("click", () => show(index + Number(button.dataset.dir)));
+      });
+
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen?.();
+        } else {
+          document.exitFullscreen?.();
+        }
+      }
+
+      function toggleShortcuts(force) {
+        const open = force ?? !shortcuts.classList.contains("is-open");
+        shortcuts.classList.toggle("is-open", open);
+        shortcutToggle.setAttribute("aria-expanded", String(open));
+      }
+
+      shortcutToggle.addEventListener("click", () => toggleShortcuts());
+
+      window.addEventListener("keydown", (event) => {
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        if (["ArrowRight", "PageDown", " ", "Enter"].includes(event.key)) {
+          show(index + 1);
+          event.preventDefault();
+        }
+        if (["ArrowLeft", "PageUp", "Backspace"].includes(event.key)) {
+          show(index - 1);
+          event.preventDefault();
+        }
+        if (event.key.toLowerCase() === "h") window.location.href = "../../../index.html";
+        if (["g", "o"].includes(event.key.toLowerCase())) overview.classList.toggle("is-open");
+        if (event.key === "Escape") {
+          overview.classList.remove("is-open");
+          toggleShortcuts(false);
+        }
+        if (event.key === "Home") show(0);
+        if (event.key === "End") show(slides.length - 1);
+        if (event.key.toLowerCase() === "f") toggleFullscreen();
+        if (event.key === "?" || (event.key === "/" && event.shiftKey)) {
+          toggleShortcuts();
+          event.preventDefault();
+        }
+      });
+
+      show(fromHash());
+    })();
+  </script>
+</body>
+</html>

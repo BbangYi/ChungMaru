@@ -11,13 +11,38 @@ object AnalysisDiagnosticsStore {
     private const val KEY_PACKAGE = "analysis_diagnostics_package"
     private const val KEY_URL = "analysis_diagnostics_url"
     private const val KEY_SENSITIVITY = "analysis_diagnostics_sensitivity"
+    private const val KEY_EXPERIMENT_MODE = "analysis_diagnostics_experiment_mode"
+    private const val KEY_EXPERIMENT_STAGES = "analysis_diagnostics_experiment_stages"
     private const val KEY_LATENCY_MS = "analysis_diagnostics_latency_ms"
     private const val KEY_PARSE_DELAY_MS = "analysis_diagnostics_parse_delay_ms"
     private const val KEY_CANDIDATE_EXTRACTION_MS = "analysis_diagnostics_candidate_extraction_ms"
+    private const val KEY_NODE_COLLECTION_MS = "analysis_diagnostics_node_collection_ms"
+    private const val KEY_VISUAL_ROI_PLANNING_MS = "analysis_diagnostics_visual_roi_planning_ms"
+    private const val KEY_SCREEN_CANDIDATE_EXTRACTION_MS = "analysis_diagnostics_screen_candidate_extraction_ms"
+    private const val KEY_CANDIDATE_POST_PROCESSING_MS = "analysis_diagnostics_candidate_post_processing_ms"
+    private const val KEY_CANDIDATE_PARALLEL_WAIT_MS = "analysis_diagnostics_candidate_parallel_wait_ms"
     private const val KEY_ACCESSIBILITY_MASK_LATENCY_MS = "analysis_diagnostics_accessibility_mask_latency_ms"
+    private const val KEY_RISK_GATE_MASK_MS = "analysis_diagnostics_risk_gate_mask_ms"
+    private const val KEY_RISK_GATE_EVENT_AGE_MS =
+        "analysis_diagnostics_risk_gate_event_age_ms"
+    private const val KEY_RISK_GATE_RECEIVE_TO_MASK_MS =
+        "analysis_diagnostics_risk_gate_receive_to_mask_ms"
+    private const val KEY_FAST_PROVISIONAL_MASK_MS = "analysis_diagnostics_fast_provisional_mask_ms"
+    private const val KEY_FAST_PROVISIONAL_EVENT_AGE_MS =
+        "analysis_diagnostics_fast_provisional_event_age_ms"
+    private const val KEY_FAST_PROVISIONAL_BUILD_MS =
+        "analysis_diagnostics_fast_provisional_build_ms"
+    private const val KEY_FAST_PROVISIONAL_OVERLAY_MS =
+        "analysis_diagnostics_fast_provisional_overlay_ms"
+    private const val KEY_FAST_PROVISIONAL_RECEIVE_TO_MASK_MS =
+        "analysis_diagnostics_fast_provisional_receive_to_mask_ms"
     private const val KEY_BACKEND_MASK_LATENCY_MS = "analysis_diagnostics_backend_mask_latency_ms"
     private const val KEY_VISUAL_OCR_LATENCY_MS = "analysis_diagnostics_visual_ocr_latency_ms"
     private const val KEY_VISUAL_MASK_LATENCY_MS = "analysis_diagnostics_visual_mask_latency_ms"
+    private const val KEY_NODE_COUNT = "analysis_diagnostics_node_count"
+    private const val KEY_SCREEN_CANDIDATE_COUNT = "analysis_diagnostics_screen_candidate_count"
+    private const val KEY_CHAR_LOCATION_NODE_COUNT = "analysis_diagnostics_char_location_node_count"
+    private const val KEY_CHAR_RANGE_CANDIDATE_COUNT = "analysis_diagnostics_char_range_candidate_count"
     private const val KEY_COMMENT_COUNT = "analysis_diagnostics_comment_count"
     private const val KEY_OFFENSIVE_COUNT = "analysis_diagnostics_offensive_count"
     private const val KEY_FILTERED_COUNT = "analysis_diagnostics_filtered_count"
@@ -43,13 +68,32 @@ object AnalysisDiagnosticsStore {
             putString(KEY_PACKAGE, attempt.packageName.orEmpty())
             putString(KEY_URL, attempt.url)
             putInt(KEY_SENSITIVITY, attempt.sensitivity ?: -1)
+            putString(KEY_EXPERIMENT_MODE, attempt.experimentMode)
+            putString(KEY_EXPERIMENT_STAGES, attempt.experimentStages)
             putLong(KEY_LATENCY_MS, attempt.latencyMs)
             putLong(KEY_PARSE_DELAY_MS, attempt.parseDelayMs)
             putLong(KEY_CANDIDATE_EXTRACTION_MS, attempt.candidateExtractionMs)
+            putLong(KEY_NODE_COLLECTION_MS, attempt.nodeCollectionMs)
+            putLong(KEY_VISUAL_ROI_PLANNING_MS, attempt.visualRoiPlanningMs)
+            putLong(KEY_SCREEN_CANDIDATE_EXTRACTION_MS, attempt.screenCandidateExtractionMs)
+            putLong(KEY_CANDIDATE_POST_PROCESSING_MS, attempt.candidatePostProcessingMs)
+            putLong(KEY_CANDIDATE_PARALLEL_WAIT_MS, attempt.candidateParallelWaitMs)
             putLong(KEY_ACCESSIBILITY_MASK_LATENCY_MS, attempt.accessibilityMaskLatencyMs)
+            putLong(KEY_RISK_GATE_MASK_MS, attempt.riskGateMaskMs)
+            putLong(KEY_RISK_GATE_EVENT_AGE_MS, attempt.riskGateEventAgeMs)
+            putLong(KEY_RISK_GATE_RECEIVE_TO_MASK_MS, attempt.riskGateReceiveToMaskMs)
+            putLong(KEY_FAST_PROVISIONAL_MASK_MS, attempt.fastProvisionalMaskMs)
+            putLong(KEY_FAST_PROVISIONAL_EVENT_AGE_MS, attempt.fastProvisionalEventAgeMs)
+            putLong(KEY_FAST_PROVISIONAL_BUILD_MS, attempt.fastProvisionalBuildMs)
+            putLong(KEY_FAST_PROVISIONAL_OVERLAY_MS, attempt.fastProvisionalOverlayMs)
+            putLong(KEY_FAST_PROVISIONAL_RECEIVE_TO_MASK_MS, attempt.fastProvisionalReceiveToMaskMs)
             putLong(KEY_BACKEND_MASK_LATENCY_MS, attempt.backendMaskLatencyMs)
             putLong(KEY_VISUAL_OCR_LATENCY_MS, attempt.visualOcrLatencyMs)
             putLong(KEY_VISUAL_MASK_LATENCY_MS, attempt.visualMaskLatencyMs)
+            putInt(KEY_NODE_COUNT, attempt.nodeCount)
+            putInt(KEY_SCREEN_CANDIDATE_COUNT, attempt.screenCandidateCount)
+            putInt(KEY_CHAR_LOCATION_NODE_COUNT, attempt.charLocationNodeCount)
+            putInt(KEY_CHAR_RANGE_CANDIDATE_COUNT, attempt.charRangeCandidateCount)
             putInt(KEY_COMMENT_COUNT, attempt.commentCount)
             putInt(KEY_OFFENSIVE_COUNT, attempt.offensiveCount)
             putInt(KEY_FILTERED_COUNT, attempt.filteredCount)
@@ -80,13 +124,36 @@ object AnalysisDiagnosticsStore {
             packageName = prefs.getString(KEY_PACKAGE, "").orEmpty().ifBlank { null },
             url = prefs.getString(KEY_URL, "").orEmpty(),
             sensitivity = prefs.getInt(KEY_SENSITIVITY, -1).takeIf { it >= 0 },
+            experimentMode = prefs.getString(KEY_EXPERIMENT_MODE, PipelineExperimentMode.DEFAULT.id)
+                .orEmpty()
+                .ifBlank { PipelineExperimentMode.DEFAULT.id },
+            experimentStages = prefs.getString(KEY_EXPERIMENT_STAGES, PipelineExperimentMode.DEFAULT.stageMask)
+                .orEmpty()
+                .ifBlank { PipelineExperimentMode.DEFAULT.stageMask },
             latencyMs = prefs.getLong(KEY_LATENCY_MS, 0L),
             parseDelayMs = prefs.getLong(KEY_PARSE_DELAY_MS, -1L),
             candidateExtractionMs = prefs.getLong(KEY_CANDIDATE_EXTRACTION_MS, -1L),
+            nodeCollectionMs = prefs.getLong(KEY_NODE_COLLECTION_MS, -1L),
+            visualRoiPlanningMs = prefs.getLong(KEY_VISUAL_ROI_PLANNING_MS, -1L),
+            screenCandidateExtractionMs = prefs.getLong(KEY_SCREEN_CANDIDATE_EXTRACTION_MS, -1L),
+            candidatePostProcessingMs = prefs.getLong(KEY_CANDIDATE_POST_PROCESSING_MS, -1L),
+            candidateParallelWaitMs = prefs.getLong(KEY_CANDIDATE_PARALLEL_WAIT_MS, -1L),
             accessibilityMaskLatencyMs = prefs.getLong(KEY_ACCESSIBILITY_MASK_LATENCY_MS, -1L),
+            riskGateMaskMs = prefs.getLong(KEY_RISK_GATE_MASK_MS, -1L),
+            riskGateEventAgeMs = prefs.getLong(KEY_RISK_GATE_EVENT_AGE_MS, -1L),
+            riskGateReceiveToMaskMs = prefs.getLong(KEY_RISK_GATE_RECEIVE_TO_MASK_MS, -1L),
+            fastProvisionalMaskMs = prefs.getLong(KEY_FAST_PROVISIONAL_MASK_MS, -1L),
+            fastProvisionalEventAgeMs = prefs.getLong(KEY_FAST_PROVISIONAL_EVENT_AGE_MS, -1L),
+            fastProvisionalBuildMs = prefs.getLong(KEY_FAST_PROVISIONAL_BUILD_MS, -1L),
+            fastProvisionalOverlayMs = prefs.getLong(KEY_FAST_PROVISIONAL_OVERLAY_MS, -1L),
+            fastProvisionalReceiveToMaskMs = prefs.getLong(KEY_FAST_PROVISIONAL_RECEIVE_TO_MASK_MS, -1L),
             backendMaskLatencyMs = prefs.getLong(KEY_BACKEND_MASK_LATENCY_MS, -1L),
             visualOcrLatencyMs = prefs.getLong(KEY_VISUAL_OCR_LATENCY_MS, -1L),
             visualMaskLatencyMs = prefs.getLong(KEY_VISUAL_MASK_LATENCY_MS, -1L),
+            nodeCount = prefs.getInt(KEY_NODE_COUNT, 0),
+            screenCandidateCount = prefs.getInt(KEY_SCREEN_CANDIDATE_COUNT, 0),
+            charLocationNodeCount = prefs.getInt(KEY_CHAR_LOCATION_NODE_COUNT, 0),
+            charRangeCandidateCount = prefs.getInt(KEY_CHAR_RANGE_CANDIDATE_COUNT, 0),
             commentCount = prefs.getInt(KEY_COMMENT_COUNT, 0),
             offensiveCount = prefs.getInt(KEY_OFFENSIVE_COUNT, 0),
             filteredCount = prefs.getInt(KEY_FILTERED_COUNT, 0),

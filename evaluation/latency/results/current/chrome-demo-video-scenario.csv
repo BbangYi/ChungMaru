@@ -1,0 +1,14 @@
+run_id,scene_id,start_seconds,end_seconds,duration_seconds,scene_type,visible_action,input_or_target,expected_result,evidence_category,latency_log_required
+chrome-demo-planned-120s-core-coverage,S01,0,8,8,opening,데모 시작 / 확장 프로그램 활성 상태,Chrome 확장 아이콘과 청마루 상태 확인,청마루가 켜져 있고 backend 사용 상태가 보임,setup,optional
+chrome-demo-planned-120s-core-coverage,S02,8,20,12,settings-backend,설정 실제 조작,"옵션 화면에서 backend on, API 주소, 연결 확인을 수행",설정값 저장과 연결 성공이 화면에 남음,settings,optional
+chrome-demo-planned-120s-core-coverage,S03,20,28,8,settings-widget,위젯 override 실제 적용,wellbeing/debug override 적용 후 화면 반영 확인,위젯 상태 변화가 보임,settings,optional
+chrome-demo-planned-120s-core-coverage,S04,28,38,10,clean-topic,정상 주제 검색,차별금지법 관련 기사,정상/정책 주제는 과도하게 가리지 않음,clean,optional
+chrome-demo-planned-120s-core-coverage,S05,38,50,12,profanity,욕설 검색,씨발 뜻,검색창/검색 결과 제목/스니펫에서 직접 욕설 span masking,profanity,yes
+chrome-demo-planned-120s-core-coverage,S06,50,62,12,bypass-initial,초성 우회 검색,ㅅ ㅂ 뜻,초성/띄어쓰기 우회 표현 마스킹 확인,bypass,yes
+chrome-demo-planned-120s-core-coverage,S07,62,74,12,bypass-romanized,로마자 우회 검색,tlqkf 뜻,로마자 우회 표현이 backend/정규화 경로에서 처리되는지 확인,bypass,yes
+chrome-demo-planned-120s-core-coverage,S08,74,86,12,hate,혐오 표현 검색,한남충 뜻,혐오/비하 표현 검색 결과 마스킹 확인,hate,yes
+chrome-demo-planned-120s-core-coverage,S09,86,98,12,toxicity,공격적 발화 검색,너 한번만 더 그러면 죽여버린다,위협/공격 발화 탐지와 마스킹 확인,toxicity,yes
+chrome-demo-planned-120s-core-coverage,S10,98,108,10,ai-overview,AI 개요 영역 확인,대표적인 초성 욕설,AI Overview 본문과 인용 chip 중복 렌더/부분 마스킹 확인,google-ai-overview,yes
+chrome-demo-planned-120s-core-coverage,S11,108,118,10,scroll-hover,스크롤 안정성과 근거 tooltip,마스킹된 검색 결과 위로 hover 후 스크롤,마스크가 위치를 유지하고 tooltip에 보호 사유가 표시됨,stability,yes
+chrome-demo-planned-120s-core-coverage,S12,118,132,14,site-warning-block,위험 사이트 차단,high-risk adult/toxic test URL,"민감도 기준 초과 시 계속 접속 버튼 없음, 돌아가기만 활성",site-warning,optional
+chrome-demo-planned-120s-core-coverage,S13,132,142,10,latency-evidence,측정 로그 확인,chrome-e2e-row-breakdown.csv,row별 latency와 worst-case 분류가 파일에 남아 있음을 보여줌,evidence,optional

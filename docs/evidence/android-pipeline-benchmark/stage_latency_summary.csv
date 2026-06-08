@@ -1,0 +1,20 @@
+mode,stages,stage_id,stage_name,component,latency_metric,runs,measured_runs,avg_latency_ms,min_latency_ms,max_latency_ms
+s1_collect_only,1,01,collect,Accessibility Service,collect_ms,10,10,697.3,427.0,949.0
+s2_backend_only,2,02,analyze,Android Analysis API,backend_api_ms,10,10,378.6,189.0,1104.0
+s3_ocr_roi_only,3,03,ocr_roi,OCR ROI,ocr_ms,10,6,351.7,167.0,482.0
+s4_coord_only,4,04,coordinate,char box / line estimate,coord_ms,10,10,52.7,23.0,127.0
+s5_overlay_only,5,05,display,overlay gate,display_ms,10,0,,,
+s12_collect_backend,1+2,01,collect,Accessibility Service,collect_ms,10,10,558.2,376.0,847.0
+s12_collect_backend,1+2,02,analyze,Android Analysis API,backend_api_ms,10,10,267.3,180.0,658.0
+s123_collect_backend_ocr,1+2+3,01,collect,Accessibility Service,collect_ms,10,10,602.0,414.0,827.0
+s123_collect_backend_ocr,1+2+3,02,analyze,Android Analysis API,backend_api_ms,10,10,252.5,183.0,417.0
+s123_collect_backend_ocr,1+2+3,03,ocr_roi,OCR ROI,ocr_ms,10,10,279.8,157.0,538.0
+s1234_collect_backend_ocr_coord,1+2+3+4,01,collect,Accessibility Service,collect_ms,10,10,680.7,455.0,1048.0
+s1234_collect_backend_ocr_coord,1+2+3+4,02,analyze,Android Analysis API,backend_api_ms,10,10,277.5,244.0,332.0
+s1234_collect_backend_ocr_coord,1+2+3+4,03,ocr_roi,OCR ROI,ocr_ms,10,10,177.4,121.0,251.0
+s1234_collect_backend_ocr_coord,1+2+3+4,04,coordinate,char box / line estimate,coord_ms,10,10,35.9,15.0,72.0
+s12345_full,1+2+3+4+5,01,collect,Accessibility Service,collect_ms,10,10,710.4,458.0,1039.0
+s12345_full,1+2+3+4+5,02,analyze,Android Analysis API,backend_api_ms,10,10,375.2,201.0,917.0
+s12345_full,1+2+3+4+5,03,ocr_roi,OCR ROI,ocr_ms,10,10,354.2,221.0,524.0
+s12345_full,1+2+3+4+5,04,coordinate,char box / line estimate,coord_ms,10,10,58.1,19.0,130.0
+s12345_full,1+2+3+4+5,05,display,overlay gate,display_ms,10,10,151.2,10.0,523.0

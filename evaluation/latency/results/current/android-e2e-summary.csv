@@ -1,0 +1,9 @@
+run_id,source,scenario,batch_size,metric,count,avg,median,p95,min,max
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,backend_roundtrip_ms,1,389.0,389.0,389.0,389.0,389.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,candidate_collect_ms,1,2253.0,2253.0,2253.0,2253.0,2253.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,decision_build_ms,1,388.0,388.0,388.0,388.0,388.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,first_mask_ms,1,2253.0,2253.0,2253.0,2253.0,2253.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,mask_apply_ms,1,111.0,111.0,111.0,111.0,111.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,post_backend_to_mask_ms,1,388.0,388.0,388.0,388.0,388.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,pre_backend_ms,1,2253.0,2253.0,2253.0,2253.0,2253.0
+mac-android-smoke-20260606T1735KST,android-pipeline-benchmark,pipeline-01-02-03-04-05,14,total_to_mask_ms,1,2253.0,2253.0,2253.0,2253.0,2253.0

@@ -25,15 +25,25 @@ class VisualTextOcrProcessor {
         val recognizer: TextRecognizer
     )
 
-    private enum class OcrImageVariant {
-        RAW,
-        HIGH_CONTRAST
+    private enum class OcrImageVariant(
+        val highContrast: Boolean,
+        val scaleFactor: Int
+    ) {
+        RAW(highContrast = false, scaleFactor = 1),
+        HIGH_CONTRAST(highContrast = true, scaleFactor = 1),
+        UPSCALED_HIGH_CONTRAST(highContrast = true, scaleFactor = 2)
     }
 
     private data class OcrWorkItem(
         val roi: VisualTextRoi,
         val recognizer: RecognizerSpec,
         val variant: OcrImageVariant
+    )
+
+    private data class PreparedOcrBitmap(
+        val bitmap: Bitmap,
+        val geometryScale: Float,
+        val intermediates: List<Bitmap> = emptyList()
     )
 
     private val recognizers = listOf(
@@ -107,23 +117,29 @@ class VisualTextOcrProcessor {
                 finishOne()
                 return@forEach
             }
-            val processBitmap = bitmapForVariant(crop, workItem.variant)
+            val preparedBitmap = prepareBitmapForVariant(crop, workItem.variant)
 
-            val image = InputImage.fromBitmap(processBitmap, 0)
+            val image = InputImage.fromBitmap(preparedBitmap.bitmap, 0)
             workItem.recognizer.recognizer
                 .process(image)
                 .addOnSuccessListener { text ->
                     candidates += text.toParsedComments(
                         roiBounds = roi.boundsInScreen,
-                        roiSource = roi.source
+                        roiSource = roi.source,
+                        geometryScale = preparedBitmap.geometryScale
                     )
                 }
                 .addOnFailureListener {
                     // OCR is a best-effort visual supplement; accessibility text analysis remains primary.
                 }
                 .addOnCompleteListener {
-                    if (processBitmap !== crop && !processBitmap.isRecycled) {
-                        processBitmap.recycle()
+                    if (preparedBitmap.bitmap !== crop && !preparedBitmap.bitmap.isRecycled) {
+                        preparedBitmap.bitmap.recycle()
+                    }
+                    preparedBitmap.intermediates.forEach { bitmap ->
+                        if (bitmap !== crop && bitmap !== preparedBitmap.bitmap && !bitmap.isRecycled) {
+                            bitmap.recycle()
+                        }
                     }
                     if (!crop.isRecycled) {
                         crop.recycle()
@@ -134,18 +150,44 @@ class VisualTextOcrProcessor {
     }
 
     private fun imageVariantsFor(roi: VisualTextRoi): List<OcrImageVariant> {
-        return if (roi.source == "youtube-composite-card" || roi.source == "youtube-visible-band") {
-            listOf(OcrImageVariant.RAW, OcrImageVariant.HIGH_CONTRAST)
-        } else {
-            listOf(OcrImageVariant.RAW)
+        return when (roi.source) {
+            "youtube-composite-card",
+            "youtube-visible-band",
+            "browser-visual-region" ->
+                listOf(OcrImageVariant.RAW, OcrImageVariant.HIGH_CONTRAST, OcrImageVariant.UPSCALED_HIGH_CONTRAST)
+            else -> listOf(OcrImageVariant.RAW)
         }
     }
 
-    private fun bitmapForVariant(crop: Bitmap, variant: OcrImageVariant): Bitmap {
-        return when (variant) {
-            OcrImageVariant.RAW -> crop
-            OcrImageVariant.HIGH_CONTRAST -> crop.toHighContrastOcrBitmap() ?: crop
+    private fun prepareBitmapForVariant(crop: Bitmap, variant: OcrImageVariant): PreparedOcrBitmap {
+        val intermediates = mutableListOf<Bitmap>()
+        val base = if (variant.highContrast) {
+            crop.toHighContrastOcrBitmap()
+                ?.also { intermediates += it }
+                ?: crop
+        } else {
+            crop
         }
+        if (variant.scaleFactor <= 1) {
+            return PreparedOcrBitmap(
+                bitmap = base,
+                geometryScale = 1f,
+                intermediates = intermediates
+            )
+        }
+
+        val scaled = base.scaleForOcr(variant.scaleFactor)
+            ?: return PreparedOcrBitmap(
+                bitmap = base,
+                geometryScale = 1f,
+                intermediates = intermediates
+            )
+
+        return PreparedOcrBitmap(
+            bitmap = scaled,
+            geometryScale = variant.scaleFactor.toFloat(),
+            intermediates = intermediates
+        )
     }
 
     private fun Bitmap.toHighContrastOcrBitmap(): Bitmap? {
@@ -172,6 +214,20 @@ class VisualTextOcrProcessor {
         }.getOrNull()
     }
 
+    private fun Bitmap.scaleForOcr(scaleFactor: Int): Bitmap? {
+        if (isRecycled || width <= 0 || height <= 0 || scaleFactor <= 1) return null
+
+        val scaledWidth = width * scaleFactor
+        val scaledHeight = height * scaleFactor
+        if (scaledWidth > MAX_OCR_PROCESSING_SIZE_PX || scaledHeight > MAX_OCR_PROCESSING_SIZE_PX) {
+            return null
+        }
+
+        return runCatching {
+            Bitmap.createScaledBitmap(this, scaledWidth, scaledHeight, true)
+        }.getOrNull()
+    }
+
     private fun cropBitmap(
         screenshot: Bitmap,
         bounds: BoundsRect
@@ -192,23 +248,29 @@ class VisualTextOcrProcessor {
 
     private fun Text.toParsedComments(
         roiBounds: BoundsRect,
-        roiSource: String
+        roiSource: String,
+        geometryScale: Float
     ): List<ParsedComment> {
         return textBlocks
             .flatMap { block -> block.lines }
             .flatMap { line ->
                 line.toParsedComments(
                     roiBounds = roiBounds,
-                    roiSource = roiSource
+                    roiSource = roiSource,
+                    geometryScale = geometryScale
                 )
             }
     }
 
     private fun Text.Line.toParsedComments(
         roiBounds: BoundsRect,
-        roiSource: String
+        roiSource: String,
+        geometryScale: Float
     ): List<ParsedComment> {
         val lineText = text.replace(Regex("\\s+"), " ").trim()
+        if (roiSource == "browser-visual-region" || VisualTextOcrCandidateFilter.looksDebugRelevant(lineText)) {
+            Log.d(TAG, "OCR line source=$roiSource text=$lineText")
+        }
         if (!VisualTextOcrCandidateFilter.isUsefulOcrLineText(lineText)) return emptyList()
         val candidateRanges = VisualTextOcrCandidateFilter.findAnalysisRanges(lineText)
         if (candidateRanges.isEmpty()) {
@@ -223,7 +285,8 @@ class VisualTextOcrProcessor {
                 line = this,
                 lineText = lineText,
                 range = range,
-                roiBounds = roiBounds
+                roiBounds = roiBounds,
+                geometryScale = geometryScale
             ) ?: return@mapNotNull null
 
             Log.d(TAG, "OCR line candidate text=$lineText bounds=$narrowedBounds ranges=$candidateRanges")
@@ -244,16 +307,20 @@ class VisualTextOcrProcessor {
         line: Text.Line,
         lineText: String,
         range: VisualTextOcrCandidateFilter.CandidateRange,
-        roiBounds: BoundsRect
+        roiBounds: BoundsRect,
+        geometryScale: Float
     ): BoundsRect? {
         val elementBounds = line.elementBoundsForRange(
             lineText = lineText,
             range = range,
-            roiBounds = roiBounds
+            roiBounds = roiBounds,
+            geometryScale = geometryScale
         )
         if (elementBounds != null) return elementBounds
 
-        val lineBounds = line.boundingBox?.let { box -> translateBounds(box, roiBounds) } ?: return null
+        val lineBounds = line.boundingBox?.let { box ->
+            translateBounds(box, roiBounds, geometryScale)
+        } ?: return null
         if (!canUseLineBoundsFallback(lineText, range, lineBounds)) {
             Log.d(
                 TAG,
@@ -295,9 +362,10 @@ class VisualTextOcrProcessor {
     private fun Text.Line.elementBoundsForRange(
         lineText: String,
         range: VisualTextOcrCandidateFilter.CandidateRange,
-        roiBounds: BoundsRect
+        roiBounds: BoundsRect,
+        geometryScale: Float
     ): BoundsRect? {
-        val mappedElements = mapElementsToLineText(lineText, roiBounds)
+        val mappedElements = mapElementsToLineText(lineText, roiBounds, geometryScale)
         if (mappedElements.isEmpty()) return null
 
         val matchedBounds = mappedElements.mapNotNull { mapped ->
@@ -325,7 +393,8 @@ class VisualTextOcrProcessor {
 
     private fun Text.Line.mapElementsToLineText(
         lineText: String,
-        roiBounds: BoundsRect
+        roiBounds: BoundsRect,
+        geometryScale: Float
     ): List<MappedTextElement> {
         val mapped = mutableListOf<MappedTextElement>()
         var searchStart = 0
@@ -341,7 +410,7 @@ class VisualTextOcrProcessor {
             mapped += MappedTextElement(
                 start = start,
                 end = end,
-                bounds = element.boundingBox?.let { box -> translateBounds(box, roiBounds) }
+                bounds = element.boundingBox?.let { box -> translateBounds(box, roiBounds, geometryScale) }
             )
             searchStart = end
         }
@@ -523,12 +592,14 @@ class VisualTextOcrProcessor {
 
     private fun translateBounds(
         box: Rect,
-        roiBounds: BoundsRect
+        roiBounds: BoundsRect,
+        geometryScale: Float
     ): BoundsRect? {
-        val left = roiBounds.left + box.left
-        val top = roiBounds.top + box.top
-        val right = roiBounds.left + box.right
-        val bottom = roiBounds.top + box.bottom
+        val scale = geometryScale.takeIf { it > 0f } ?: 1f
+        val left = roiBounds.left + (box.left / scale).roundToInt()
+        val top = roiBounds.top + (box.top / scale).roundToInt()
+        val right = roiBounds.left + (box.right / scale).roundToInt()
+        val bottom = roiBounds.top + (box.bottom / scale).roundToInt()
 
         if (right - left < MIN_TEXT_WIDTH_PX || bottom - top < MIN_TEXT_HEIGHT_PX) {
             return null
@@ -573,6 +644,7 @@ class VisualTextOcrProcessor {
         private const val OCR_TEXT_HORIZONTAL_PADDING_HEIGHT_RATIO = 0.18f
         private const val OCR_CONTRAST_BLACK_POINT = 36
         private const val OCR_CONTRAST_WHITE_POINT = 210
+        private const val MAX_OCR_PROCESSING_SIZE_PX = 2200
         private const val MAX_COMPACT_KOREAN_TEXT_WIDTH_PX = 112
         private const val MAX_COMPACT_LATIN_TEXT_WIDTH_PX = 84
         private const val MAX_LINE_FALLBACK_CODEPOINTS = 8
@@ -595,6 +667,7 @@ internal object VisualTextOcrMetadataCodec {
         "youtube-visible-band",
         "youtube-comment-panel",
         "browser-text-node",
+        "browser-visual-region",
         "youtube-semantic-card"
     )
 
@@ -719,6 +792,7 @@ internal object VisualTextOcrCandidateFilter {
             "ㅂ\\s*ㅅ",
             "개\\s*새\\s*끼",
             "개\\s*새",
+            "개\\s*같",
             "새\\s*끼",
             "존\\s*나",
             "ㅈ\\s*ㄴ",
@@ -736,6 +810,7 @@ internal object VisualTextOcrCandidateFilter {
             "꺼\\s*져",
             "ㄲ\\s*ㅈ",
             "엿\\s*먹",
+            "[a4]\\s*비",
             "t\\s*[i1l]\\s*q\\s*k\\s*[fq]?",
             "t\\s*[i1l]\\s*q\\s*k\\s*q",
             "t\\s*[i1l]\\s*[a4gq]\\s*k\\s*[fq]?",
@@ -871,6 +946,7 @@ internal object VisualTextOcrCandidateFilter {
             compact.matches(Regex("""llkt""")) -> "tlqkf"
             compact.matches(Regex("""ss?ibal""")) -> "ssibal"
             compact == "sibal" -> "ssibal"
+            rawCompact.matches(Regex("""[a4]비""")) -> "ㅅㅂ"
             compact == "qudtls" -> "qudtls"
             rawCompact == "wlfkf" -> "지랄"
             rawCompact == "whssk" -> "존나"

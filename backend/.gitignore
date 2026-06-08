@@ -22,6 +22,11 @@ venv/
 *.log
 
 # ── 데이터 ────────────────────────────────────────────
-data/
+data/*
+!data/
+!data/site_intel_seed*.json
+data/*.sqlite
+data/*.sqlite-*
+data/*.db
 *.csv
 *.jsonl

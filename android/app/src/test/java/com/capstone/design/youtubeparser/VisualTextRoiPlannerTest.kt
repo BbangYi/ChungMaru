@@ -194,6 +194,54 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_addsBrowserVisualRoiForTextBearingCanvasDescription() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                contentDescriptionNode(
+                    displayText = "이미지 안의 테스트 텍스트",
+                    left = 96,
+                    top = 610,
+                    right = 976,
+                    bottom = 890,
+                    className = "android.view.View",
+                    packageName = "com.android.chrome"
+                )
+            ),
+            screenWidth = 1082,
+            screenHeight = 2400
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("browser-visual-region", rois.single().source)
+        assertEquals("browser-text-bearing-visual-node", rois.single().reason)
+        assertTrue(rois.single().boundsInScreen.top <= 610)
+        assertTrue(rois.single().boundsInScreen.bottom >= 890)
+    }
+
+    @Test
+    fun planFromNodes_addsBrowserVisualRoiWhenChromeExposesCanvasLabelAsText() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = "이미지 안의 테스트 텍스트",
+                    left = 110,
+                    top = 706,
+                    right = 976,
+                    bottom = 1186,
+                    className = "android.view.View",
+                    packageName = "com.android.chrome"
+                )
+            ),
+            screenWidth = 1082,
+            screenHeight = 2400
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("browser-visual-region", rois.single().source)
+        assertEquals("browser-text-bearing-visual-node", rois.single().reason)
+    }
+
+    @Test
     fun planFromNodes_addsBrowserTextNodeRoiForChromeHarmfulVisibleText() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(

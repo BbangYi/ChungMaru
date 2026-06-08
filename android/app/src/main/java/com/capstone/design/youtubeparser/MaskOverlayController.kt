@@ -102,6 +102,10 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_ESTIMATED_ACCESSIBILITY_WIDTH_RATIO = 0.78f
     private const val MAX_ACCESSIBILITY_RANGE_WIDTH_PX = 180
     private const val MAX_ACCESSIBILITY_RANGE_HEIGHT_PX = 64
+    private const val MAX_BROWSER_ACCESSIBILITY_RANGE_WIDTH_PX = 220
+    private const val MAX_BROWSER_ACCESSIBILITY_RANGE_HEIGHT_PX = 88
+    private const val MAX_BROWSER_MASK_COUNT = 3
+    private const val MAX_WHOLE_TEXT_FALLBACK_CODEPOINTS = 12
     private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_TEXT_LENGTH = 32
     private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_HEIGHT_PX = 96
     private const val MAX_BROWSER_COMPACT_ACCESSIBILITY_WIDTH_RATIO = 0.7f
@@ -191,10 +195,19 @@ object AndroidMaskOverlayPlanner {
 
         renderableResults
             .asSequence()
-            .filter { it.isOffensive && it.evidenceSpans.isNotEmpty() }
             .forEach { item ->
+                if (!item.isOffensive) return@forEach
+                val originalLength = item.original.codePointCount(0, item.original.length)
+                val evidenceSpans = renderableEvidenceSpans(item, originalLength)
+                if (evidenceSpans.isEmpty()) return@forEach
                 candidateCount += 1
-                val specs = toSpecs(item, screenWidth, screenHeight)
+                val specs = toSpecs(
+                    item = item,
+                    screenWidth = screenWidth,
+                    screenHeight = screenHeight,
+                    evidenceSpans = evidenceSpans,
+                    originalLength = originalLength
+                )
                 if (specs.isEmpty()) {
                     skippedUnstableCount += 1
                 } else {
@@ -203,7 +216,12 @@ object AndroidMaskOverlayPlanner {
             }
 
         val suppressedSpecs = suppressOverlappingSpecs(rawSpecs)
-        val finalSpecs = suppressedSpecs.take(MAX_MASK_COUNT)
+        val maxMaskCount = if (suppressedSpecs.any { spec -> isBrowserMaskSource(spec.debugSource) }) {
+            MAX_BROWSER_MASK_COUNT
+        } else {
+            MAX_MASK_COUNT
+        }
+        val finalSpecs = suppressedSpecs.take(maxMaskCount)
 
         return MaskOverlayPlan(
             specs = finalSpecs,
@@ -359,10 +377,11 @@ object AndroidMaskOverlayPlanner {
     private fun toSpecs(
         item: AndroidAnalysisResultItem,
         screenWidth: Int,
-        screenHeight: Int
+        screenHeight: Int,
+        evidenceSpans: List<EvidenceSpan>,
+        originalLength: Int
     ): List<MaskOverlaySpec> {
         val fullSpec = toSpec(item.boundsInScreen, screenWidth, screenHeight) ?: return emptyList()
-        val originalLength = item.original.codePointCount(0, item.original.length)
         if (originalLength <= 0) return emptyList()
         if (!hasHighConfidenceTextBounds(
                 spec = fullSpec,
@@ -384,7 +403,7 @@ object AndroidMaskOverlayPlanner {
         val preciseVisualBounds = visualMetadata != null
         val visualTextForSizing = visualMetadata?.visualText
         val debugSource = buildDebugSource(item)
-        val spanSpecs = item.evidenceSpans.mapNotNull { span ->
+        val spanSpecs = evidenceSpans.mapNotNull { span ->
             toSpanSpec(
                 fullSpec = fullSpec,
                 span = span,
@@ -403,18 +422,54 @@ object AndroidMaskOverlayPlanner {
         return spanSpecs
     }
 
+    private fun renderableEvidenceSpans(
+        item: AndroidAnalysisResultItem,
+        originalLength: Int
+    ): List<EvidenceSpan> {
+        if (item.evidenceSpans.isNotEmpty()) return item.evidenceSpans
+        if (!shouldUseWholeTextFallbackSpan(item, originalLength)) return emptyList()
+
+        return listOf(
+            EvidenceSpan(
+                text = item.original.trim().ifBlank { item.original },
+                start = 0,
+                end = originalLength,
+                score = max(max(item.scores.profanity, item.scores.toxicity), item.scores.hate)
+            )
+        )
+    }
+
+    private fun shouldUseWholeTextFallbackSpan(
+        item: AndroidAnalysisResultItem,
+        originalLength: Int
+    ): Boolean {
+        if (!isAccessibilityCharRangeAuthor(item.authorId)) return false
+        if (originalLength !in 1..MAX_WHOLE_TEXT_FALLBACK_CODEPOINTS) return false
+        return item.original.trim().isNotBlank()
+    }
+
     private fun shouldAllowScrollTranslation(authorId: String?): Boolean {
         // Only explicit input fields and exact OCR boxes are stable enough to
         // translate. Coarse accessibility rows still get dropped and reanalyzed.
         val value = authorId ?: return false
+        if (isBrowserOverlayAuthor(value)) return false
+
         return value == "android-accessibility:user_input" ||
             value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
             value == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             value == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             isLineLevelCommentAccessibilityAuthor(value) ||
-            isBrowserCompactAccessibilityAuthor(value) ||
-            (isAccessibilityCharRangeAuthor(value) && !isBrowserCharRangeAuthor(value)) ||
+            isAccessibilityCharRangeAuthor(value) ||
             isPreciseVisualAuthor(value)
+    }
+
+    private fun isBrowserOverlayAuthor(authorId: String?): Boolean {
+        val value = authorId ?: return false
+        return value.startsWith("android-accessibility-browser:") ||
+            value.startsWith("android-accessibility-browser-compact:") ||
+            value.startsWith("android-accessibility-char-range:browser:") ||
+            value.startsWith("android-accessibility-browser-provisional-line:") ||
+            value.startsWith("ocr:browser-")
     }
 
     private fun isPreservableSpecAcrossRefresh(
@@ -425,7 +480,8 @@ object AndroidMaskOverlayPlanner {
 
     private fun isPreservablePreciseVisualSpec(spec: MaskOverlaySpec): Boolean {
         return spec.debugSource.startsWith("ocr:youtube-composite-card:") ||
-            spec.debugSource.startsWith("ocr:youtube-visible-band:")
+            spec.debugSource.startsWith("ocr:youtube-visible-band:") ||
+            spec.debugSource.startsWith("ocr:browser-visual-region:")
     }
 
     private fun isPartiallyOnScreen(
@@ -543,6 +599,10 @@ object AndroidMaskOverlayPlanner {
             // overlay requires char-range or OCR geometry.
             return false
         }
+        if (isBrowserCharRangeAuthor(authorId)) {
+            return spec.width <= MAX_BROWSER_ACCESSIBILITY_RANGE_WIDTH_PX &&
+                spec.height <= MAX_BROWSER_ACCESSIBILITY_RANGE_HEIGHT_PX
+        }
         if (isAccessibilityCharRangeAuthor(authorId)) {
             return spec.width <= MAX_ACCESSIBILITY_RANGE_WIDTH_PX &&
                 spec.height <= MAX_ACCESSIBILITY_RANGE_HEIGHT_PX
@@ -648,11 +708,16 @@ object AndroidMaskOverlayPlanner {
         return value.startsWith("ocr:youtube-composite-card:") ||
             value.startsWith("ocr:youtube-visible-band:") ||
             value.startsWith("ocr:youtube-comment-panel:") ||
-            isBrowserTextNodePreciseVisualAuthor(value)
+            isBrowserTextNodePreciseVisualAuthor(value) ||
+            isBrowserVisualRegionPreciseVisualAuthor(value)
     }
 
     private fun isBrowserTextNodePreciseVisualAuthor(authorId: String?): Boolean {
         return authorId?.startsWith("ocr:browser-text-node:") == true
+    }
+
+    private fun isBrowserVisualRegionPreciseVisualAuthor(authorId: String?): Boolean {
+        return authorId?.startsWith("ocr:browser-visual-region:") == true
     }
 
     private fun isSemanticVisualAuthor(authorId: String?): Boolean {
@@ -819,7 +884,9 @@ object AndroidMaskOverlayPlanner {
             return false
         }
 
-        if (isBrowserTextNodePreciseVisualAuthor(value)) {
+        if (isBrowserTextNodePreciseVisualAuthor(value) ||
+            isBrowserVisualRegionPreciseVisualAuthor(value)
+        ) {
             return false
         }
 
@@ -1669,6 +1736,13 @@ object AndroidMaskOverlayPlanner {
         }
     }
 
+    private fun isBrowserMaskSource(source: String): Boolean {
+        return source.startsWith("android-accessibility-browser:") ||
+            source.startsWith("android-accessibility-browser-compact:") ||
+            source.startsWith("android-accessibility-char-range:browser:") ||
+            source.startsWith("ocr:browser-")
+    }
+
     private fun isNearDuplicateMask(left: MaskOverlaySpec, right: MaskOverlaySpec): Boolean {
         if (overlapRatio(left, right) >= NEAR_DUPLICATE_OVERLAP_RATIO) return true
 
@@ -1720,6 +1794,26 @@ class MaskOverlayController(
     private val activeSpecs = mutableListOf<MaskOverlaySpec>()
     private var lastSignature: String = ""
     private var lastOverlayUpdateAtMs: Long = 0L
+    private var warmOnly: Boolean = false
+
+    fun prewarm() {
+        if (activeViews.isNotEmpty()) return
+
+        val frame = BatchMaskFrame(0, 0, 1, 1)
+        try {
+            BatchBlurMaskView(service).apply {
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                alpha = 0f
+            }.also { view ->
+                windowManager.addView(view, createBatchMaskLayoutParams(frame))
+                activeViews += view
+                warmOnly = true
+            }
+        } catch (error: RuntimeException) {
+            warmOnly = false
+            Log.w(TAG, "prewarm mask overlay failed", error)
+        }
+    }
 
     fun render(
         response: AndroidAnalysisResponse?,
@@ -1744,7 +1838,7 @@ class MaskOverlayController(
         }
 
         if (specs.isEmpty()) {
-            if (preserveExistingIfEmpty && activeViews.isNotEmpty()) {
+            if (preserveExistingIfEmpty && activeSpecs.isNotEmpty()) {
                 Log.d(
                     TAG,
                     "render empty plan preserved existing masks candidates=${plan.candidateCount} " +
@@ -1762,33 +1856,12 @@ class MaskOverlayController(
         }
 
         val signature = AndroidMaskOverlayPlanner.signature(specs)
-        if (signature == lastSignature && activeViews.isNotEmpty()) {
+        if (signature == lastSignature && activeSpecs.isNotEmpty()) {
             return
         }
 
         try {
-            specs.forEachIndexed { index, spec ->
-                val existing = activeViews.getOrNull(index)
-                if (existing == null) {
-                    val maskView = createMaskView()
-                    windowManager.addView(maskView, createMaskLayoutParams(spec))
-                    activeViews += maskView
-                    activeSpecs += spec
-                } else {
-                    windowManager.updateViewLayout(existing, createMaskLayoutParams(spec))
-                    activeSpecs[index] = spec
-                }
-            }
-
-            while (activeViews.size > specs.size) {
-                val view = activeViews.removeAt(activeViews.lastIndex)
-                activeSpecs.removeAt(activeSpecs.lastIndex)
-                try {
-                    windowManager.removeView(view)
-                } catch (_: IllegalArgumentException) {
-                    // The view may already be detached after a fast window transition.
-                }
-            }
+            renderBatchSpecs(specs)
 
             Log.d(
                 TAG,
@@ -1804,8 +1877,34 @@ class MaskOverlayController(
         }
     }
 
+    fun renderDirect(specs: List<MaskOverlaySpec>, reason: String): Boolean {
+        if (specs.isEmpty()) return false
+
+        val signature = "direct:$reason:${AndroidMaskOverlayPlanner.signature(specs)}"
+        if (signature == lastSignature && activeSpecs.isNotEmpty()) {
+            return true
+        }
+
+        return try {
+            renderBatchSpecs(specs)
+            Log.d(
+                TAG,
+                "render direct maskCount=${specs.size} reason=$reason sources=${
+                    specs.mapNotNull { spec -> spec.debugSource.takeIf { it.isNotBlank() } }.take(3)
+                }"
+            )
+            lastSignature = signature
+            lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
+            true
+        } catch (error: RuntimeException) {
+            clearViews()
+            Log.w(TAG, "render direct mask overlay failed reason=$reason", error)
+            false
+        }
+    }
+
     fun translateBy(deltaX: Int = 0, deltaY: Int = 0): MaskOverlayTranslationStatus {
-        if (activeViews.isEmpty() || activeSpecs.isEmpty()) {
+        if (activeSpecs.isEmpty()) {
             return MaskOverlayTranslationStatus.ALL_OFFSCREEN
         }
         if (deltaX == 0 && deltaY == 0) return MaskOverlayTranslationStatus.UNCHANGED
@@ -1826,28 +1925,7 @@ class MaskOverlayController(
         }
 
         return try {
-            translatedSpecs.forEachIndexed { index, spec ->
-                val existing = activeViews.getOrNull(index)
-                if (existing == null) {
-                    val maskView = createMaskView()
-                    windowManager.addView(maskView, createMaskLayoutParams(spec))
-                    activeViews += maskView
-                } else {
-                    windowManager.updateViewLayout(existing, createMaskLayoutParams(spec))
-                }
-            }
-
-            while (activeViews.size > translatedSpecs.size) {
-                val view = activeViews.removeAt(activeViews.lastIndex)
-                try {
-                    windowManager.removeView(view)
-                } catch (_: IllegalArgumentException) {
-                    // The view may already be detached after a fast window transition.
-                }
-            }
-
-            activeSpecs.clear()
-            activeSpecs += translatedSpecs
+            renderBatchSpecs(translatedSpecs)
             lastSignature = AndroidMaskOverlayPlanner.signature(translatedSpecs)
             lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
             translationPlan.status
@@ -1865,7 +1943,12 @@ class MaskOverlayController(
     }
 
     fun hasActiveMasks(): Boolean {
-        return activeViews.isNotEmpty()
+        return activeSpecs.isNotEmpty()
+    }
+
+    fun release() {
+        clearViews(keepWarm = false)
+        lastOverlayUpdateAtMs = 0L
     }
 
     fun wasUpdatedWithin(windowMs: Long, nowMs: Long = SystemClock.uptimeMillis()): Boolean {
@@ -1875,17 +1958,37 @@ class MaskOverlayController(
         return elapsedMs in 0..windowMs
     }
 
-    private fun clearViews() {
+    private fun clearViews(keepWarm: Boolean = true) {
         if (activeViews.isEmpty()) {
             activeSpecs.clear()
             lastSignature = ""
+            warmOnly = false
             return
+        }
+
+        val existing = activeViews.singleOrNull() as? BatchBlurMaskView
+        if (keepWarm && existing != null) {
+            val frame = BatchMaskFrame(0, 0, 1, 1)
+            try {
+                if (existing.frame != frame) {
+                    windowManager.updateViewLayout(existing, createBatchMaskLayoutParams(frame))
+                }
+                existing.setSpecs(frame, emptyList())
+                existing.alpha = 0f
+                activeSpecs.clear()
+                lastSignature = ""
+                warmOnly = true
+                return
+            } catch (error: RuntimeException) {
+                Log.w(TAG, "reset warm mask overlay failed", error)
+            }
         }
 
         val viewsToRemove = activeViews.toList()
         activeViews.clear()
         activeSpecs.clear()
         lastSignature = ""
+        warmOnly = false
 
         viewsToRemove.forEach { view ->
             try {
@@ -1896,16 +1999,35 @@ class MaskOverlayController(
         }
     }
 
-    private fun createMaskView(): View {
-        return BlurMaskView(service).apply {
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    private fun renderBatchSpecs(specs: List<MaskOverlaySpec>) {
+        val frame = BatchMaskFrame.fromSpecs(specs, service.resources.displayMetrics.widthPixels, service.resources.displayMetrics.heightPixels)
+        val existing = activeViews.singleOrNull() as? BatchBlurMaskView
+        val batchView = if (existing == null) {
+            clearViews(keepWarm = false)
+            BatchBlurMaskView(service).apply {
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }.also { view ->
+                windowManager.addView(view, createBatchMaskLayoutParams(frame))
+                activeViews += view
+            }
+        } else {
+            if (existing.frame != frame) {
+                windowManager.updateViewLayout(existing, createBatchMaskLayoutParams(frame))
+            }
+            existing
         }
+
+        batchView.alpha = 1f
+        batchView.setSpecs(frame, specs)
+        activeSpecs.clear()
+        activeSpecs += specs
+        warmOnly = false
     }
 
-    private fun createMaskLayoutParams(spec: MaskOverlaySpec): WindowManager.LayoutParams {
+    private fun createBatchMaskLayoutParams(frame: BatchMaskFrame): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
-            spec.width,
-            spec.height,
+            frame.width,
+            frame.height,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -1913,9 +2035,89 @@ class MaskOverlayController(
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = spec.left
-            y = spec.top
+            x = frame.left
+            y = frame.top
         }
+    }
+}
+
+private data class BatchMaskFrame(
+    val left: Int,
+    val top: Int,
+    val width: Int,
+    val height: Int
+) {
+    companion object {
+        fun fromSpecs(specs: List<MaskOverlaySpec>, screenWidth: Int, screenHeight: Int): BatchMaskFrame {
+            val rawLeft = specs.minOf { it.left }
+            val rawTop = specs.minOf { it.top }
+            val rawRight = specs.maxOf { it.left + it.width }
+            val rawBottom = specs.maxOf { it.top + it.height }
+            val safeLeft = rawLeft.coerceIn(0, screenWidth.coerceAtLeast(1) - 1)
+            val safeTop = rawTop.coerceIn(0, screenHeight.coerceAtLeast(1) - 1)
+            val safeRight = rawRight.coerceIn(safeLeft + 1, screenWidth.coerceAtLeast(safeLeft + 1))
+            val safeBottom = rawBottom.coerceIn(safeTop + 1, screenHeight.coerceAtLeast(safeTop + 1))
+            return BatchMaskFrame(
+                left = safeLeft,
+                top = safeTop,
+                width = safeRight - safeLeft,
+                height = safeBottom - safeTop
+            )
+        }
+    }
+}
+
+private class BatchBlurMaskView(context: Context) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val radius = 8f * density
+    private val rect = RectF()
+    private val bandRect = RectF()
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+    }
+    private val shadePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.argb(78, 255, 255, 255)
+        style = Paint.Style.STROKE
+        strokeWidth = max(1f, density)
+    }
+    var frame: BatchMaskFrame = BatchMaskFrame(0, 0, 1, 1)
+        private set
+    private var specs: List<MaskOverlaySpec> = emptyList()
+
+    fun setSpecs(newFrame: BatchMaskFrame, newSpecs: List<MaskOverlaySpec>) {
+        frame = newFrame
+        specs = newSpecs
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        specs.forEach { spec ->
+            drawSpec(canvas, spec)
+        }
+    }
+
+    private fun drawSpec(canvas: Canvas, spec: MaskOverlaySpec) {
+        if (spec.width <= 0 || spec.height <= 0) return
+
+        val left = (spec.left - frame.left).toFloat()
+        val top = (spec.top - frame.top).toFloat()
+        val right = left + spec.width
+        val bottom = top + spec.height
+        rect.set(left, top, right, bottom)
+        canvas.drawRoundRect(rect, radius, radius, fillPaint)
+
+        val bandHeight = max(2f, spec.height / 6f)
+        shadePaint.color = Color.argb(24, 255, 255, 255)
+        bandRect.set(left, top + spec.height * 0.18f, right, top + spec.height * 0.18f + bandHeight)
+        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+
+        shadePaint.color = Color.argb(20, 0, 0, 0)
+        bandRect.set(left, top + spec.height * 0.54f, right, top + spec.height * 0.54f + bandHeight)
+        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+
+        canvas.drawRoundRect(rect, radius, radius, edgePaint)
     }
 }
 

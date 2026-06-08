@@ -1,0 +1,19 @@
+mode,stages,stage_id,stage_name,component,latency_metric,runs,measured_runs,avg_latency_ms,min_latency_ms,max_latency_ms
+opt_base_all_nodes_backend,1+2,01,collect,Accessibility Service,collect_ms,10,10,657.1,446.0,899.0
+opt_base_all_nodes_backend,1+2,02,analyze,Android Analysis API,backend_api_ms,10,10,546.3,232.0,1155.0
+s12_collect_backend,1+2,01,collect,Accessibility Service,collect_ms,10,10,519.3,338.0,777.0
+s12_collect_backend,1+2,02,analyze,Android Analysis API,backend_api_ms,10,10,207.1,159.0,278.0
+opt_base_fullscreen_ocr,1+2+3,01,collect,Accessibility Service,collect_ms,10,10,766.1,334.0,2952.0
+opt_base_fullscreen_ocr,1+2+3,02,analyze,Android Analysis API,backend_api_ms,10,10,292.4,179.0,983.0
+opt_base_fullscreen_ocr,1+2+3,03,ocr_roi,OCR ROI,ocr_ms,10,10,174.1,152.0,261.0
+s123_collect_backend_ocr,1+2+3,01,collect,Accessibility Service,collect_ms,10,10,643.6,369.0,825.0
+s123_collect_backend_ocr,1+2+3,02,analyze,Android Analysis API,backend_api_ms,10,10,204.0,157.0,306.0
+s123_collect_backend_ocr,1+2+3,03,ocr_roi,OCR ROI,ocr_ms,10,10,220.2,165.0,382.0
+opt_base_full_box_overlay,1+2+5,01,collect,Accessibility Service,collect_ms,10,10,566.4,330.0,671.0
+opt_base_full_box_overlay,1+2+5,02,analyze,Android Analysis API,backend_api_ms,10,10,332.8,225.0,525.0
+opt_base_full_box_overlay,1+2+5,05,display,overlay gate,display_ms,10,10,19.8,10.0,55.0
+s12345_full,1+2+3+4+5,01,collect,Accessibility Service,collect_ms,10,10,751.8,526.0,1011.0
+s12345_full,1+2+3+4+5,02,analyze,Android Analysis API,backend_api_ms,10,10,278.1,195.0,509.0
+s12345_full,1+2+3+4+5,03,ocr_roi,OCR ROI,ocr_ms,10,10,363.3,117.0,562.0
+s12345_full,1+2+3+4+5,04,coordinate,char box / line estimate,coord_ms,10,5,3.4,2.0,6.0
+s12345_full,1+2+3+4+5,05,display,overlay gate,display_ms,10,10,100.9,11.0,210.0

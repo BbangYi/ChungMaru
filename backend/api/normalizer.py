@@ -39,6 +39,12 @@ except ImportError:
 
 _HANGUL = r"[가-힣ㄱ-ㅎㅏ-ㅣ]"
 
+# Latin/QWERTY profanity guards shared by the backend pipeline.
+# Keep the boundary definitions here so normalizer and pipeline stay aligned.
+LATIN_LEFT_BOUNDARY = r"(?<![A-Za-z0-9])"
+LATIN_RIGHT_BOUNDARY = r"(?![A-Za-z0-9])"
+QWERTY_SIBAL_PATTERN = r"t(?:l|i|1)(?:q|a|g|4)k(?:f|q)?|11\s*k?t"
+
 _EMOJI_BLOCK = (
     r"(?:"
     r"[\U0001F300-\U0001FAFF]"
