@@ -1,4 +1,0 @@
-ok
-domain=bbangyippt.kro.kr
-source=docs/presentation/html-deck/index.html
-published_at_utc=source-template
