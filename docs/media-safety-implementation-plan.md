@@ -20,14 +20,18 @@
 - Options 개발자 패널에만 `Runtime Log` 토글을 추가했고, 기본값은 off다.
 - Service worker의 `recordRuntimeLogEvent` 경로를 중앙 게이트로 정리해 개발자 로그가 꺼져 있으면 `runtimeEventLog`에 기록하지 않는다.
 - `mediaSafetyEnabled`가 켜진 경우에만 content script가 visible media 후보를 수집한다.
-- 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 검색어/페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
-- 후보 주변 텍스트가 약해도 페이지 전체에 성인/도박/먹튀/토렌트/주소 링크 신호가 겹치면 strict media mode로 visible media를 빠르게 숨긴다.
+- 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 제한된 페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
+- Google 일반 검색 결과는 media safety에서 제외하고 텍스트/사이트 보호만 적용한다. 검색어가 `NSFW`라는 이유만으로 Naver 같은 정상 검색결과 이미지를 가리지 않기 위한 보수화다.
+- 검색결과 보호는 수동/curated/exact domain 또는 보안 위협 수준의 site-level 신호가 있을 때만 적용한다. 검색결과 제목/요약의 성인 키워드만으로 정상 도메인을 가리지 않는다.
+- 후보 주변 텍스트가 약해도 페이지 전체에 도박/먹튀/주소 링크 신호가 겹치거나 주소가이드형 배너 grid가 확인되면 strict media mode로 visible media를 빠르게 숨긴다.
 - 주소가이드 계열 live test 도메인인 `jusoguide1.com`, `jusowhy1.com`은 유해사이트 차단 fallback에서도 `block`으로 판정한다.
 - 위험 후보는 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible 처리한다. 일반 카드형 결과는 placeholder를 유지하고, 팝업/상단 고정 배너처럼 floating overlay로 판단되는 후보는 `display: none` 기반 영역 제거를 우선 적용한다.
 - 주소가이드/배너 grid처럼 페이지 자체가 위험하고 유해 이미지가 sibling tile로 쪼개진 경우에는 개별 placeholder를 남기지 않고 compact group으로 병합한다. 자식 tile은 제거하고 부모 영역에는 최소 summary 1개만 남긴다.
+- `video > source[src]`만 있는 주소가이드 WebM 배너를 잡기 위해 `video` 후보와 주소가이드 전용 `.jbanner-*` selector를 우선 수집한다.
+- scroll/resize/mutation 재스캔에는 최소 간격을 두고, 실제 media 후보가 추가된 mutation에서만 media scan을 예약해 배너 많은 페이지의 렉을 줄인다.
 - 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
-- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
+- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`, `candidateSizedVisibleMediaElementCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다.
 
 검증된 범위:
@@ -41,12 +45,18 @@
 
 현재 smoke 결과:
 
-| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 2 | 1 | 1 | 0 | 19.7% | 0 | 1 | 0 | 1 |
-| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 |
-| jusoguide1.com live | 2 | 2 | 2 | 0 | 0 | 0 | 40.7% | N/A | 1 | 0 | 1 |
-| jusowhy1.com live | 24 | 24 | 24 | 1 | 1 | 6 | 84.0% | N/A | 2 | 0 | 191 |
+| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 후보 크기 visible | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | applyMs | domAddedToActionMs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 13.0% | 0 | 1 | 0 | 1 | 2 |
+| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 | 0 |
+| address-guide video fixture | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 41.9% | 0 | 1 | 0 | 0 | 1 |
+| jusoguide1.com live | 21 | 21 | 21 | 0 | 0 | 0 | 0 | 88.4% | N/A | 3 | 0 | 3 | 268 |
+| jusowhy1.com live | 25 | 25 | 25 | 1 | 1 | 0 | 0 | 85.0% | N/A | 2 | 0 | 9 | 123 |
+
+해석 주의:
+
+- `visible_media_element_count`에는 30~32px 아이콘도 포함된다. 실제 차단 후보 크기 기준 잔여는 `candidate_sized_visible_media_element_count`로 확인한다.
+- live URL에서 `domAddedToActionMs`는 자동 scan과 수동 smoke scan 사이의 동적 로딩 타이밍을 포함한다. hot path 비용은 `collectMs`, `cheapFilterMs`, `applyMs`를 함께 봐야 한다.
 
 아직 evidence가 부족한 범위:
 

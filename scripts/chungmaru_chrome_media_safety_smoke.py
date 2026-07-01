@@ -100,6 +100,16 @@ def svg_response(label: str, tone: str) -> str:
 
 
 def build_media_page(scenario: str) -> str:
+    address_guide_cards = "\n".join(
+        f"""<div class="jbanner-large-item" data-chungmaru-media-harmful="true">
+        <a href="https://jusoguide1.com/bbs/bannerhit.php?bn_id={index}" target="_blank">
+          <video autoplay loop muted playsinline class="jbanner-media">
+            <source src="https://jusoguide1.com/data/banner_my/{index}.webm?v=20260630214255" type="video/webm">
+          </video>
+        </a>
+      </div>"""
+        for index in [23, 58, 15, 61, 46, 55, 60, 59]
+    )
     harmful_cards = """
       <article class="media-card" data-chungmaru-media-harmful="true">
         <img alt="카지노 스포츠토토 가입코드 첫충 페이백 배너" src="/media.svg?tone=gambling&label=%EC%B9%B4%EC%A7%80%EB%85%B8%20%EA%B0%80%EC%9E%85%EC%BD%94%EB%93%9C" />
@@ -130,6 +140,10 @@ def build_media_page(scenario: str) -> str:
       </article>
     """
     cards = clean_cards if scenario == "clean" else harmful_cards
+    if scenario == "address-guide-video":
+      cards = f"""<section class="jbanner-large-section">
+      {address_guide_cards}
+    </section>"""
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -173,12 +187,31 @@ def build_media_page(scenario: str) -> str:
       color: #4b5563;
       font-size: 14px;
     }}
+    .jbanner-large-section {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(280px, 1fr));
+      gap: 8px;
+      background: #333;
+      padding: 8px;
+    }}
+    .jbanner-large-item {{
+      min-height: 92px;
+      background: #111;
+    }}
+    .jbanner-media {{
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 2.4;
+      min-height: 92px;
+      object-fit: cover;
+      background: linear-gradient(90deg, #111827, #7f1d1d 48%, #facc15);
+    }}
   </style>
 </head>
 <body data-scenario="{html.escape(scenario)}">
   <main>
     <h1>Chungmaru Media Safety Fixture</h1>
-    <section class="media-grid">{cards}</section>
+    {cards if scenario == "address-guide-video" else f'<section class="media-grid">{cards}</section>'}
   </main>
 </body>
 </html>"""
@@ -200,7 +233,9 @@ class MediaFixtureHandler(http.server.BaseHTTPRequestHandler):
             return
 
         scenario = params.get("scenario", ["harmful"])[0]
-        body = build_media_page("clean" if scenario == "clean" else "harmful").encode("utf-8")
+        if scenario not in {"clean", "harmful", "address-guide-video"}:
+          scenario = "harmful"
+        body = build_media_page(scenario).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -320,6 +355,7 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
             marker.querySelector('[data-chungmaru-media-hidden="true"]')
           );
           return {
+            bodyScenario: document.body ? (document.body.getAttribute('data-scenario') || '') : '',
             hiddenCount: hidden.length,
             compactSummaryCount: summaries.length,
             harmfulTotal: harmful.length,
@@ -347,14 +383,28 @@ def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
             const rect = node.getBoundingClientRect();
             return rect.width >= 24 && rect.height >= 24 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth;
           };
+          const compactUrl = (value) => {
+            try {
+              const parsed = new URL(String(value || ''), location.href);
+              return `${parsed.origin}${parsed.pathname}`.slice(0, 140);
+            } catch (error) {
+              return String(value || '').slice(0, 100);
+            }
+          };
           const hidden = Array.from(document.querySelectorAll('[data-chungmaru-media-hidden="true"]'));
           const summaries = Array.from(document.querySelectorAll('[data-chungmaru-media-summary="true"]'));
-          const media = Array.from(document.querySelectorAll('img, video[poster], [role="img"], picture, source'));
+          const media = Array.from(document.querySelectorAll('img, video, [role="img"], picture, source'));
+          const visibleMedia = media.filter(isVisible);
+          const candidateSizedVisibleMedia = visibleMedia.filter((node) => {
+            const rect = node.getBoundingClientRect();
+            return !(rect.width < 56 && rect.height < 56) && rect.width * rect.height >= 3600;
+          });
           const backgrounds = Array.from(document.querySelectorAll('a, article, div, section')).filter((node) => {
             const image = window.getComputedStyle(node).backgroundImage || '';
             return image.includes('url(');
           });
           return {
+            bodyScenario: document.body ? (document.body.getAttribute('data-scenario') || '') : '',
             locationHref: window.location.href,
             readyState: document.readyState,
             hiddenCount: hidden.length,
@@ -366,7 +416,22 @@ def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
             domElementCount: document.querySelectorAll('*').length,
             bodyTextLength: (document.body && document.body.innerText ? document.body.innerText.length : 0),
             mediaElementCount: media.length,
-            visibleMediaElementCount: media.filter(isVisible).length,
+            visibleMediaElementCount: visibleMedia.length,
+            candidateSizedVisibleMediaElementCount: candidateSizedVisibleMedia.length,
+            visibleMediaSamples: visibleMedia.slice(0, 12).map((node) => {
+              const rect = node.getBoundingClientRect();
+              const source = node instanceof HTMLVideoElement
+                ? (node.currentSrc || node.src || node.querySelector('source[src]')?.getAttribute('src') || '')
+                : (node.currentSrc || node.src || node.getAttribute('src') || '');
+              return {
+                tag: node.tagName.toLowerCase(),
+                cls: String(node.className || '').slice(0, 80),
+                src: compactUrl(source),
+                href: compactUrl(node.closest('a[href]')?.href || ''),
+                hiddenAncestor: Boolean(node.closest('[data-chungmaru-media-hidden="true"]')),
+                rect: `${Math.round(rect.width)}x${Math.round(rect.height)}`
+              };
+            }),
             backgroundImageElementCount: backgrounds.length,
             visibleBackgroundImageElementCount: backgrounds.filter(isVisible).length
           };
@@ -385,6 +450,13 @@ def int_metric(value: Any) -> int:
 
 def max_log_metric(logs: list[dict[str, Any]], key: str) -> int:
     return max((int_metric(item.get(key)) for item in logs), default=0)
+
+
+def latest_log_metric(logs: list[dict[str, Any]], key: str) -> int:
+    for item in reversed(logs):
+      if key in item:
+        return int_metric(item.get(key))
+    return 0
 
 
 def sum_action_log_metric(logs: list[dict[str, Any]], key: str) -> int:
@@ -408,6 +480,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
           "viewportCoveragePct10",
       ),
       "loggedRemainingVisibleTileCount": max_log_metric(logs, "remainingVisibleTileCount"),
+      "loggedLatestRemainingVisibleTileCount": latest_log_metric(logs, "remainingVisibleTileCount"),
       "loggedMissedVisibleTileCount": max_log_metric(logs, "missedVisibleTileCount"),
       "loggedFalseHiddenCount": max_log_metric(logs, "falseHiddenCount"),
       "loggedCollectMs": max_log_metric(logs, "collectMs"),
@@ -467,7 +540,7 @@ def build_result_row(
     )
     remaining_visible_tile_count = max(
         int_metric(summary.get("remainingVisibleTileCount")),
-        log_summary["loggedRemainingVisibleTileCount"],
+        log_summary["loggedLatestRemainingVisibleTileCount"],
     )
     harmful_total = int_metric(dom.get("harmfulTotal"))
     harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
@@ -536,9 +609,12 @@ def build_result_row(
         "body_text_length": int_metric(dom.get("bodyTextLength")),
         "media_element_count": int_metric(dom.get("mediaElementCount")),
         "visible_media_element_count": int_metric(dom.get("visibleMediaElementCount")),
+        "candidate_sized_visible_media_element_count": int_metric(dom.get("candidateSizedVisibleMediaElementCount")),
+        "visible_media_samples": json.dumps(dom.get("visibleMediaSamples") or [], ensure_ascii=False),
         "background_image_element_count": int_metric(dom.get("backgroundImageElementCount")),
         "visible_background_image_element_count": int_metric(dom.get("visibleBackgroundImageElementCount")),
         "document_ready_state": str(dom.get("readyState") or ""),
+        "body_scenario": str(dom.get("bodyScenario") or ""),
         "message_phase": response.get("phase") if isinstance(response, dict) else "",
     }
 
@@ -687,6 +763,7 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
     log_off = by_case["log_off_harmful"]
     log_on = by_case["log_on_harmful"]
     clean = by_case["log_on_clean"]
+    address_guide = by_case.get("log_on_address_guide_video")
 
     failures = []
     if media_off["hidden_count"] != 0 or media_off["action_count"] != 0:
@@ -701,6 +778,10 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_harmful should write aggregate media logs")
     if clean["safe_hidden_count"] != 0 or clean["false_hidden_count"] != 0:
       failures.append("log_on_clean should not hide clean fixtures")
+    if address_guide and address_guide["harmful_hidden_count"] < 6:
+      failures.append("log_on_address_guide_video should hide source-backed video banners")
+    if address_guide and address_guide["remaining_visible_tile_count"] != 0:
+      failures.append("log_on_address_guide_video should not leave visible video banner tiles")
     if failures:
       raise RuntimeError("; ".join(failures))
 
@@ -773,6 +854,13 @@ def main() -> int:
             {
                 "case_id": "log_on_clean",
                 "scenario": "clean",
+                "media_safety_enabled": True,
+                "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
+            },
+            {
+                "case_id": "log_on_address_guide_video",
+                "scenario": "address-guide-video",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
                 "media_intervention_mode": args.media_intervention_mode,

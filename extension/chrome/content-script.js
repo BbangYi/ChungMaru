@@ -135,7 +135,11 @@ const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
 const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 70;
 const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 140;
 const MEDIA_SAFETY_CANDIDATE_LIMIT = 48;
-const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 140;
+const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 96;
+const MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT = 180;
+const MEDIA_SAFETY_ADDRESS_GUIDE_NODE_LIMIT = 260;
+const MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS = 260;
+const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 520;
 const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
 const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
@@ -520,6 +524,7 @@ let mediaSafetyFrameId = null;
 let mediaSafetyTimerId = null;
 let mediaSafetyRunId = 0;
 let mediaSafetyGroupId = 0;
+let mediaSafetyLastScanAt = 0;
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -1407,13 +1412,16 @@ function normalizeBackendSearchResultPolicy(url, response) {
 
   const riskScore = Number(policy?.risk_score || 0);
   const hasExactMatch = Boolean(policy?.exact_match?.domain);
-  const hasStrongBackendSignal =
-    verdict === "block" ||
+  const siteCategory = String(policy?.site_category || "").toLowerCase();
+  const hasDomainLevelRisk =
     Boolean(policy?.security_threat) ||
-    Boolean(policy?.harmful_content) ||
-    riskScore >= 0.34;
+    /(?:phishing|malware|scam|illegal|adult-gambling-link-guide|gambling-site|casino|sportsbook|toto)/i.test(siteCategory);
+  const hasStrongDomainSignal =
+    hasExactMatch ||
+    Boolean(policy?.security_threat) ||
+    (verdict === "block" && riskScore >= 0.86 && hasDomainLevelRisk);
 
-  if (!hasExactMatch && !hasStrongBackendSignal) {
+  if (!hasStrongDomainSignal) {
     return null;
   }
 
@@ -1943,9 +1951,21 @@ async function requestCurrentSitePolicy() {
 const MEDIA_SAFETY_CANDIDATE_SELECTOR = [
   "img",
   "picture",
-  "video[poster]",
+  "video",
   "[role='img'][aria-label]",
   "[style*='background-image']"
+].join(", ");
+const MEDIA_SAFETY_BANNER_CONTAINER_SELECTOR = [
+  ".jbanner-large-item",
+  ".jbanner-small-item",
+  "[class*='banner'][class*='item']",
+  "[class*='ad'][class*='item']"
+].join(", ");
+const MEDIA_SAFETY_ADDRESS_GUIDE_SELECTOR = [
+  ".jbanner-large-section video",
+  ".jbanner-large-item video",
+  ".jbanner-small-item video",
+  "a[href*='/bbs/bannerhit.php'] video"
 ].join(", ");
 const MEDIA_SAFETY_ADULT_PATTERN =
   /(?:19\s*금|19\s*세|19\s*등급|성인(?:물|용|인증|만화|영상|방송)?|야동|포르노|porn|porno|adult|nsfw|섹스|sex(?:y|ual)?|노출|가슴|비키니|란제리|속옷|은밀한|후방\s*주의|무삭제|AV\s*(?:추천|배우|영상)?)/i;
@@ -1967,6 +1987,9 @@ function isMediaSafetyEnabled(settings = cachedSettings) {
 function getMediaSafetyProfile() {
   if (isGoogleImageSearchPage()) {
     return "google-images";
+  }
+  if (isGoogleTextSearchAnalysisPage()) {
+    return "google-text";
   }
   if (isYouTubePage()) {
     return "youtube";
@@ -2006,7 +2029,16 @@ function getMediaSourceUrl(element) {
     return srcset.split(",")[0]?.trim().split(/\s+/)[0] || "";
   }
   if (element instanceof HTMLVideoElement) {
-    return String(element.poster || element.getAttribute("poster") || "");
+    const source = element.querySelector("source[src]");
+    return String(
+      element.currentSrc ||
+      element.src ||
+      element.getAttribute("src") ||
+      element.poster ||
+      element.getAttribute("poster") ||
+      source?.getAttribute?.("src") ||
+      ""
+    );
   }
   if (element instanceof Element) {
     const inline = String(element.getAttribute("style") || "");
@@ -2074,9 +2106,41 @@ function getMetaContent(name) {
   }
 }
 
-function getMediaSafetyPageContext() {
+function hasAddressGuideBannerGrid() {
+  return Boolean(
+    document.querySelector(
+      ".jbanner-large-section .jbanner-media, .jbanner-large-item video, .jbanner-small-item video, a[href*='/bbs/bannerhit.php'] video"
+    )
+  );
+}
+
+function getBoundedPageText(limit = MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT) {
+  const text = document.body?.textContent || "";
+  return text.length > limit * 2 ? text.slice(0, limit * 2) : text;
+}
+
+function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
+  if (profile === "google-text") {
+    return {
+      strictMediaMode: false,
+      category: "media",
+      reason: "google text search media safety skipped"
+    };
+  }
+
+  const host = normalizeDomainForPolicy(location.hostname || "");
+  const hasRiskHost = MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host);
+  if (hasAddressGuideBannerGrid()) {
+    return {
+      strictMediaMode: true,
+      category: "gambling",
+      reason: "address-guide banner grid",
+      mode: "address-guide"
+    };
+  }
+
   const linkText = Array.from(document.querySelectorAll("a[href]"))
-    .slice(0, 120)
+    .slice(0, 80)
     .map((link) => {
       if (!(link instanceof HTMLAnchorElement)) {
         return "";
@@ -2091,18 +2155,21 @@ function getMediaSafetyPageContext() {
     })
     .join(" ");
   const pageText = normalizeText([
-    getSearchQueryContext(),
+    profile === "google-images" ? getSearchQueryContext() : "",
     getMetaContent("description"),
-    document.body?.innerText || "",
+    getBoundedPageText(),
     linkText,
     location.hostname || ""
   ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT);
   const hasAdult = MEDIA_SAFETY_ADULT_PATTERN.test(pageText);
   const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(pageText);
   const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
-  const signalCount = [hasAdult, hasGambling, hasLinkGuide].filter(Boolean).length;
+  const isHighConfidenceHub =
+    hasRiskHost ||
+    (hasGambling && hasLinkGuide) ||
+    (hasAdult && hasGambling && hasLinkGuide);
   return {
-    strictMediaMode: signalCount >= 2,
+    strictMediaMode: isHighConfidenceHub,
     category: hasAdult && hasGambling ? "mixed" : hasAdult ? "adult" : "gambling",
     reason: hasLinkGuide ? "page risk link context" : "page risk context"
   };
@@ -2196,7 +2263,7 @@ function getMediaSafetyContainer(element, mediaRect) {
     ? ["[data-ri]", "[data-ved]", "[role='listitem']", "a[href]", "figure", "article", "li"]
     : isYouTubePage()
       ? ["ytd-thumbnail", "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-compact-video-renderer", "a[href]"]
-      : ["a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
+      : [MEDIA_SAFETY_BANNER_CONTAINER_SELECTOR, "a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
 
   for (const selector of selectors) {
     const ancestor = element.closest(selector);
@@ -2258,7 +2325,7 @@ function buildMediaSafetyCandidate(element, profile) {
   const contextText = normalizeText([
     getBoundedElementText(element),
     container && container !== element ? getBoundedElementText(container) : "",
-    getSearchQueryContext(),
+    profile === "google-images" || profile === "youtube" ? getSearchQueryContext() : "",
     domain,
     compactRuntimeUrl(linkUrl || sourceUrl)
   ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
@@ -2279,11 +2346,41 @@ function buildMediaSafetyCandidate(element, profile) {
   };
 }
 
-function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT) {
+function getMediaSafetyCandidateNodes(pageContext = null) {
+  const nodes = [];
+  const seen = new Set();
+  const pushNode = (node) => {
+    if (!(node instanceof Element) || seen.has(node)) {
+      return;
+    }
+    seen.add(node);
+    nodes.push(node);
+  };
+
+  if (pageContext?.mode === "address-guide") {
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_ADDRESS_GUIDE_SELECTOR)).slice(
+      0,
+      MEDIA_SAFETY_ADDRESS_GUIDE_NODE_LIMIT
+    )) {
+      pushNode(node);
+    }
+  }
+
+  for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(
+    0,
+    MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT
+  )) {
+    pushNode(node);
+  }
+
+  return nodes;
+}
+
+function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT, pageContext = null) {
   const profile = getMediaSafetyProfile();
   const candidates = [];
   const seenTargets = new Set();
-  const nodes = Array.from(document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(0, 240);
+  const nodes = getMediaSafetyCandidateNodes(pageContext);
 
   for (const node of nodes) {
     const candidate = buildMediaSafetyCandidate(node, profile);
@@ -2302,6 +2399,10 @@ function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT) {
 
 function isStrictGenericMediaPage(pageContext, profile) {
   return pageContext?.strictMediaMode === true && profile === "generic";
+}
+
+function shouldSkipMediaSafetyProfile(profile) {
+  return profile === "google-text";
 }
 
 function getMediaSafetyMatch(candidate, pageContext = null) {
@@ -2671,6 +2772,48 @@ function countVisibleUnprotectedMediaCandidates(limit = 6) {
   return count;
 }
 
+function nodeHasPotentialMediaSafetyCandidate(node) {
+  if (!(node instanceof Element)) {
+    return false;
+  }
+  if (isShieldTextManagedElement(node)) {
+    return false;
+  }
+  if (node.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    return true;
+  }
+  return Boolean(node.querySelector?.(MEDIA_SAFETY_CANDIDATE_SELECTOR));
+}
+
+function mutationListHasPotentialMediaSafetyCandidate(mutationList) {
+  for (const mutation of mutationList || []) {
+    for (const node of mutation.addedNodes || []) {
+      if (nodeHasPotentialMediaSafetyCandidate(node)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getMediaSafetyRescanInterval(reason) {
+  const normalizedReason = String(reason || "");
+  if (
+    normalizedReason === "manual-media-safety-scan" ||
+    normalizedReason.startsWith("smoke-") ||
+    normalizedReason.startsWith("live-smoke-")
+  ) {
+    return 0;
+  }
+  if (normalizedReason === "bootstrap" || normalizedReason === "initial-load" || normalizedReason === "settings-updated") {
+    return 0;
+  }
+  if (normalizedReason === "visibility") {
+    return MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS;
+  }
+  return MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS;
+}
+
 function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   const activeSettings = getMergedSettings(settings || cachedSettings || {});
   if (!isMediaSafetyEnabled(activeSettings)) {
@@ -2701,13 +2844,45 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   }
 
   const startedAt = performance.now();
-  const pageContext = getMediaSafetyPageContext();
   const profile = getMediaSafetyProfile();
+  if (shouldSkipMediaSafetyProfile(profile)) {
+    const cleared = clearMediaSafetyProtection();
+    return {
+      ok: true,
+      status: "skipped",
+      source: "content-script",
+      profile,
+      reason: "GOOGLE_TEXT_SEARCH_MEDIA_SAFETY_SKIPPED",
+      clearedCount: cleared,
+      candidateCount: 0,
+      visibleTileCount: 0,
+      cheapFilterHitCount: 0,
+      actionCount: 0,
+      removedCount: 0,
+      placeholderCount: 0,
+      mergedTargetCount: 0,
+      collapsedGroupCount: 0,
+      hiddenAreaPx: 0,
+      viewportCoveragePct: 0,
+      remainingVisibleTileCount: 0,
+      missedVisibleTileCount: 0,
+      falseHiddenCount: 0,
+      collectMs: 0,
+      cheapFilterMs: 0,
+      applyMs: 0,
+      domAddedToActionMs: 0,
+      domain: normalizeDomainForPolicy(location.hostname || ""),
+      url: compactRuntimeUrl(location.href)
+    };
+  }
+  mediaSafetyLastScanAt = Date.now();
+  const pageContext = getMediaSafetyPageContext(profile);
   const collectStartedAt = performance.now();
   const candidates = collectMediaSafetyCandidates(
     isStrictGenericMediaPage(pageContext, profile)
       ? MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT
-      : MEDIA_SAFETY_CANDIDATE_LIMIT
+      : MEDIA_SAFETY_CANDIDATE_LIMIT,
+    pageContext
   );
   const collectMs = performance.now() - collectStartedAt;
   const cheapFilterStartedAt = performance.now();
@@ -2788,7 +2963,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
 
   if (isStrictGenericMediaPage(pageContext, profile) && countVisibleUnprotectedMediaCandidates() > 0) {
     const residualSelected = [];
-    for (const candidate of collectMediaSafetyCandidates(MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT)) {
+    for (const candidate of collectMediaSafetyCandidates(MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT, pageContext)) {
       if (!(candidate?.target instanceof Element)) {
         continue;
       }
@@ -2928,6 +3103,10 @@ function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
     clearMediaSafetyProtection();
     return;
   }
+  if (shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    clearMediaSafetyProtection();
+    return;
+  }
 
   if (mediaSafetyFrameId) {
     window.cancelAnimationFrame(mediaSafetyFrameId);
@@ -2946,6 +3125,9 @@ function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
         ? MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS
         : MEDIA_SAFETY_SCAN_DEBOUNCE_MS
   );
+  const minIntervalMs = getMediaSafetyRescanInterval(options.reason);
+  const elapsedSinceScan = Math.max(0, Date.now() - Number(mediaSafetyLastScanAt || 0));
+  const throttledDelayMs = Math.max(delayMs, minIntervalMs > elapsedSinceScan ? minIntervalMs - elapsedSinceScan : 0);
   const runId = ++mediaSafetyRunId;
   const scheduleFrame = () => {
     mediaSafetyTimerId = null;
@@ -2974,8 +3156,8 @@ function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
     });
   };
 
-  if (delayMs > 0) {
-    mediaSafetyTimerId = window.setTimeout(scheduleFrame, delayMs);
+  if (throttledDelayMs > 0) {
+    mediaSafetyTimerId = window.setTimeout(scheduleFrame, throttledDelayMs);
     return;
   }
   scheduleFrame();
@@ -11846,9 +12028,12 @@ function initializeObserver() {
     const pageMutations = mutationList.filter((mutation) => !isShieldTextManagedMutation(mutation));
     managedMutationSkipCount += mutationList.length - pageMutations.length;
     if (pageMutations.length === 0) return;
+    const hasPotentialMediaMutation = mutationListHasPotentialMediaSafetyCandidate(pageMutations);
 
     if (isGoogleSearchPage()) {
-      scheduleMediaSafetyScan(cachedSettings, { reason: "mutation" });
+      if (hasPotentialMediaMutation) {
+        scheduleMediaSafetyScan(cachedSettings, { reason: "mutation" });
+      }
       scheduleGoogleSearchLightModeProtection(cachedSettings, {
         limit: MAX_DOMAIN_PRIORITY_CANDIDATES
       });
@@ -11889,7 +12074,7 @@ function initializeObserver() {
     if (sawAddedContent && !shouldSchedule) {
       scheduleScrollVisibilityRefresh({ withSettleRefresh: false });
     }
-    if (sawAddedContent) {
+    if (sawAddedContent && hasPotentialMediaMutation) {
       scheduleMediaSafetyScan(cachedSettings, { reason: "mutation" });
     }
     if (sawAddedContent && isGoogleTextSearchAnalysisPage()) {
