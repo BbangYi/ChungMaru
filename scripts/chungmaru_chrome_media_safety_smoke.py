@@ -1,0 +1,607 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import html
+import http.server
+import json
+import shutil
+import socket
+import sys
+import subprocess
+import threading
+import time
+import urllib.parse
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from chungmaru_chrome_latency_smoke import (
+    CHROME_APP,
+    CdpWebSocket,
+    ThreadedTCPServer,
+    create_tab,
+    send_to_fixture_tab,
+    wait_for_page_ready,
+    wait_for_service_worker,
+    wait_for_targets,
+)
+
+
+DEFAULT_EXTENSION_DIR = Path("extension/chrome")
+DEFAULT_PROFILE_DIR = Path("/tmp/chungmaru-chrome-media-safety-profile")
+DEFAULT_CHROME_LOG = Path("/tmp/chungmaru-chrome-media-safety.log")
+DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
+DEFAULT_CHROME_FOR_TESTING_ROOT = Path("/private/tmp/chungmaru-chrome-for-testing/chrome")
+CHROME_FOR_TESTING_EXECUTABLE = (
+    "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
+)
+DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled"
+
+
+def now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as handle:
+        handle.bind(("127.0.0.1", 0))
+        return int(handle.getsockname()[1])
+
+
+def version_sort_key(path: Path) -> tuple[int, ...]:
+    parts = []
+    for item in path.name.split("."):
+      try:
+        parts.append(int(item))
+      except ValueError:
+        parts.append(0)
+    return tuple(parts)
+
+
+def detect_chrome_path(explicit_path: Path | None) -> Path:
+    if explicit_path:
+      return explicit_path
+
+    if DEFAULT_CHROME_FOR_TESTING_ROOT.exists():
+      version_dirs = [
+          item for item in DEFAULT_CHROME_FOR_TESTING_ROOT.iterdir()
+          if item.is_dir()
+      ]
+      for version_dir in sorted(version_dirs, key=version_sort_key, reverse=True):
+        candidate = version_dir / CHROME_FOR_TESTING_EXECUTABLE
+        if candidate.exists():
+          return candidate
+
+    return CHROME_APP
+
+
+def svg_response(label: str, tone: str) -> str:
+    fill = {
+        "gambling": "#111827",
+        "adult": "#7f1d1d",
+        "clean": "#0f766e",
+    }.get(tone, "#1f2937")
+    accent = {
+        "gambling": "#facc15",
+        "adult": "#fecdd3",
+        "clean": "#a7f3d0",
+    }.get(tone, "#f9fafb")
+    safe_label = html.escape(label)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220">
+  <rect width="640" height="220" rx="16" fill="{fill}"/>
+  <rect x="18" y="18" width="604" height="184" rx="14" fill="none" stroke="{accent}" stroke-width="6"/>
+  <text x="36" y="92" fill="{accent}" font-size="36" font-weight="800" font-family="Arial, sans-serif">{safe_label}</text>
+  <text x="38" y="148" fill="#ffffff" font-size="24" font-weight="700" font-family="Arial, sans-serif">Chungmaru media fixture</text>
+</svg>"""
+
+
+def build_media_page(scenario: str) -> str:
+    harmful_cards = """
+      <article class="media-card" data-chungmaru-media-harmful="true">
+        <img alt="카지노 스포츠토토 가입코드 첫충 페이백 배너" src="/media.svg?tone=gambling&label=%EC%B9%B4%EC%A7%80%EB%85%B8%20%EA%B0%80%EC%9E%85%EC%BD%94%EB%93%9C" />
+        <h2>카지노 가입코드 첫충 페이백 배너</h2>
+        <p>스포츠토토, 바카라, 슬롯, 고액 환전 광고 카드입니다.</p>
+      </article>
+      <article class="media-card" data-chungmaru-media-harmful="true">
+        <img alt="19금 성인 영상 노출 썸네일" src="/media.svg?tone=adult&label=19%EA%B8%88%20%EC%84%B1%EC%9D%B8%20%EC%8D%B8%EB%84%A4%EC%9D%BC" />
+        <h2>19금 성인 영상 썸네일</h2>
+        <p>성인, 노출, 무삭제 영상 문맥을 포함한 카드입니다.</p>
+      </article>
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="학교 축제 안내 포스터" src="/media.svg?tone=clean&label=%ED%95%99%EA%B5%90%20%EC%B6%95%EC%A0%9C" />
+        <h2>학교 축제 안내</h2>
+        <p>오탐 방지를 위한 정상 이미지 카드입니다.</p>
+      </article>
+    """
+    clean_cards = """
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="도서관 열람실 안내 포스터" src="/media.svg?tone=clean&label=%EB%8F%84%EC%84%9C%EA%B4%80%20%EC%95%88%EB%82%B4" />
+        <h2>도서관 열람실 안내</h2>
+        <p>학습 공간 운영 시간 안내 이미지입니다.</p>
+      </article>
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="산책로 풍경 사진" src="/media.svg?tone=clean&label=%EC%82%B0%EC%B1%85%EB%A1%9C%20%ED%92%8D%EA%B2%BD" />
+        <h2>산책로 풍경 사진</h2>
+        <p>일반 풍경 썸네일입니다.</p>
+      </article>
+    """
+    cards = clean_cards if scenario == "clean" else harmful_cards
+    return f"""<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>Chungmaru Media Safety Fixture - {html.escape(scenario)}</title>
+  <style>
+    body {{
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f6f7f8;
+      color: #111827;
+    }}
+    main {{
+      width: min(1120px, calc(100vw - 48px));
+      margin: 28px auto;
+    }}
+    .media-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }}
+    .media-card {{
+      border: 1px solid #d9dde3;
+      background: #ffffff;
+      padding: 12px;
+      border-radius: 8px;
+    }}
+    .media-card img {{
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 5.5;
+      object-fit: cover;
+      border-radius: 6px;
+    }}
+    .media-card h2 {{
+      margin: 10px 0 4px;
+      font-size: 18px;
+    }}
+    .media-card p {{
+      margin: 0;
+      color: #4b5563;
+      font-size: 14px;
+    }}
+  </style>
+</head>
+<body data-scenario="{html.escape(scenario)}">
+  <main>
+    <h1>Chungmaru Media Safety Fixture</h1>
+    <section class="media-grid">{cards}</section>
+  </main>
+</body>
+</html>"""
+
+
+class MediaFixtureHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        if parsed.path == "/media.svg":
+            label = params.get("label", ["media"])[0]
+            tone = params.get("tone", ["clean"])[0]
+            body = svg_response(label, tone).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "image/svg+xml; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        scenario = params.get("scenario", ["harmful"])[0]
+        body = build_media_page("clean" if scenario == "clean" else "harmful").encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+
+def start_fixture_server(port: int) -> ThreadedTCPServer:
+    server = ThreadedTCPServer(("127.0.0.1", port), MediaFixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[bytes]:
+    extension_dir = args.extension_dir.resolve()
+    profile_dir = args.profile_dir.resolve()
+    if args.clean_profile and profile_dir.exists():
+        shutil.rmtree(profile_dir)
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        str(args.chrome_path),
+        f"--user-data-dir={profile_dir}",
+        f"--remote-debugging-port={args.debugging_port}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-background-networking",
+        "--disable-component-extensions-with-background-pages",
+        "--disable-features=DisableLoadExtensionCommandLineSwitch",
+        "--enable-unsafe-extension-debugging",
+        "--enable-logging=stderr",
+        f"--load-extension={extension_dir}",
+        "about:blank",
+    ]
+    args.chrome_log.parent.mkdir(parents=True, exist_ok=True)
+    if args.chrome_log.exists():
+        args.chrome_log.unlink()
+    log_handle = args.chrome_log.open("ab")
+    try:
+        return subprocess.Popen(command, stdout=log_handle, stderr=log_handle)
+    finally:
+        log_handle.close()
+
+
+def build_extension_settings(media_safety_enabled: bool) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "sensitivity": 60,
+        "categories": {
+            "abuse": True,
+            "hate": True,
+            "insult": True,
+            "spam": True,
+        },
+        "interventionMode": "mask",
+        "textMaskingEnabled": False,
+        "siteProtectionEnabled": False,
+        "siteNavigationWarningEnabled": False,
+        "searchResultProtectionEnabled": False,
+        "mediaSafetyEnabled": media_safety_enabled,
+        "showWellbeingWidget": False,
+        "backendEnabled": False,
+        "backendApiBaseUrl": "http://127.0.0.1:8000",
+        "requestTimeoutMs": 10000,
+    }
+
+
+def set_extension_state(
+    worker: CdpWebSocket,
+    *,
+    media_safety_enabled: bool,
+    developer_log_enabled: bool,
+) -> dict[str, Any]:
+    settings = build_extension_settings(media_safety_enabled)
+    expression = (
+        "(async () => {"
+        "  await chrome.storage.local.remove(['runtimeEventLog', 'lastStats', 'lastPayload', 'lastDecision']);"
+        f"  await chrome.storage.local.set({json.dumps({DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY: developer_log_enabled})});"
+        f"  await chrome.storage.sync.set({json.dumps({'settings': settings}, ensure_ascii=False)});"
+        "  return {"
+        "    local: await chrome.storage.local.get(['runtimeEventLog', 'developerRuntimeLogEnabled']),"
+        "    sync: await chrome.storage.sync.get('settings')"
+        "  };"
+        "})()"
+    )
+    value = worker.evaluate(expression, timeout_s=10)
+    return value if isinstance(value, dict) else {}
+
+
+def get_runtime_logs(worker: CdpWebSocket) -> list[dict[str, Any]]:
+    value = worker.evaluate(
+        "(async () => (await chrome.storage.local.get('runtimeEventLog')).runtimeEventLog || [])()",
+        timeout_s=5,
+    )
+    return value if isinstance(value, list) else []
+
+
+def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
+    value = page.evaluate(
+        """(() => {
+          const hidden = Array.from(document.querySelectorAll('[data-chungmaru-media-hidden="true"]'));
+          const harmful = Array.from(document.querySelectorAll('[data-chungmaru-media-harmful="true"]'));
+          const safe = Array.from(document.querySelectorAll('[data-chungmaru-media-safe="true"]'));
+          const markerHidden = (marker) => Boolean(
+            marker.closest('[data-chungmaru-media-hidden="true"]') ||
+            marker.querySelector('[data-chungmaru-media-hidden="true"]')
+          );
+          return {
+            hiddenCount: hidden.length,
+            harmfulTotal: harmful.length,
+            harmfulHiddenCount: harmful.filter(markerHidden).length,
+            safeTotal: safe.length,
+            safeHiddenCount: safe.filter(markerHidden).length,
+            hiddenReasons: hidden.map((node) => ({
+              safety: node.getAttribute('data-shieldtext-media-safety') || '',
+              reason: node.getAttribute('data-chungmaru-media-reason') || ''
+            }))
+          };
+        })()""",
+        timeout_s=5,
+    )
+    return value if isinstance(value, dict) else {}
+
+
+def int_metric(value: Any) -> int:
+    try:
+      return max(0, int(value or 0))
+    except (TypeError, ValueError):
+      return 0
+
+
+def max_log_metric(logs: list[dict[str, Any]], key: str) -> int:
+    return max((int_metric(item.get(key)) for item in logs), default=0)
+
+
+def sum_action_log_metric(logs: list[dict[str, Any]], key: str) -> int:
+    action_logs = [item for item in logs if item.get("type") == "media-safety-action"]
+    return sum(int_metric(item.get(key)) for item in action_logs)
+
+
+def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
+    return {
+      "loggedCandidateCount": max_log_metric(logs, "candidateCount"),
+      "loggedVisibleTileCount": max_log_metric(logs, "visibleTileCount"),
+      "loggedCheapFilterHitCount": max_log_metric(logs, "cheapFilterHitCount"),
+      "loggedActionCount": sum_action_log_metric(logs, "actionCount"),
+      "loggedMissedVisibleTileCount": max_log_metric(logs, "missedVisibleTileCount"),
+      "loggedFalseHiddenCount": max_log_metric(logs, "falseHiddenCount"),
+      "loggedCollectMs": max_log_metric(logs, "collectMs"),
+      "loggedCheapFilterMs": max_log_metric(logs, "cheapFilterMs"),
+      "loggedApplyMs": max_log_metric(logs, "applyMs"),
+      "loggedDomAddedToActionMs": max_log_metric(logs, "domAddedToActionMs"),
+    }
+
+
+def send_media_scan_message(
+    worker: CdpWebSocket,
+    case_url: str,
+    message: dict[str, Any],
+    *,
+    timeout_s: float,
+) -> dict[str, Any]:
+    last_response: dict[str, Any] = {}
+    for _attempt in range(6):
+      last_response = send_to_fixture_tab(
+          worker,
+          case_url,
+          message,
+          inject_on_failure=False,
+          timeout_s=timeout_s,
+      )
+      if last_response.get("ok"):
+        return last_response
+      time.sleep(0.25)
+
+    return send_to_fixture_tab(
+        worker,
+        case_url,
+        message,
+        inject_on_failure=True,
+        timeout_s=timeout_s,
+    )
+
+
+def run_case(
+    worker: CdpWebSocket,
+    debugging_port: int,
+    fixture_url: str,
+    case: dict[str, Any],
+) -> dict[str, Any]:
+    set_extension_state(
+        worker,
+        media_safety_enabled=bool(case["media_safety_enabled"]),
+        developer_log_enabled=bool(case["developer_log_enabled"]),
+    )
+    time.sleep(0.25)
+    case_url = f"{fixture_url}?scenario={case['scenario']}&case={case['case_id']}"
+    target = create_tab(debugging_port, case_url)
+    page = CdpWebSocket(str(target["webSocketDebuggerUrl"]))
+    try:
+      wait_for_page_ready(page, timeout_s=10)
+      time.sleep(0.45)
+      settings = build_extension_settings(bool(case["media_safety_enabled"]))
+      response = send_media_scan_message(
+          worker,
+          case_url,
+          {
+              "type": "RUN_MEDIA_SAFETY_SCAN",
+              "reason": f"smoke-{case['case_id']}",
+              "settings": settings,
+          },
+          timeout_s=10,
+      )
+      time.sleep(0.2)
+      dom = inspect_media_dom(page)
+      logs = get_runtime_logs(worker)
+      media_logs = [
+          item for item in logs
+          if str(item.get("type") or "").startswith("media-safety")
+      ]
+      summary = response.get("response") if isinstance(response, dict) else {}
+      if not isinstance(summary, dict):
+          summary = {}
+      log_summary = summarize_media_logs(media_logs)
+      media_enabled = bool(case["media_safety_enabled"])
+      hidden_count = int_metric(dom.get("hiddenCount"))
+      harmful_total = int_metric(dom.get("harmfulTotal"))
+      harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
+      safe_total = int_metric(dom.get("safeTotal"))
+      safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
+      dom_candidate_count = harmful_total + safe_total if media_enabled else 0
+      effective_action_count = max(
+          int_metric(summary.get("actionCount")),
+          log_summary["loggedActionCount"],
+          hidden_count if media_enabled else 0,
+      )
+      return {
+          "timestamp": now_iso(),
+          "case_id": case["case_id"],
+          "scenario": case["scenario"],
+          "media_safety_enabled": bool(case["media_safety_enabled"]),
+          "developer_log_enabled": bool(case["developer_log_enabled"]),
+          "scan_ok": bool(summary.get("ok")),
+          "scan_status": summary.get("status") or "",
+          "candidate_count": max(int_metric(summary.get("candidateCount")), log_summary["loggedCandidateCount"], dom_candidate_count),
+          "visible_tile_count": max(int_metric(summary.get("visibleTileCount")), log_summary["loggedVisibleTileCount"], dom_candidate_count),
+          "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
+          "action_count": effective_action_count,
+          "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
+          "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
+          "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
+          "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
+          "apply_ms": max(int_metric(summary.get("applyMs")), log_summary["loggedApplyMs"]),
+          "dom_added_to_action_ms": max(int_metric(summary.get("domAddedToActionMs")), log_summary["loggedDomAddedToActionMs"]),
+          **log_summary,
+          "runtime_log_count": len(logs),
+          "media_runtime_log_count": len(media_logs),
+          "hidden_count": hidden_count,
+          "harmful_total": harmful_total,
+          "harmful_hidden_count": harmful_hidden_count,
+          "safe_total": safe_total,
+          "safe_hidden_count": safe_hidden_count,
+          "message_phase": response.get("phase") if isinstance(response, dict) else "",
+      }
+    finally:
+      page.close()
+
+
+def write_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = output_dir / "media-safety-smoke.jsonl"
+    csv_path = output_dir / "media-safety-smoke.csv"
+    with jsonl_path.open("w", encoding="utf-8") as handle:
+      for row in rows:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    fieldnames = list(rows[0].keys()) if rows else []
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+      writer = csv.DictWriter(handle, fieldnames=fieldnames)
+      writer.writeheader()
+      writer.writerows(rows)
+
+
+def assert_acceptance(rows: list[dict[str, Any]]) -> None:
+    by_case = {row["case_id"]: row for row in rows}
+    media_off = by_case["media_off_harmful"]
+    log_off = by_case["log_off_harmful"]
+    log_on = by_case["log_on_harmful"]
+    clean = by_case["log_on_clean"]
+
+    failures = []
+    if media_off["hidden_count"] != 0 or media_off["action_count"] != 0:
+      failures.append("media_off_harmful should not hide media")
+    if log_off["harmful_hidden_count"] < 2:
+      failures.append("log_off_harmful should hide both harmful fixtures")
+    if log_off["runtime_log_count"] != 0:
+      failures.append("log_off_harmful should not write runtime logs")
+    if log_on["harmful_hidden_count"] < 2:
+      failures.append("log_on_harmful should hide both harmful fixtures")
+    if log_on["media_runtime_log_count"] < 1:
+      failures.append("log_on_harmful should write aggregate media logs")
+    if clean["safe_hidden_count"] != 0 or clean["false_hidden_count"] != 0:
+      failures.append("log_on_clean should not hide clean fixtures")
+    if failures:
+      raise RuntimeError("; ".join(failures))
+
+
+def read_chrome_log_hint(path: Path) -> str:
+    try:
+      text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+      return ""
+    if "--load-extension is not allowed" in text:
+      return "Chrome blocked --load-extension; run with Chrome for Testing/Chromium via --chrome-path."
+    if "--disable-extensions-except is not allowed" in text:
+      return "Chrome ignored extension isolation flags; use Chrome for Testing/Chromium for extension smoke."
+    return ""
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Chungmaru Chrome media-safety smoke against fixture pages.")
+    parser.add_argument("--extension-dir", type=Path, default=DEFAULT_EXTENSION_DIR)
+    parser.add_argument("--profile-dir", type=Path, default=DEFAULT_PROFILE_DIR)
+    parser.add_argument("--chrome-path", type=Path, default=None)
+    parser.add_argument("--chrome-log", type=Path, default=DEFAULT_CHROME_LOG)
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--debugging-port", type=int, default=9337)
+    parser.add_argument("--fixture-port", type=int, default=0)
+    parser.add_argument("--clean-profile", action="store_true", default=True)
+    parser.add_argument("--keep-chrome", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    args.chrome_path = detect_chrome_path(args.chrome_path)
+    fixture_port = args.fixture_port or find_free_port()
+    fixture_server = start_fixture_server(fixture_port)
+    chrome = launch_media_smoke_chrome(args)
+    rows: list[dict[str, Any]] = []
+    try:
+      wait_for_targets(args.debugging_port, timeout_s=20)
+      extension_id, _target = wait_for_service_worker(args.debugging_port, timeout_s=20)
+      worker_targets = wait_for_service_worker(args.debugging_port, timeout_s=10)
+      worker = CdpWebSocket(str(worker_targets[1]["webSocketDebuggerUrl"]))
+      try:
+        fixture_url = f"http://127.0.0.1:{fixture_port}/"
+        cases = [
+            {
+                "case_id": "media_off_harmful",
+                "scenario": "harmful",
+                "media_safety_enabled": False,
+                "developer_log_enabled": True,
+            },
+            {
+                "case_id": "log_off_harmful",
+                "scenario": "harmful",
+                "media_safety_enabled": True,
+                "developer_log_enabled": False,
+            },
+            {
+                "case_id": "log_on_harmful",
+                "scenario": "harmful",
+                "media_safety_enabled": True,
+                "developer_log_enabled": True,
+            },
+            {
+                "case_id": "log_on_clean",
+                "scenario": "clean",
+                "media_safety_enabled": True,
+                "developer_log_enabled": True,
+            },
+        ]
+        for case in cases:
+          rows.append(run_case(worker, args.debugging_port, fixture_url, case))
+        write_outputs(args.output_dir, rows)
+        assert_acceptance(rows)
+      finally:
+        worker.close()
+      print(json.dumps({"ok": True, "rows": rows, "output_dir": str(args.output_dir)}, ensure_ascii=False, indent=2))
+      return 0
+    except Exception as error:  # noqa: BLE001 - smoke output should preserve failure reason
+      if rows:
+        write_outputs(args.output_dir, rows)
+      payload = {"ok": False, "error": str(error), "rows": rows}
+      hint = read_chrome_log_hint(args.chrome_log)
+      if hint:
+        payload["hint"] = hint
+      print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
+      return 1
+    finally:
+      fixture_server.shutdown()
+      fixture_server.server_close()
+      if not args.keep_chrome:
+        chrome.terminate()
+        try:
+          chrome.wait(timeout=5)
+        except Exception:
+          chrome.kill()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

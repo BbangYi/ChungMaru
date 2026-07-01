@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
     spam: true
   },
   interventionMode: "mask",
+  textMaskingEnabled: true,
   customBlockWords: "",
   customAllowWords: "",
   blockedDomains: "",
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
+  mediaSafetyEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -128,6 +130,14 @@ const SEARCH_RESULT_POLICY_CACHE_TTL_MS = 10 * 60 * 1000;
 const SEARCH_RESULT_POLICY_ERROR_CACHE_TTL_MS = 30 * 1000;
 const SEARCH_RESULT_POLICY_PREEMPTED_CACHE_TTL_MS = 2500;
 const SEARCH_RESULT_SNIPPET_LIMIT = 280;
+const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
+const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 70;
+const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 140;
+const MEDIA_SAFETY_CANDIDATE_LIMIT = 48;
+const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
+const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
+const MEDIA_SAFETY_MIN_AREA_PX = 3600;
+const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 320;
 const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
@@ -488,6 +498,9 @@ let routeRefreshFrameId = null;
 let searchResultProtectionFrameId = null;
 let googleSearchLocalPreflightFrameId = null;
 let googleSearchLocalPreflightTimerId = null;
+let mediaSafetyFrameId = null;
+let mediaSafetyTimerId = null;
+let mediaSafetyRunId = 0;
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -498,6 +511,7 @@ const ROUTE_REFRESH_TIMEOUT_IDS = new Set();
 const STARTUP_FOLLOWUP_TIMEOUT_IDS = new Set();
 const SEARCH_RESULT_POLICY_CACHE = new Map();
 const SEARCH_RESULT_POLICY_IN_FLIGHT = new Map();
+const MEDIA_SAFETY_FIRST_SEEN_AT = new WeakMap();
 const ATTRIBUTE_MASK_NAMES = ["aria-label", "title", "alt"];
 const ATTRIBUTE_VALUE_ID_MAP = new WeakMap();
 const ATTRIBUTE_VALUE_STATE_BY_ID = new Map();
@@ -519,6 +533,9 @@ let lastAppliedSettingsSnapshotKey = "";
 let lastAppliedSettingsSnapshotAt = 0;
 let performanceGuardUntil = 0;
 let performanceGuardReason = "";
+let developerRuntimeLogEnabled = false;
+let developerRuntimeLogLoaded = false;
+let developerRuntimeLogLoadPromise = null;
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -550,12 +567,17 @@ function isFilteringSuppressedBySensitivity(settings) {
   return normalizeSensitivity(settings?.sensitivity) <= 0;
 }
 
+function isTextMaskingEnabled(settings) {
+  return settings?.textMaskingEnabled !== false;
+}
+
 function buildSettingsSnapshotKey(settings) {
   const normalizedSettings = getMergedSettings(settings || {});
   return JSON.stringify({
     enabled: normalizedSettings.enabled !== false,
     sensitivity: normalizeSensitivity(normalizedSettings.sensitivity),
     interventionMode: normalizeInterventionMode(normalizedSettings.interventionMode),
+    textMaskingEnabled: normalizedSettings.textMaskingEnabled !== false,
     categories: normalizedSettings.categories || DEFAULT_SETTINGS.categories,
     customBlockWords: String(normalizedSettings.customBlockWords || ""),
     customAllowWords: String(normalizedSettings.customAllowWords || ""),
@@ -564,6 +586,7 @@ function buildSettingsSnapshotKey(settings) {
     siteProtectionEnabled: normalizedSettings.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: normalizedSettings.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: normalizedSettings.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: normalizedSettings.mediaSafetyEnabled === true,
     showWellbeingWidget: normalizedSettings.showWellbeingWidget !== false,
     wellbeingWidgetStyle: normalizedSettings.wellbeingWidgetStyle || DEFAULT_SETTINGS.wellbeingWidgetStyle,
     wellbeingAvatarImages: String(normalizedSettings.wellbeingAvatarImages || ""),
@@ -725,6 +748,14 @@ function teardownInvalidatedExtensionContext() {
     window.cancelAnimationFrame(googleSearchLocalPreflightFrameId);
     googleSearchLocalPreflightFrameId = null;
   }
+  if (mediaSafetyFrameId) {
+    window.cancelAnimationFrame(mediaSafetyFrameId);
+    mediaSafetyFrameId = null;
+  }
+  if (mediaSafetyTimerId) {
+    window.clearTimeout(mediaSafetyTimerId);
+    mediaSafetyTimerId = null;
+  }
   if (suppressedMutationRefreshTimerId) {
     window.clearTimeout(suppressedMutationRefreshTimerId);
     suppressedMutationRefreshTimerId = null;
@@ -824,6 +855,58 @@ async function safeRuntimeSendMessage(message) {
   }
 }
 
+async function refreshDeveloperRuntimeLogEnabled(options = {}) {
+  if (!isExtensionContextAvailable()) {
+    developerRuntimeLogEnabled = false;
+    developerRuntimeLogLoaded = true;
+    return false;
+  }
+
+  if (!options.force && developerRuntimeLogLoaded) {
+    return developerRuntimeLogEnabled === true;
+  }
+
+  if (!options.force && developerRuntimeLogLoadPromise) {
+    return developerRuntimeLogLoadPromise;
+  }
+
+  developerRuntimeLogLoadPromise = safeStorageLocalGet(DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY)
+    .then((result) => {
+      developerRuntimeLogEnabled = result?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY] === true;
+      developerRuntimeLogLoaded = true;
+      return developerRuntimeLogEnabled;
+    })
+    .catch((error) => {
+      handleExtensionContextError(error);
+      developerRuntimeLogEnabled = false;
+      developerRuntimeLogLoaded = true;
+      return false;
+    })
+    .finally(() => {
+      developerRuntimeLogLoadPromise = null;
+    });
+
+  return developerRuntimeLogLoadPromise;
+}
+
+function emitRuntimeLogEvent(event) {
+  if (!developerRuntimeLogEnabled) {
+    if (!developerRuntimeLogLoaded && !developerRuntimeLogLoadPromise) {
+      refreshDeveloperRuntimeLogEnabled().catch(() => {});
+    }
+    return;
+  }
+
+  safeRuntimeSendMessage({
+    type: "ADD_RUNTIME_EVENT_LOG",
+    event
+  }).catch((error) => {
+    if (!handleExtensionContextError(error)) {
+      console.warn("[청마루] runtime log emit failed", error);
+    }
+  });
+}
+
 function getRuntimeUrl(path) {
   if (!isExtensionContextAvailable()) {
     throw new Error("EXTENSION_CONTEXT_INVALIDATED");
@@ -846,7 +929,7 @@ function isShieldTextManagedElement(element) {
 
   return Boolean(
     element.closest(
-      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true']"
+      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true'], [data-chungmaru-media-hidden='true']"
     )
   );
 }
@@ -944,9 +1027,11 @@ function getMergedSettings(storedSettings) {
     ...DEFAULT_SETTINGS,
     ...(storedSettings || {}),
     interventionMode: normalizeInterventionMode(storedSettings?.interventionMode),
+    textMaskingEnabled: storedSettings?.textMaskingEnabled !== false,
     siteProtectionEnabled: storedSettings?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: storedSettings?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled === true,
     wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       storedSettings?.wellbeingAgeStageCount,
@@ -1833,6 +1918,493 @@ async function requestCurrentSitePolicy() {
   } catch (error) {
     handleExtensionContextError(error);
   }
+}
+
+const MEDIA_SAFETY_CANDIDATE_SELECTOR = [
+  "img",
+  "video[poster]",
+  "[role='img'][aria-label]",
+  "[style*='background-image']"
+].join(", ");
+const MEDIA_SAFETY_ADULT_PATTERN =
+  /(?:19\s*금|19\s*세|19\s*등급|성인(?:물|용|인증|만화|영상|방송)?|야동|포르노|porn|porno|adult|nsfw|섹스|sex(?:y|ual)?|노출|가슴|비키니|란제리|속옷|은밀한|후방\s*주의|무삭제|AV\s*(?:추천|배우|영상)?)/i;
+const MEDIA_SAFETY_GAMBLING_PATTERN =
+  /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|bet(?:ting)?|casino|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|롤링\s*\d|배팅\s*보너스)/i;
+const MEDIA_SAFETY_RISK_DOMAIN_PATTERN =
+  /(?:casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)/i;
+
+function isMediaSafetyEnabled(settings = cachedSettings) {
+  return (
+    settings?.enabled !== false &&
+    normalizeSensitivity(settings?.sensitivity) > 0 &&
+    settings?.mediaSafetyEnabled === true
+  );
+}
+
+function getMediaSafetyProfile() {
+  if (isGoogleImageSearchPage()) {
+    return "google-images";
+  }
+  if (isYouTubePage()) {
+    return "youtube";
+  }
+  return "generic";
+}
+
+function isMediaRectVisible(rect) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  if (rect.width < MEDIA_SAFETY_MIN_DIMENSION_PX && rect.height < MEDIA_SAFETY_MIN_DIMENSION_PX) {
+    return false;
+  }
+  if (rect.width * rect.height < MEDIA_SAFETY_MIN_AREA_PX) {
+    return false;
+  }
+  return (
+    rect.bottom >= -MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.top <= window.innerHeight + MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.right >= -MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.left <= window.innerWidth + MEDIA_SAFETY_VIEWPORT_BUFFER_PX
+  );
+}
+
+function getMediaSourceUrl(element) {
+  if (element instanceof HTMLImageElement) {
+    return String(element.currentSrc || element.src || element.getAttribute("src") || "");
+  }
+  if (element instanceof HTMLVideoElement) {
+    return String(element.poster || element.getAttribute("poster") || "");
+  }
+  if (element instanceof Element) {
+    const inline = String(element.getAttribute("style") || "");
+    const match = inline.match(/background-image\s*:\s*url\((['"]?)(.*?)\1\)/i);
+    if (match?.[2]) {
+      return match[2];
+    }
+  }
+  return "";
+}
+
+function compactRuntimeUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^data:image\//i.test(raw)) {
+    return "data:image";
+  }
+  try {
+    const parsed = new URL(raw, location.href);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+    return `${parsed.origin}${parsed.pathname}`.slice(0, 180);
+  } catch {
+    return raw.slice(0, 120);
+  }
+}
+
+function getBoundedElementText(element, limit = MEDIA_SAFETY_CONTEXT_TEXT_LIMIT) {
+  if (!(element instanceof Element)) {
+    return "";
+  }
+  return normalizeText(
+    [
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.getAttribute("alt"),
+      element instanceof HTMLImageElement ? element.alt : "",
+      element.innerText,
+      element.textContent
+    ].filter(Boolean).join(" ")
+  ).slice(0, limit);
+}
+
+function getSearchQueryContext() {
+  try {
+    const params = new URLSearchParams(location.search || "");
+    return normalizeText([
+      params.get("q"),
+      params.get("search_query"),
+      document.title
+    ].filter(Boolean).join(" "));
+  } catch {
+    return normalizeText(document.title || "");
+  }
+}
+
+function isReasonableMediaAncestor(candidate, mediaRect) {
+  if (!(candidate instanceof Element) || !mediaRect) {
+    return false;
+  }
+  if (["HTML", "BODY"].includes(candidate.tagName)) {
+    return false;
+  }
+  const rect = candidate.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  const maxWidth = Math.max(mediaRect.width + 180, mediaRect.width * 2.4);
+  const maxHeight = Math.max(mediaRect.height + 180, mediaRect.height * 2.8);
+  const maxArea = Math.max(mediaRect.width * mediaRect.height * 6, 12000);
+  return rect.width <= maxWidth && rect.height <= maxHeight && rect.width * rect.height <= maxArea;
+}
+
+function getMediaSafetyContainer(element, mediaRect) {
+  if (!(element instanceof Element)) {
+    return null;
+  }
+  const selectors = isGoogleImageSearchPage()
+    ? ["[data-ri]", "[data-ved]", "[role='listitem']", "a[href]", "figure", "article", "li"]
+    : isYouTubePage()
+      ? ["ytd-thumbnail", "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-compact-video-renderer", "a[href]"]
+      : ["a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
+
+  for (const selector of selectors) {
+    const ancestor = element.closest(selector);
+    if (isReasonableMediaAncestor(ancestor, mediaRect)) {
+      return ancestor;
+    }
+  }
+
+  let current = element.parentElement;
+  let depth = 0;
+  while (current && depth < 3) {
+    if (isReasonableMediaAncestor(current, mediaRect)) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+
+  return element;
+}
+
+function getMediaSafetyTarget(element, container, mediaRect) {
+  if (isReasonableMediaAncestor(container, mediaRect)) {
+    return container;
+  }
+  return element instanceof Element ? element : null;
+}
+
+function buildMediaSafetyCandidate(element, profile) {
+  if (!(element instanceof Element)) {
+    return null;
+  }
+  if (!element.isConnected || isShieldTextManagedElement(element)) {
+    return null;
+  }
+
+  const mediaRect = element.getBoundingClientRect();
+  if (!isMediaRectVisible(mediaRect)) {
+    return null;
+  }
+
+  const sourceUrl = getMediaSourceUrl(element);
+  const link = element.closest("a[href]");
+  const linkUrl = link instanceof HTMLAnchorElement ? extractSearchResultTargetUrl(link) || link.href : "";
+  const domain = domainFromHref(linkUrl || sourceUrl);
+  const container = getMediaSafetyContainer(element, mediaRect);
+  const target = getMediaSafetyTarget(element, container, mediaRect);
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  if (!MEDIA_SAFETY_FIRST_SEEN_AT.has(target)) {
+    MEDIA_SAFETY_FIRST_SEEN_AT.set(target, performance.now());
+  }
+
+  const contextText = normalizeText([
+    getBoundedElementText(element),
+    container && container !== element ? getBoundedElementText(container) : "",
+    getSearchQueryContext(),
+    domain,
+    compactRuntimeUrl(linkUrl || sourceUrl)
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+
+  return {
+    element,
+    container,
+    target,
+    profile,
+    contextText,
+    sourceUrl,
+    linkUrl,
+    domain,
+    firstSeenAt: MEDIA_SAFETY_FIRST_SEEN_AT.get(target) || performance.now()
+  };
+}
+
+function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT) {
+  const profile = getMediaSafetyProfile();
+  const candidates = [];
+  const seenTargets = new Set();
+  const nodes = Array.from(document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(0, 240);
+
+  for (const node of nodes) {
+    const candidate = buildMediaSafetyCandidate(node, profile);
+    if (!candidate || seenTargets.has(candidate.target)) {
+      continue;
+    }
+    seenTargets.add(candidate.target);
+    candidates.push(candidate);
+    if (candidates.length >= limit) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function getMediaSafetyMatch(candidate) {
+  const haystack = normalizeText([
+    candidate?.contextText,
+    candidate?.domain,
+    candidate?.linkUrl,
+    candidate?.sourceUrl
+  ].filter(Boolean).join(" "));
+  if (!haystack) {
+    return null;
+  }
+
+  if (MEDIA_SAFETY_GAMBLING_PATTERN.test(haystack) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(haystack)) {
+    return {
+      category: "gambling",
+      reason: "gambling keyword/domain"
+    };
+  }
+
+  if (MEDIA_SAFETY_ADULT_PATTERN.test(haystack)) {
+    return {
+      category: "adult",
+      reason: "adult keyword/context"
+    };
+  }
+
+  return null;
+}
+
+function isKnownSafeMediaFixture(candidate) {
+  return Boolean(
+    candidate?.element?.closest?.("[data-chungmaru-media-safe='true']") ||
+    candidate?.target?.closest?.("[data-chungmaru-media-safe='true']")
+  );
+}
+
+function clearProtectedMediaCandidate(target) {
+  if (!(target instanceof Element)) {
+    return;
+  }
+  target.classList.remove("shieldtext-media-safety-hidden");
+  target.removeAttribute("data-chungmaru-media-hidden");
+  target.removeAttribute("data-shieldtext-media-safety");
+  target.removeAttribute("data-chungmaru-media-reason");
+}
+
+function clearMediaSafetyProtection() {
+  if (!document?.body && !document?.documentElement) {
+    return 0;
+  }
+
+  let cleared = 0;
+  for (const target of document.querySelectorAll(".shieldtext-media-safety-hidden, [data-chungmaru-media-hidden='true']")) {
+    clearProtectedMediaCandidate(target);
+    cleared += 1;
+  }
+  return cleared;
+}
+
+function applyMediaSafetyCandidate(candidate, match) {
+  const target = candidate?.target;
+  if (!(target instanceof Element) || !match) {
+    return false;
+  }
+  if (target.getAttribute("data-chungmaru-media-hidden") === "true") {
+    return false;
+  }
+
+  target.classList.add("shieldtext-media-safety-hidden");
+  target.setAttribute("data-chungmaru-media-hidden", "true");
+  target.setAttribute("data-shieldtext-media-safety", match.category || "media");
+  target.setAttribute("data-chungmaru-media-reason", match.reason || "media safety");
+  return true;
+}
+
+function countKnownHarmfulVisibleMediaMisses() {
+  const markers = Array.from(document.querySelectorAll("[data-chungmaru-media-harmful='true']"));
+  let missed = 0;
+  for (const marker of markers) {
+    if (!(marker instanceof Element)) {
+      continue;
+    }
+    if (marker.closest("[data-chungmaru-media-hidden='true']")) {
+      continue;
+    }
+    const media = marker.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)
+      ? marker
+      : marker.querySelector(MEDIA_SAFETY_CANDIDATE_SELECTOR);
+    if (media instanceof Element && isMediaRectVisible(media.getBoundingClientRect())) {
+      missed += 1;
+    }
+  }
+  return missed;
+}
+
+function runMediaSafetyScan(settings = cachedSettings, options = {}) {
+  const activeSettings = getMergedSettings(settings || cachedSettings || {});
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    const cleared = clearMediaSafetyProtection();
+    return {
+      ok: true,
+      status: "disabled",
+      reason: "MEDIA_SAFETY_DISABLED",
+      clearedCount: cleared,
+      candidateCount: 0,
+      visibleTileCount: 0,
+      cheapFilterHitCount: 0,
+      actionCount: 0,
+      missedVisibleTileCount: 0,
+      falseHiddenCount: 0,
+      collectMs: 0,
+      cheapFilterMs: 0,
+      applyMs: 0,
+      domAddedToActionMs: 0
+    };
+  }
+
+  const startedAt = performance.now();
+  const collectStartedAt = performance.now();
+  const candidates = collectMediaSafetyCandidates();
+  const collectMs = performance.now() - collectStartedAt;
+  const cheapFilterStartedAt = performance.now();
+  const selected = [];
+  for (const candidate of candidates) {
+    const match = getMediaSafetyMatch(candidate);
+    if (match) {
+      selected.push({ candidate, match });
+    }
+  }
+  const cheapFilterMs = performance.now() - cheapFilterStartedAt;
+  const applyStartedAt = performance.now();
+  let actionCount = 0;
+  let falseHiddenCount = 0;
+  let domAddedToActionMs = 0;
+
+  suppressMutationFeedback(160);
+  for (const entry of selected) {
+    const applied = applyMediaSafetyCandidate(entry.candidate, entry.match);
+    if (!applied) {
+      continue;
+    }
+    actionCount += 1;
+    if (isKnownSafeMediaFixture(entry.candidate)) {
+      falseHiddenCount += 1;
+    }
+    domAddedToActionMs = Math.max(
+      domAddedToActionMs,
+      performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+    );
+  }
+  const applyMs = performance.now() - applyStartedAt;
+  const missedVisibleTileCount = countKnownHarmfulVisibleMediaMisses();
+  const summary = {
+    ok: true,
+    status: "scanned",
+    source: "content-script",
+    profile: getMediaSafetyProfile(),
+    reason: options.reason || "media-safety-scan",
+    durationMs: Math.round(performance.now() - startedAt),
+    candidateCount: candidates.length,
+    visibleTileCount: candidates.length,
+    cheapFilterHitCount: selected.length,
+    actionCount,
+    missedVisibleTileCount,
+    falseHiddenCount,
+    collectMs: Math.round(collectMs),
+    cheapFilterMs: Math.round(cheapFilterMs),
+    applyMs: Math.round(applyMs),
+    domAddedToActionMs: Math.round(domAddedToActionMs),
+    domain: normalizeDomainForPolicy(location.hostname || ""),
+    url: compactRuntimeUrl(location.href)
+  };
+
+  emitRuntimeLogEvent({
+    type: "media-safety-scan",
+    ...summary
+  });
+  if (actionCount > 0 || missedVisibleTileCount > 0 || falseHiddenCount > 0) {
+    emitRuntimeLogEvent({
+      type: "media-safety-action",
+      ...summary,
+      action: actionCount > 0 ? "hide" : "none"
+    });
+  }
+
+  return summary;
+}
+
+function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return;
+  }
+
+  const activeSettings = settings || cachedSettings || {};
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    clearMediaSafetyProtection();
+    return;
+  }
+
+  if (mediaSafetyFrameId) {
+    window.cancelAnimationFrame(mediaSafetyFrameId);
+    mediaSafetyFrameId = null;
+  }
+  if (mediaSafetyTimerId) {
+    window.clearTimeout(mediaSafetyTimerId);
+    mediaSafetyTimerId = null;
+  }
+
+  const delayMs = Math.max(
+    0,
+    Number.isFinite(options.delayMs)
+      ? Number(options.delayMs)
+      : options.reason === "visibility"
+        ? MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS
+        : MEDIA_SAFETY_SCAN_DEBOUNCE_MS
+  );
+  const runId = ++mediaSafetyRunId;
+  const scheduleFrame = () => {
+    mediaSafetyTimerId = null;
+    mediaSafetyFrameId = window.requestAnimationFrame(() => {
+      mediaSafetyFrameId = null;
+      if (runId !== mediaSafetyRunId) {
+        return;
+      }
+      try {
+        runMediaSafetyScan(activeSettings, options);
+      } catch (error) {
+        emitRuntimeLogEvent({
+          type: "media-safety-error",
+          ok: false,
+          status: "failed",
+          source: "content-script",
+          errorCode: String(error?.errorCode || "MEDIA_SAFETY_SCAN_FAILED"),
+          reason: serializeFailureReason(error),
+          domain: normalizeDomainForPolicy(location.hostname || ""),
+          url: compactRuntimeUrl(location.href)
+        });
+        if (!handleExtensionContextError(error)) {
+          console.warn("[청마루] media safety scan failed", error);
+        }
+      }
+    });
+  };
+
+  if (delayMs > 0) {
+    mediaSafetyTimerId = window.setTimeout(scheduleFrame, delayMs);
+    return;
+  }
+  scheduleFrame();
 }
 
 function suppressMutationFeedback(ms = 160) {
@@ -8921,6 +9493,28 @@ async function executeHotPathForCandidates(candidates, runReason) {
     return { ok: true, skipped: true };
   }
 
+  if (!isTextMaskingEnabled(settings)) {
+    for (const candidate of nextCandidates) {
+      if (candidate.candidateKind === "editable-value") {
+        restoreEditableValueState(candidate.state);
+      } else if (candidate.candidateKind === "attribute-value") {
+        restoreAttributeValueState(candidate.state);
+      } else {
+        restoreNodeState(candidate.state);
+      }
+    }
+    scheduleHotPathStatsPersist({
+      enabled: true,
+      runReason,
+      backendStatus: "ready",
+      sensitivityMode: getSensitivityMode(settings),
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0,
+      lastDecisionSource: "text-masking-disabled"
+    });
+    return { ok: true, skipped: true, reason: "TEXT_MASKING_DISABLED" };
+  }
+
   if (isFilteringSuppressedBySensitivity(settings)) {
     restoreAllRenderedContent();
     scheduleHotPathStatsPersist({
@@ -9370,6 +9964,54 @@ async function executePipeline(runReason) {
 
       await persistDebug(payload, decision, stats);
       return { ok: true, stats };
+    }
+
+    if (!isTextMaskingEnabled(settings)) {
+      restoreAllRenderedContent();
+      cancelScheduledPipeline();
+
+      const payload = buildPayload([], 0, 0);
+      const decision = {
+        blockedNodeIds: [],
+        matchedKeywords: [],
+        categoryHits: emptyCategoryHits(),
+        nodeCategoryMap: {},
+        nodeReasonMap: {},
+        nodeScoreMap: {},
+        nodeEvidenceMap: {},
+        nodePendingMap: {},
+        nodeOutcomeMap: {},
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendDurationMs: 0,
+        backendStatus: "ready",
+        apiMode: "text-masking-disabled"
+      };
+      const stats = {
+        hostname,
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        matchedKeywordCount: 0,
+        durationMs: Math.round(performance.now() - startedAt),
+        runReason,
+        enabled: true,
+        textMaskingEnabled: false,
+        sensitivityMode: getSensitivityMode(settings),
+        sensitivity: normalizeSensitivity(settings.sensitivity),
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendStatus: "ready",
+        totalCandidateCount: 0,
+        requestedAnalysisCount: 0,
+        cacheHitCount: 0,
+        lastDecisionSource: "text-masking-disabled",
+        maskedSpanCount: 0,
+        firstMaskLatencyMs: 0,
+        visibleContainerBatchSize: 0
+      };
+
+      await persistDebug(payload, decision, stats);
+      return { ok: true, stats, skipped: true, reason: "TEXT_MASKING_DISABLED" };
     }
 
     if (isFilteringSuppressedBySensitivity(settings)) {
@@ -10632,6 +11274,7 @@ function initializeObserver() {
     if (pageMutations.length === 0) return;
 
     if (isGoogleSearchPage()) {
+      scheduleMediaSafetyScan(cachedSettings, { reason: "mutation" });
       scheduleGoogleSearchLightModeProtection(cachedSettings, {
         limit: MAX_DOMAIN_PRIORITY_CANDIDATES
       });
@@ -10671,6 +11314,9 @@ function initializeObserver() {
 
     if (sawAddedContent && !shouldSchedule) {
       scheduleScrollVisibilityRefresh({ withSettleRefresh: false });
+    }
+    if (sawAddedContent) {
+      scheduleMediaSafetyScan(cachedSettings, { reason: "mutation" });
     }
     if (sawAddedContent && isGoogleTextSearchAnalysisPage()) {
       scheduleSearchResultProtection(cachedSettings);
@@ -10773,6 +11419,7 @@ function initializeViewportListeners() {
     () => {
       syncOverlays();
       scheduleScrollVisibilityRefresh();
+      scheduleMediaSafetyScan(cachedSettings, { reason: "visibility" });
     },
     true
   );
@@ -10780,6 +11427,7 @@ function initializeViewportListeners() {
   window.addEventListener("resize", () => {
     syncOverlays();
     scheduleScrollVisibilityRefresh();
+    scheduleMediaSafetyScan(cachedSettings, { reason: "visibility" });
     schedulePipeline("visibility");
   });
 
@@ -10789,6 +11437,7 @@ function initializeViewportListeners() {
       () => {
         syncOverlays();
         scheduleScrollVisibilityRefresh();
+        scheduleMediaSafetyScan(cachedSettings, { reason: "visibility" });
       },
       { passive: true }
     );
@@ -10797,6 +11446,7 @@ function initializeViewportListeners() {
       () => {
         syncOverlays();
         scheduleScrollVisibilityRefresh();
+        scheduleMediaSafetyScan(cachedSettings, { reason: "visibility" });
       },
       { passive: true }
     );
@@ -10861,6 +11511,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "RUN_MEDIA_SAFETY_SCAN") {
+    try {
+      const settings = getMergedSettings(message.settings || cachedSettings || {});
+      const summary = runMediaSafetyScan(settings, {
+        reason: message.reason || "manual-media-safety-scan"
+      });
+      sendResponse(summary);
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        reason: serializeFailureReason(error),
+        errorCode: String(error?.errorCode || "RUN_MEDIA_SAFETY_SCAN_FAILED")
+      });
+    }
+    return false;
+  }
+
   if (message?.type === "RUN_PIPELINE" || message?.type === "RUN_FILTER") {
     executePipeline(message.reason || "manual")
       .then((result) => {
@@ -10910,10 +11577,16 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
   const nextSettings = updateCachedSettings(storedSettings || {});
   invalidateAnalysisForSettingsChange();
   restoreAllRenderedContent();
+  if (isMediaSafetyEnabled(nextSettings)) {
+    scheduleMediaSafetyScan(nextSettings, { reason: runReason, delayMs: 0 });
+  } else {
+    clearMediaSafetyProtection();
+  }
 
   if (nextSettings.enabled === false) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: false,
@@ -10929,6 +11602,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
   if (isFilteringSuppressedBySensitivity(nextSettings)) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: true,
@@ -10945,6 +11619,40 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
       sensitivityMode: getSensitivityMode(nextSettings),
       skipped: true,
       reason: "SENSITIVITY_DISABLED"
+    };
+  }
+
+  if (!isTextMaskingEnabled(nextSettings)) {
+    restoreAllRenderedContent();
+    cancelScheduledPipeline();
+    requestCurrentSitePolicy().catch((error) => {
+      handleExtensionContextError(error);
+    });
+    if (isGoogleSearchPage()) {
+      scheduleGoogleSearchLightModeProtection(nextSettings, {
+        limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+        force: true
+      });
+    } else {
+      scheduleSearchResultProtection(nextSettings);
+    }
+    scheduleMediaSafetyScan(nextSettings, { reason: runReason, delayMs: 0 });
+    scheduleHotPathStatsPersist({
+      enabled: true,
+      runReason,
+      backendStatus: "ready",
+      sensitivityMode: getSensitivityMode(nextSettings),
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0,
+      lastDecisionSource: "text-masking-disabled"
+    });
+    return {
+      ok: true,
+      enabled: true,
+      textMaskingEnabled: false,
+      sensitivityMode: getSensitivityMode(nextSettings),
+      skipped: true,
+      reason: "TEXT_MASKING_DISABLED"
     };
   }
 
@@ -10968,6 +11676,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
       visibleContainerBatchSize: 0,
       lastDecisionSource: "google-search-light-mode"
     });
+    scheduleMediaSafetyScan(nextSettings, { reason: runReason, delayMs: 0 });
     return {
       ok: true,
       enabled: true,
@@ -10977,6 +11686,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
     };
   }
   scheduleSearchResultProtection(nextSettings);
+  scheduleMediaSafetyScan(nextSettings, { reason: runReason, delayMs: 0 });
   scheduleInitialEditablePass();
   schedulePipeline(runReason);
   return {
@@ -10987,6 +11697,13 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]) {
+    developerRuntimeLogEnabled =
+      changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY].newValue === true;
+    developerRuntimeLogLoaded = true;
+    developerRuntimeLogLoadPromise = null;
+    return;
+  }
   if (areaName !== "sync") return;
   if (!changes?.settings) return;
   applySettingsSnapshot(changes.settings.newValue || {}, "settings-updated");
@@ -11001,9 +11718,11 @@ async function runInitialPageAnalysis(initialSettings, scheduledAt) {
   if (settings.enabled === false || normalizeSensitivity(settings.sensitivity) <= 0) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     initializeObserver();
     return;
   }
+  scheduleMediaSafetyScan(settings, { reason: "initial-load", delayMs: 0 });
 
   if (settings.backendEnabled === true) {
     scheduleBackendWarmup();
@@ -11018,11 +11737,23 @@ async function runInitialPageAnalysis(initialSettings, scheduledAt) {
       limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
       force: true
     });
+    scheduleMediaSafetyScan(settings, { reason: "initial-load", delayMs: 0 });
     initializeObserver();
     return;
   }
 
   scheduleSearchResultProtection(settings);
+  scheduleMediaSafetyScan(settings, { reason: "initial-load", delayMs: 0 });
+  if (!isTextMaskingEnabled(settings)) {
+    initializeObserver();
+    scheduleHotPathStatsPersist({
+      startupDeferredMs: Math.round(performance.now() - Number(scheduledAt || performance.now())),
+      lastDecisionSource: "text-masking-disabled",
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0
+    });
+    return;
+  }
   registerTextNodesInTree(document.body, {
     markDirty: true,
     onlyVisible: true,
@@ -11075,6 +11806,7 @@ async function bootstrap() {
   if (!document.body || !document.documentElement) return;
 
   bootstrapStarted = true;
+  await refreshDeveloperRuntimeLogEnabled().catch(() => false);
   const initialSettings = await loadSettings({ force: true }).catch(() => getMergedSettings({}));
   initializeVisibilityObserver();
   initializeSearchResultProtectionClickGuard();
@@ -11086,9 +11818,11 @@ async function bootstrap() {
   if (initialSettings.enabled === false || normalizeSensitivity(initialSettings.sensitivity) <= 0) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     initializeObserver();
     return;
   }
+  scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
 
   requestCurrentSitePolicy().catch((error) => {
     handleExtensionContextError(error);
@@ -11106,11 +11840,22 @@ async function bootstrap() {
       limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
       force: true
     });
+    scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
     initializeObserver();
     return;
   }
 
   scheduleSearchResultProtection(initialSettings);
+  scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
+  if (!isTextMaskingEnabled(initialSettings)) {
+    initializeObserver();
+    scheduleHotPathStatsPersist({
+      lastDecisionSource: "text-masking-disabled",
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0
+    });
+    return;
+  }
   scheduleInitialEditablePass();
   scheduleInitialPageAnalysis(initialSettings);
 }

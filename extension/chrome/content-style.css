@@ -411,6 +411,49 @@
   color: #4d4d4d;
 }
 
+.shieldtext-media-safety-hidden {
+  position: relative !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  border-radius: 8px !important;
+  background: #161616 !important;
+  outline: 1px solid rgba(183, 31, 31, 0.34) !important;
+  outline-offset: 0 !important;
+  transition: none !important;
+}
+
+.shieldtext-media-safety-hidden > :not(.shieldtext-media-safety-notice) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.shieldtext-media-safety-hidden::after {
+  content: "청마루 이미지 보호";
+  position: absolute;
+  inset: 0;
+  z-index: 2147483646;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  background: #161616;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+}
+
+img.shieldtext-media-safety-hidden,
+video.shieldtext-media-safety-hidden {
+  filter: blur(18px) brightness(0.38) saturate(0.2) !important;
+  opacity: 0.08 !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
 .shieldtext-wellbeing-widget {
   --shieldtext-face-size: 62px;
   position: fixed;

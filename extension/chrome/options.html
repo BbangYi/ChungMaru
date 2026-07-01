@@ -17,6 +17,41 @@
       <section class="panel">
         <div class="section-head">
           <div>
+            <p class="section-kicker">보호 기능</p>
+            <h2>기능별 사용 여부</h2>
+          </div>
+        </div>
+
+        <div class="setting-list">
+          <label class="switch-row">
+            <span>
+              <strong>텍스트 마스킹</strong>
+              <small>웹페이지의 유해 표현을 감지해 선택한 방식으로 가립니다.</small>
+            </span>
+            <input id="textMaskingEnabledToggle" type="checkbox" />
+          </label>
+
+          <label class="switch-row">
+            <span>
+              <strong>유해 사이트 차단</strong>
+              <small>위험 사이트 경고와 검색 결과 보호를 함께 사용합니다.</small>
+            </span>
+            <input id="siteProtectionEnabledToggle" type="checkbox" />
+          </label>
+
+          <label class="switch-row">
+            <span>
+              <strong>유해 이미지 차단</strong>
+              <small>이미지, 배너, 영상 썸네일 보호 기능을 사용합니다.</small>
+            </span>
+            <input id="mediaSafetyEnabledToggle" type="checkbox" />
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
             <p class="section-kicker">화면 표시</p>
             <h2>위젯과 마스킹</h2>
           </div>
@@ -75,30 +110,6 @@
               <small>가려진 표현 위에 한 줄 설명을 함께 보여줍니다.</small>
             </span>
             <input id="showReasonToggle" type="checkbox" />
-          </label>
-
-          <label class="switch-row">
-            <span>
-              <strong>위험 사이트 보호</strong>
-              <small>사이트 위험도를 확인하고 접속 전 경고 흐름에 연결합니다.</small>
-            </span>
-            <input id="siteProtectionEnabledToggle" type="checkbox" />
-          </label>
-
-          <label class="switch-row">
-            <span>
-              <strong>접속 전 경고 페이지</strong>
-              <small>유해 사이트로 이동하기 전에 청마루 경고 화면을 먼저 표시합니다.</small>
-            </span>
-            <input id="siteNavigationWarningEnabledToggle" type="checkbox" />
-          </label>
-
-          <label class="switch-row">
-            <span>
-              <strong>검색 결과 보호</strong>
-              <small>유해 사이트 판정 또는 차단/경고 도메인이 검색 결과에 보이면 결과 카드도 가립니다.</small>
-            </span>
-            <input id="searchResultProtectionEnabledToggle" type="checkbox" />
           </label>
         </div>
       </section>
@@ -333,6 +344,20 @@
             </label>
 
             <p id="connectionStatusText" class="subtle-status">백엔드 연동 꺼짐</p>
+          </div>
+
+          <div class="policy-test-box">
+            <div class="section-head">
+              <div>
+                <h2>런타임 로그</h2>
+                <small>검증 세션에서만 켜고, 기본 상태에서는 기록하지 않습니다.</small>
+              </div>
+            </div>
+
+            <label class="inline-check" for="developerRuntimeLogEnabledToggle">
+              <input id="developerRuntimeLogEnabledToggle" type="checkbox" />
+              <span>개발자 로그 기록 켜기</span>
+            </label>
           </div>
 
           <div class="field-grid">

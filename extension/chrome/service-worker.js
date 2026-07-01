@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
     spam: true
   },
   interventionMode: "mask",
+  textMaskingEnabled: true,
   customBlockWords: "",
   customAllowWords: "",
   blockedDomains: "",
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
+  mediaSafetyEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -78,6 +80,7 @@ const SITE_WARNING_ALLOWED_NAVIGATIONS = new Map();
 const WELLBEING_STATE_STORAGE_KEY = "wellbeingState";
 const WELLBEING_DEBUG_OVERRIDE_STORAGE_KEY = "wellbeingDebugOverride";
 const RUNTIME_EVENT_LOG_STORAGE_KEY = "runtimeEventLog";
+const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
 const WELLBEING_SCHEMA_VERSION = "wellbeing-v1";
 const WELLBEING_MAX_HEARTBEAT_DELTA_MS = 30 * 1000;
 const WELLBEING_IDLE_GAP_MS = 90 * 1000;
@@ -104,6 +107,9 @@ let backendHealthInFlight = null;
 let settingsCache = null;
 let settingsCacheExpiresAt = 0;
 let settingsInFlight = null;
+let developerRuntimeLogEnabledCache = false;
+let developerRuntimeLogStateLoaded = false;
+let developerRuntimeLogStateInFlight = null;
 const BACKEND_REQUEST_PRIORITY = [
   "foreground",
   "reconcile",
@@ -165,15 +171,53 @@ function normalizeRuntimeLogEvent(event) {
     title: truncateRuntimeLogValue(event?.title || "", 160),
     url: truncateRuntimeLogValue(event?.url || "", 220),
     verdict: truncateRuntimeLogValue(event?.verdict || "", 40),
+    profile: truncateRuntimeLogValue(event?.profile || "", 64),
+    action: truncateRuntimeLogValue(event?.action || "", 40),
     apiBaseUrl: truncateRuntimeLogValue(event?.apiBaseUrl || "", 180),
     durationMs: Math.max(0, Math.round(Number(event?.durationMs || 0))),
     count: Math.max(0, Math.round(Number(event?.count || 0))),
+    candidateCount: Math.max(0, Math.round(Number(event?.candidateCount || 0))),
+    visibleTileCount: Math.max(0, Math.round(Number(event?.visibleTileCount || 0))),
+    cheapFilterHitCount: Math.max(0, Math.round(Number(event?.cheapFilterHitCount || 0))),
+    actionCount: Math.max(0, Math.round(Number(event?.actionCount || 0))),
+    falseHiddenCount: Math.max(0, Math.round(Number(event?.falseHiddenCount || 0))),
+    domAddedToActionMs: Math.max(0, Math.round(Number(event?.domAddedToActionMs || 0))),
+    collectMs: Math.max(0, Math.round(Number(event?.collectMs || 0))),
+    cheapFilterMs: Math.max(0, Math.round(Number(event?.cheapFilterMs || 0))),
+    classifierMs: Math.max(0, Math.round(Number(event?.classifierMs || 0))),
+    ocrMs: Math.max(0, Math.round(Number(event?.ocrMs || 0))),
+    applyMs: Math.max(0, Math.round(Number(event?.applyMs || 0))),
+    missedVisibleTileCount: Math.max(0, Math.round(Number(event?.missedVisibleTileCount || 0))),
     positiveCount: Math.max(0, Math.round(Number(event?.positiveCount || 0))),
     skippedCount: Math.max(0, Math.round(Number(event?.skippedCount || 0))),
     errorCode: truncateRuntimeLogValue(event?.errorCode || "", 80),
     message: truncateRuntimeLogValue(event?.message || event?.note || "", 260),
     reason: truncateRuntimeLogValue(event?.reason || "", 220)
   };
+}
+
+async function isDeveloperRuntimeLogEnabled(options = {}) {
+  if (!options.force && developerRuntimeLogStateLoaded) {
+    return developerRuntimeLogEnabledCache === true;
+  }
+
+  if (!options.force && developerRuntimeLogStateInFlight) {
+    return developerRuntimeLogStateInFlight;
+  }
+
+  developerRuntimeLogStateInFlight = chrome.storage.local
+    .get(DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY)
+    .then((result) => {
+      developerRuntimeLogEnabledCache =
+        result?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY] === true;
+      developerRuntimeLogStateLoaded = true;
+      return developerRuntimeLogEnabledCache;
+    })
+    .finally(() => {
+      developerRuntimeLogStateInFlight = null;
+    });
+
+  return developerRuntimeLogStateInFlight;
 }
 
 async function appendRuntimeLogEvent(event) {
@@ -187,8 +231,21 @@ async function appendRuntimeLogEvent(event) {
   });
 }
 
+async function writeRuntimeLogEvent(event) {
+  const enabled = await isDeveloperRuntimeLogEnabled();
+  if (!enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "DEVELOPER_RUNTIME_LOG_DISABLED"
+    };
+  }
+  await appendRuntimeLogEvent(event);
+  return { ok: true, skipped: false };
+}
+
 function recordRuntimeLogEvent(event) {
-  appendRuntimeLogEvent(event).catch((error) => {
+  writeRuntimeLogEvent(event).catch((error) => {
     console.warn("[청마루] runtime log write failed", error);
   });
 }
@@ -198,6 +255,7 @@ const SETTINGS_RUNTIME_LOG_KEYS = Object.freeze([
   "sensitivity",
   "categories",
   "interventionMode",
+  "textMaskingEnabled",
   "customBlockWords",
   "customAllowWords",
   "blockedDomains",
@@ -206,6 +264,7 @@ const SETTINGS_RUNTIME_LOG_KEYS = Object.freeze([
   "siteProtectionEnabled",
   "siteNavigationWarningEnabled",
   "searchResultProtectionEnabled",
+  "mediaSafetyEnabled",
   "showWellbeingWidget",
   "wellbeingWidgetStyle",
   "wellbeingAvatarImages",
@@ -241,10 +300,12 @@ function getChangedSettingsKeys(previous = {}, next = {}) {
 function summarizeSettingsForRuntimeLog(settings = {}) {
   return [
     `enabled=${settings?.enabled !== false}`,
+    `text=${settings?.textMaskingEnabled !== false}`,
     `sensitivity=${normalizeSensitivity(settings?.sensitivity)}`,
     `site=${settings?.siteProtectionEnabled !== false}`,
     `navWarning=${settings?.siteNavigationWarningEnabled !== false}`,
     `search=${settings?.searchResultProtectionEnabled !== false}`,
+    `media=${settings?.mediaSafetyEnabled === true}`,
     `widget=${settings?.showWellbeingWidget !== false}`,
     `mode=${settings?.interventionMode || DEFAULT_SETTINGS.interventionMode}`
   ].join("; ");
@@ -264,12 +325,11 @@ async function clearRuntimeEventLogs() {
 }
 
 async function addRuntimeEventLogFromMessage(message) {
-  await appendRuntimeLogEvent({
+  return writeRuntimeLogEvent({
     ...(message?.event || {}),
     type: message?.event?.type || "manual-note",
     source: message?.event?.source || "options"
   });
-  return { ok: true };
 }
 
 function normalizeAnalyzeBatchMode(value) {
@@ -677,9 +737,11 @@ function mergeSettings(stored) {
     ...DEFAULT_SETTINGS,
     ...(stored || {}),
     interventionMode: normalizeInterventionMode(stored?.interventionMode),
+    textMaskingEnabled: stored?.textMaskingEnabled !== false,
     siteProtectionEnabled: stored?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       stored?.wellbeingAgeStageCount,
@@ -3793,6 +3855,14 @@ chrome.runtime.onStartup.addListener(() => {
 ensureWellbeingUsageAlarm();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]) {
+    developerRuntimeLogEnabledCache =
+      changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY].newValue === true;
+    developerRuntimeLogStateLoaded = true;
+    developerRuntimeLogStateInFlight = null;
+    return;
+  }
+
   if (areaName !== "sync" || !changes?.settings) {
     return;
   }
@@ -3820,6 +3890,20 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
       message: changedKeys.join(", "),
       reason: summarizeSettingsForRuntimeLog(changes.settings.newValue || {})
     });
+    if (changedKeys.includes("mediaSafetyEnabled")) {
+      const enabled = mergeSettings(changes.settings.newValue || {}).mediaSafetyEnabled === true;
+      recordRuntimeLogEvent({
+        type: "media-safety-scan",
+        ok: true,
+        status: enabled ? "enabled" : "disabled",
+        source: "settings",
+        count: 0,
+        candidateCount: 0,
+        visibleTileCount: 0,
+        actionCount: 0,
+        reason: "media safety setting changed"
+      });
+    }
   }
 });
 
