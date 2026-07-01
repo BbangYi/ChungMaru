@@ -422,6 +422,10 @@
   transition: none !important;
 }
 
+.shieldtext-media-safety-removed {
+  display: none !important;
+}
+
 .shieldtext-media-safety-hidden > :not(.shieldtext-media-safety-notice) {
   visibility: hidden !important;
   pointer-events: none !important;
@@ -448,8 +452,8 @@
 
 img.shieldtext-media-safety-hidden,
 video.shieldtext-media-safety-hidden {
-  filter: blur(18px) brightness(0.38) saturate(0.2) !important;
-  opacity: 0.08 !important;
+  opacity: 1 !important;
+  background: #161616 !important;
   pointer-events: none !important;
   user-select: none !important;
 }

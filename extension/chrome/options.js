@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -112,6 +113,7 @@ const els = {
   developerLockSection: document.getElementById("developerLockSection"),
   developerToolsSection: document.getElementById("developerToolsSection"),
   developerRuntimeLogEnabledToggle: document.getElementById("developerRuntimeLogEnabledToggle"),
+  mediaSafetyInterventionModeSelect: document.getElementById("mediaSafetyInterventionMode"),
   debugSimulatedHour: document.getElementById("debugSimulatedHour"),
   debugUsageMinutes: document.getElementById("debugUsageMinutes"),
   debugProfanityCount: document.getElementById("debugProfanityCount"),
@@ -158,6 +160,7 @@ function mergeSettings(stored) {
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(stored?.mediaSafetyInterventionMode),
     showWellbeingWidget: stored?.showWellbeingWidget !== false,
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
     wellbeingWidgetStyle: normalizeWidgetStyle(stored?.wellbeingWidgetStyle),
@@ -207,6 +210,13 @@ function normalizeWidgetStyle(value) {
 function normalizeInterventionMode(value) {
   const mode = String(value || DEFAULT_SETTINGS.interventionMode).trim();
   return ["mask", "blur", "hide", "remove"].includes(mode) ? mode : DEFAULT_SETTINGS.interventionMode;
+}
+
+function normalizeMediaSafetyInterventionMode(value) {
+  const mode = String(value || DEFAULT_SETTINGS.mediaSafetyInterventionMode).trim();
+  return ["auto", "placeholder", "remove"].includes(mode)
+    ? mode
+    : DEFAULT_SETTINGS.mediaSafetyInterventionMode;
 }
 
 function normalizeStageCount(value, fallback = 5) {
@@ -414,6 +424,8 @@ function summarizeRuntimeLogCounts(items) {
     skippedTextCount: 0,
     mediaEventCount: 0,
     mediaActionCount: 0,
+    mediaRemovedCount: 0,
+    mediaPlaceholderCount: 0,
     mediaMissedVisibleTileCount: 0,
     manualNoteCount: 0,
     settingsChangeCount: 0
@@ -443,6 +455,8 @@ function summarizeRuntimeLogCounts(items) {
     if (String(item?.type || "").startsWith("media-safety")) {
       summary.mediaEventCount += 1;
       summary.mediaActionCount += Number(item.actionCount || 0);
+      summary.mediaRemovedCount = (summary.mediaRemovedCount || 0) + Number(item.removedCount || 0);
+      summary.mediaPlaceholderCount = (summary.mediaPlaceholderCount || 0) + Number(item.placeholderCount || 0);
       summary.mediaMissedVisibleTileCount += Number(item.missedVisibleTileCount || 0);
     }
     if (item?.type === "manual-note") {
@@ -485,6 +499,11 @@ function buildRuntimeLogNotionReport(items, context = {}) {
         item.candidateCount ? `candidate=${item.candidateCount}` : "",
         item.visibleTileCount ? `visible=${item.visibleTileCount}` : "",
         item.actionCount ? `action=${item.actionCount}` : "",
+        item.removedCount ? `removed=${item.removedCount}` : "",
+        item.placeholderCount ? `placeholder=${item.placeholderCount}` : "",
+        item.mergedTargetCount ? `merged=${item.mergedTargetCount}` : "",
+        item.hiddenAreaPx ? `area=${item.hiddenAreaPx}px` : "",
+        item.viewportCoveragePct ? `viewport=${item.viewportCoveragePct}%` : "",
         item.falseHiddenCount ? `falseHidden=${item.falseHiddenCount}` : "",
         item.domAddedToActionMs ? `dom=${item.domAddedToActionMs}ms` : "",
         item.collectMs ? `collect=${item.collectMs}ms` : "",
@@ -549,6 +568,11 @@ function summarizeRuntimeLogs(items) {
       candidateCount: Number(item.candidateCount || 0),
       visibleTileCount: Number(item.visibleTileCount || 0),
       actionCount: Number(item.actionCount || 0),
+      removedCount: Number(item.removedCount || 0),
+      placeholderCount: Number(item.placeholderCount || 0),
+      mergedTargetCount: Number(item.mergedTargetCount || 0),
+      hiddenAreaPx: Number(item.hiddenAreaPx || 0),
+      viewportCoveragePct: Number(item.viewportCoveragePct || 0),
       falseHiddenCount: Number(item.falseHiddenCount || 0),
       domAddedToActionMs: Number(item.domAddedToActionMs || 0),
       collectMs: Number(item.collectMs || 0),
@@ -905,6 +929,9 @@ function readSettingsFromForm() {
     siteNavigationWarningEnabled: siteProtectionEnabled,
     searchResultProtectionEnabled: siteProtectionEnabled,
     mediaSafetyEnabled: els.mediaSafetyEnabledToggle?.checked === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(
+      els.mediaSafetyInterventionModeSelect?.value
+    ),
     showWellbeingWidget: els.showWellbeingWidgetToggle.checked,
     wellbeingWidgetStyle: normalizeWidgetStyle(els.wellbeingWidgetStyle.value),
     wellbeingAvatarImages: els.wellbeingAvatarImages?.value.trim() || "",
@@ -957,6 +984,11 @@ function renderSettingsToForm(settings) {
   }
   if (els.mediaSafetyEnabledToggle) {
     els.mediaSafetyEnabledToggle.checked = settings.mediaSafetyEnabled === true;
+  }
+  if (els.mediaSafetyInterventionModeSelect) {
+    els.mediaSafetyInterventionModeSelect.value = normalizeMediaSafetyInterventionMode(
+      settings.mediaSafetyInterventionMode
+    );
   }
   els.showWellbeingWidgetToggle.checked = settings.showWellbeingWidget !== false;
   els.wellbeingWidgetStyle.value = normalizeWidgetStyle(settings.wellbeingWidgetStyle);
@@ -1548,6 +1580,13 @@ async function initialize() {
         els.developerRuntimeLogEnabledToggle.checked = developerRuntimeLogEnabled;
         renderStatus(`개발자 로그 설정 실패: ${formatUnexpectedError(error)}`);
       }
+    });
+  }
+  if (els.mediaSafetyInterventionModeSelect) {
+    els.mediaSafetyInterventionModeSelect.addEventListener("change", async () => {
+      currentSettings = readSettingsFromForm();
+      await saveSettingsToSync(currentSettings);
+      renderStatus(`이미지 처리 방식: ${currentSettings.mediaSafetyInterventionMode}`);
     });
   }
   if (els.developerPassword) {

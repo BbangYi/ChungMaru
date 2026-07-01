@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -180,6 +181,11 @@ function normalizeRuntimeLogEvent(event) {
     visibleTileCount: Math.max(0, Math.round(Number(event?.visibleTileCount || 0))),
     cheapFilterHitCount: Math.max(0, Math.round(Number(event?.cheapFilterHitCount || 0))),
     actionCount: Math.max(0, Math.round(Number(event?.actionCount || 0))),
+    removedCount: Math.max(0, Math.round(Number(event?.removedCount || 0))),
+    placeholderCount: Math.max(0, Math.round(Number(event?.placeholderCount || 0))),
+    mergedTargetCount: Math.max(0, Math.round(Number(event?.mergedTargetCount || 0))),
+    hiddenAreaPx: Math.max(0, Math.round(Number(event?.hiddenAreaPx || 0))),
+    viewportCoveragePct: Math.min(100, Math.max(0, Math.round(Number(event?.viewportCoveragePct || 0) * 10) / 10)),
     falseHiddenCount: Math.max(0, Math.round(Number(event?.falseHiddenCount || 0))),
     domAddedToActionMs: Math.max(0, Math.round(Number(event?.domAddedToActionMs || 0))),
     collectMs: Math.max(0, Math.round(Number(event?.collectMs || 0))),
@@ -265,6 +271,7 @@ const SETTINGS_RUNTIME_LOG_KEYS = Object.freeze([
   "siteNavigationWarningEnabled",
   "searchResultProtectionEnabled",
   "mediaSafetyEnabled",
+  "mediaSafetyInterventionMode",
   "showWellbeingWidget",
   "wellbeingWidgetStyle",
   "wellbeingAvatarImages",
@@ -306,6 +313,7 @@ function summarizeSettingsForRuntimeLog(settings = {}) {
     `navWarning=${settings?.siteNavigationWarningEnabled !== false}`,
     `search=${settings?.searchResultProtectionEnabled !== false}`,
     `media=${settings?.mediaSafetyEnabled === true}`,
+    `mediaMode=${settings?.mediaSafetyInterventionMode || DEFAULT_SETTINGS.mediaSafetyInterventionMode}`,
     `widget=${settings?.showWellbeingWidget !== false}`,
     `mode=${settings?.interventionMode || DEFAULT_SETTINGS.interventionMode}`
   ].join("; ");
@@ -492,6 +500,13 @@ function normalizeHealthRequestTimeoutMs(value, fallbackMs = BACKEND_HEALTH_TIME
 function normalizeInterventionMode(value) {
   const mode = String(value || DEFAULT_SETTINGS.interventionMode).trim();
   return ["mask", "blur", "hide", "remove"].includes(mode) ? mode : DEFAULT_SETTINGS.interventionMode;
+}
+
+function normalizeMediaSafetyInterventionMode(value) {
+  const mode = String(value || DEFAULT_SETTINGS.mediaSafetyInterventionMode).trim();
+  return ["auto", "placeholder", "remove"].includes(mode)
+    ? mode
+    : DEFAULT_SETTINGS.mediaSafetyInterventionMode;
 }
 
 function normalizeWellbeingStageCount(value, fallback = 5) {
@@ -742,6 +757,7 @@ function mergeSettings(stored) {
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(stored?.mediaSafetyInterventionMode),
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       stored?.wellbeingAgeStageCount,

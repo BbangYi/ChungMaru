@@ -253,7 +253,7 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         log_handle.close()
 
 
-def build_extension_settings(media_safety_enabled: bool) -> dict[str, Any]:
+def build_extension_settings(media_safety_enabled: bool, media_intervention_mode: str = "auto") -> dict[str, Any]:
     return {
         "enabled": True,
         "sensitivity": 60,
@@ -269,6 +269,7 @@ def build_extension_settings(media_safety_enabled: bool) -> dict[str, Any]:
         "siteNavigationWarningEnabled": False,
         "searchResultProtectionEnabled": False,
         "mediaSafetyEnabled": media_safety_enabled,
+        "mediaSafetyInterventionMode": media_intervention_mode,
         "showWellbeingWidget": False,
         "backendEnabled": False,
         "backendApiBaseUrl": "http://127.0.0.1:8000",
@@ -281,8 +282,9 @@ def set_extension_state(
     *,
     media_safety_enabled: bool,
     developer_log_enabled: bool,
+    media_intervention_mode: str = "auto",
 ) -> dict[str, Any]:
-    settings = build_extension_settings(media_safety_enabled)
+    settings = build_extension_settings(media_safety_enabled, media_intervention_mode)
     expression = (
         "(async () => {"
         "  await chrome.storage.local.remove(['runtimeEventLog', 'lastStats', 'lastPayload', 'lastDecision']);"
@@ -392,6 +394,14 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedVisibleTileCount": max_log_metric(logs, "visibleTileCount"),
       "loggedCheapFilterHitCount": max_log_metric(logs, "cheapFilterHitCount"),
       "loggedActionCount": sum_action_log_metric(logs, "actionCount"),
+      "loggedRemovedCount": sum_action_log_metric(logs, "removedCount"),
+      "loggedPlaceholderCount": sum_action_log_metric(logs, "placeholderCount"),
+      "loggedMergedTargetCount": max_log_metric(logs, "mergedTargetCount"),
+      "loggedHiddenAreaPx": max_log_metric(logs, "hiddenAreaPx"),
+      "loggedViewportCoveragePct10": max_log_metric(
+          [{"viewportCoveragePct10": float(item.get("viewportCoveragePct") or 0) * 10} for item in logs],
+          "viewportCoveragePct10",
+      ),
       "loggedMissedVisibleTileCount": max_log_metric(logs, "missedVisibleTileCount"),
       "loggedFalseHiddenCount": max_log_metric(logs, "falseHiddenCount"),
       "loggedCollectMs": max_log_metric(logs, "collectMs"),
@@ -399,6 +409,18 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedApplyMs": max_log_metric(logs, "applyMs"),
       "loggedDomAddedToActionMs": max_log_metric(logs, "domAddedToActionMs"),
     }
+
+
+def describe_action_mode(removed_count: int, placeholder_count: int, action_count: int) -> str:
+    if removed_count > 0 and placeholder_count > 0:
+      return "mixed"
+    if removed_count > 0:
+      return "remove"
+    if placeholder_count > 0:
+      return "placeholder"
+    if action_count > 0:
+      return "unknown"
+    return "none"
 
 
 def origin_and_path_prefix(url: str) -> tuple[str, str]:
@@ -428,6 +450,14 @@ def build_result_row(
     log_summary = summarize_media_logs(media_logs)
     media_enabled = bool(case["media_safety_enabled"])
     hidden_count = int_metric(dom.get("hiddenCount"))
+    removed_count = max(int_metric(summary.get("removedCount")), log_summary["loggedRemovedCount"])
+    placeholder_count = max(int_metric(summary.get("placeholderCount")), log_summary["loggedPlaceholderCount"])
+    merged_target_count = max(int_metric(summary.get("mergedTargetCount")), log_summary["loggedMergedTargetCount"])
+    hidden_area_px = max(int_metric(summary.get("hiddenAreaPx")), log_summary["loggedHiddenAreaPx"])
+    viewport_coverage_pct = max(
+        float(summary.get("viewportCoveragePct") or 0),
+        float(log_summary["loggedViewportCoveragePct10"]) / 10,
+    )
     harmful_total = int_metric(dom.get("harmfulTotal"))
     harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
     safe_total = int_metric(dom.get("safeTotal"))
@@ -468,6 +498,12 @@ def build_result_row(
         "visible_tile_count": effective_visible_tile_count,
         "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
         "action_count": effective_action_count,
+        "action_mode": describe_action_mode(removed_count, placeholder_count, effective_action_count),
+        "removed_count": removed_count,
+        "placeholder_count": placeholder_count,
+        "merged_target_count": merged_target_count,
+        "hidden_area_px": hidden_area_px,
+        "viewport_coverage_pct": round(viewport_coverage_pct, 1),
         "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
         "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
         "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
@@ -532,6 +568,7 @@ def run_case(
         worker,
         media_safety_enabled=bool(case["media_safety_enabled"]),
         developer_log_enabled=bool(case["developer_log_enabled"]),
+        media_intervention_mode=str(case.get("media_intervention_mode") or "auto"),
     )
     time.sleep(0.25)
     case_url = f"{fixture_url}?scenario={case['scenario']}&case={case['case_id']}"
@@ -540,7 +577,10 @@ def run_case(
     try:
       wait_for_page_ready(page, timeout_s=10)
       time.sleep(0.45)
-      settings = build_extension_settings(bool(case["media_safety_enabled"]))
+      settings = build_extension_settings(
+          bool(case["media_safety_enabled"]),
+          str(case.get("media_intervention_mode") or "auto"),
+      )
       response = send_media_scan_message(
           worker,
           case_url,
@@ -583,6 +623,7 @@ def run_live_case(
         worker,
         media_safety_enabled=bool(case["media_safety_enabled"]),
         developer_log_enabled=bool(case["developer_log_enabled"]),
+        media_intervention_mode=str(case.get("media_intervention_mode") or "auto"),
     )
     time.sleep(0.25)
     target = create_tab(debugging_port, live_url)
@@ -590,7 +631,10 @@ def run_live_case(
     try:
       wait_for_page_ready(page, timeout_s=20)
       time.sleep(settle_seconds)
-      settings = build_extension_settings(bool(case["media_safety_enabled"]))
+      settings = build_extension_settings(
+          bool(case["media_safety_enabled"]),
+          str(case.get("media_intervention_mode") or "auto"),
+      )
       response = send_media_scan_message(
           worker,
           live_url,
@@ -670,6 +714,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fixture-port", type=int, default=0)
     parser.add_argument("--live-url", action="append", default=[])
     parser.add_argument("--live-settle-seconds", type=float, default=2.0)
+    parser.add_argument("--media-intervention-mode", choices=["auto", "placeholder", "remove"], default="auto")
     parser.add_argument("--clean-profile", action="store_true", default=True)
     parser.add_argument("--keep-chrome", action="store_true")
     return parser.parse_args()
@@ -695,24 +740,28 @@ def main() -> int:
                 "scenario": "harmful",
                 "media_safety_enabled": False,
                 "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
             },
             {
                 "case_id": "log_off_harmful",
                 "scenario": "harmful",
                 "media_safety_enabled": True,
                 "developer_log_enabled": False,
+                "media_intervention_mode": args.media_intervention_mode,
             },
             {
                 "case_id": "log_on_harmful",
                 "scenario": "harmful",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
             },
             {
                 "case_id": "log_on_clean",
                 "scenario": "clean",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
             },
         ]
         if args.live_url:
@@ -724,6 +773,7 @@ def main() -> int:
                 "scenario": "live",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
             }
             rows.append(run_live_case(
                 worker,

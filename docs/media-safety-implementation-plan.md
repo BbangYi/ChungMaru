@@ -22,8 +22,10 @@
 - `mediaSafetyEnabled`가 켜진 경우에만 content script가 visible media 후보를 수집한다.
 - 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 검색어/페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
 - 후보 주변 텍스트가 약해도 페이지 전체에 성인/도박/먹튀/토렌트/주소 링크 신호가 겹치면 strict media mode로 visible media를 빠르게 숨긴다.
-- 위험 후보는 실제 DOM 삭제가 아니라 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible hide/blur 처리한다.
+- 위험 후보는 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible 처리한다. 일반 카드형 결과는 placeholder를 유지하고, 팝업/상단 고정 배너처럼 floating overlay로 판단되는 후보는 `display: none` 기반 영역 제거를 우선 적용한다.
+- 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
+- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `hiddenAreaPx`, `viewportCoveragePct`를 남겨 무엇을 얼마나 가렸는지 설명할 수 있게 했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다.
 
 검증된 범위:
@@ -37,12 +39,12 @@
 
 현재 smoke 결과:
 
-| 케이스 | 후보 수 | 숨김 수 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 0 | 1 | 1 | 1 |
-| controlled clean fixture | 2 | 0 | 0 | 1 | 1 | 0 |
-| jusoguide1.com live | 4 | 4 | N/A | 2 | 1 | 1 |
-| jusowhy1.com live | 50 | 50 | N/A | 1 | 1 | 2 |
+| 케이스 | 후보 수 | 처리 수 | 영역 제거 | placeholder | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | 3 | 2 | 0 | 2 | 13.0% | 0 | 2 | 1 | 2 |
+| controlled clean fixture | 2 | 0 | 0 | 0 | 0.0% | 0 | 1 | 1 | 0 |
+| jusoguide1.com live | 2 | 2 | 2 | 0 | 40.7% | N/A | 1 | 1 | 2 |
+| jusowhy1.com live | 25 | 25 | 24 | 1 | 100.0% | N/A | 2 | 2 | 13 |
 
 아직 evidence가 부족한 범위:
 
@@ -176,7 +178,11 @@ OCR 결과는 기존 청마루 텍스트 정규화와 모델 판단 경로에 �
 | `mask` | overlay/placeholder 표시 | 썸네일/이미지 결과 카드 |
 | `blur` | 약한 블러와 경고 스타일 | 애매한 후보 |
 
-초기 구현에서 `remove`는 실제 `node.remove()`가 아니라 `data-shieldtext-media-hidden="true"`를 붙이고 `display: none`으로 처리한다. 설정 변경이나 오탐 확인 시 되돌릴 수 있어야 하기 때문이다.
+초기 구현에서 `remove`는 실제 `node.remove()`가 아니라 `data-chungmaru-media-hidden="true"`를 붙이고 `display: none`으로 처리한다. 설정 변경이나 오탐 확인 시 되돌릴 수 있어야 하기 때문이다.
+
+상단 고정 팝업이나 모달형 배너는 이미지 노드만 가리면 닫기 바, 재열람 방지 바, 뒤쪽 배너 조각이 남을 수 있다. v1은 이미지의 가까운 조상 중 `fixed`/`sticky`, 높은 `z-index`, `popup`/`modal`/`banner`류 class/id, 이미지와의 overlap을 함께 보고 floating overlay 컨테이너를 target으로 승격한다. 이렇게 잡힌 target은 자동 모드에서 영역 제거로 처리해 placeholder가 과도하게 커지는 문제를 줄인다.
+
+동일 영역 또는 포함 관계로 겹치는 후보는 한 번만 처리하고 `mergedTargetCount`로 남긴다. 사용자가 볼 결과와 개발자가 볼 로그를 분리하기 위해, 제품 화면에는 단순히 제거/가림만 적용하고 개발자 로그/CSV에서 `removedCount`, `placeholderCount`, `hiddenAreaPx`, `viewportCoveragePct`로 처리 규모를 확인한다.
 
 ## 고급 설정 UI
 
@@ -278,6 +284,11 @@ Popup에서는 세부 classifier/OCR 토글을 모두 노출하지 않는다. �
   "ocrAttemptCount": 0,
   "ocrPositiveCount": 0,
   "actionCount": 0,
+  "removedCount": 0,
+  "placeholderCount": 0,
+  "mergedTargetCount": 0,
+  "hiddenAreaPx": 0,
+  "viewportCoveragePct": 0,
   "action": "hide",
   "verdict": "block",
   "reason": "query_keyword,card_text",
@@ -310,6 +321,7 @@ CSV column:
 run_id,page_profile,url,query,candidate_count,visible_tile_count,
 cheap_filter_hit_count,classifier_attempt_count,classifier_positive_count,
 ocr_attempt_count,ocr_positive_count,action_count,action_mode,
+removed_count,placeholder_count,merged_target_count,hidden_area_px,viewport_coverage_pct,
 collect_ms,cheap_filter_ms,classifier_ms,ocr_ms,apply_ms,
 dom_added_to_first_action_ms,total_scan_ms,cache_hit_count,
 fetch_blocked_count,missed_visible_tile_count,false_hidden_count

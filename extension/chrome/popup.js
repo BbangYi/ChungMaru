@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",

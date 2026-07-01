@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS = {
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -139,6 +140,8 @@ const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
 const MEDIA_SAFETY_MIN_AREA_PX = 3600;
 const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 320;
+const MEDIA_SAFETY_OVERLAY_Z_INDEX = 10;
+const MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO = 0.65;
 const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
@@ -1033,6 +1036,7 @@ function getMergedSettings(storedSettings) {
     siteNavigationWarningEnabled: storedSettings?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(storedSettings?.mediaSafetyInterventionMode),
     wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       storedSettings?.wellbeingAgeStageCount,
@@ -2079,6 +2083,65 @@ function getMediaSafetyPageContext() {
   };
 }
 
+function normalizeMediaSafetyInterventionMode(value) {
+  return ["auto", "placeholder", "remove"].includes(value) ? value : "auto";
+}
+
+function rectArea(rect) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return 0;
+  }
+  return rect.width * rect.height;
+}
+
+function rectIntersectionArea(left, right) {
+  if (!left || !right) {
+    return 0;
+  }
+  const width = Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left));
+  const height = Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+  return width * height;
+}
+
+function isLikelyFloatingMediaOverlay(element, mediaRect) {
+  if (!(element instanceof Element) || !mediaRect || ["HTML", "BODY"].includes(element.tagName)) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  if (rectArea(rect) > viewportArea * MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO) {
+    return false;
+  }
+  const mediaArea = Math.max(1, rectArea(mediaRect));
+  const overlapRatio = rectIntersectionArea(rect, mediaRect) / mediaArea;
+  if (overlapRatio < 0.72) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  const zIndex = Number.parseInt(style.zIndex || "0", 10);
+  const idClass = `${element.id || ""} ${element.className || ""}`;
+  const nameLooksOverlay = /(?:modal|popup|pop|layer|dialog|toast|floating|banner|ad)/i.test(idClass);
+  const positionLooksOverlay = ["fixed", "sticky"].includes(style.position) || zIndex >= MEDIA_SAFETY_OVERLAY_Z_INDEX;
+  return nameLooksOverlay || positionLooksOverlay;
+}
+
+function getFloatingMediaOverlayContainer(element, mediaRect) {
+  let current = element instanceof Element ? element.parentElement : null;
+  let best = null;
+  let depth = 0;
+  while (current && depth < 6) {
+    if (isLikelyFloatingMediaOverlay(current, mediaRect)) {
+      best = current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return best;
+}
+
 function isReasonableMediaAncestor(candidate, mediaRect) {
   if (!(candidate instanceof Element) || !mediaRect) {
     return false;
@@ -2099,6 +2162,10 @@ function isReasonableMediaAncestor(candidate, mediaRect) {
 function getMediaSafetyContainer(element, mediaRect) {
   if (!(element instanceof Element)) {
     return null;
+  }
+  const floatingOverlay = getFloatingMediaOverlayContainer(element, mediaRect);
+  if (floatingOverlay) {
+    return floatingOverlay;
   }
   const selectors = isGoogleImageSearchPage()
     ? ["[data-ri]", "[data-ved]", "[role='listitem']", "a[href]", "figure", "article", "li"]
@@ -2127,7 +2194,10 @@ function getMediaSafetyContainer(element, mediaRect) {
 }
 
 function getMediaSafetyTarget(element, container, mediaRect) {
-  if (isReasonableMediaAncestor(container, mediaRect)) {
+  if (
+    isReasonableMediaAncestor(container, mediaRect) ||
+    isLikelyFloatingMediaOverlay(container, mediaRect)
+  ) {
     return container;
   }
   return element instanceof Element ? element : null;
@@ -2177,6 +2247,9 @@ function buildMediaSafetyCandidate(element, profile) {
     sourceUrl,
     linkUrl,
     domain,
+    mediaAreaPx: Math.round(rectArea(mediaRect)),
+    targetAreaPx: Math.round(rectArea(target.getBoundingClientRect())),
+    isFloatingOverlay: isLikelyFloatingMediaOverlay(target, mediaRect),
     firstSeenAt: MEDIA_SAFETY_FIRST_SEEN_AT.get(target) || performance.now()
   };
 }
@@ -2216,21 +2289,24 @@ function getMediaSafetyMatch(candidate, pageContext = null) {
   if (MEDIA_SAFETY_GAMBLING_PATTERN.test(haystack) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(haystack)) {
     return {
       category: "gambling",
-      reason: "gambling keyword/domain"
+      reason: "gambling keyword/domain",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
     };
   }
 
   if (MEDIA_SAFETY_ADULT_PATTERN.test(haystack)) {
     return {
       category: "adult",
-      reason: "adult keyword/context"
+      reason: "adult keyword/context",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
     };
   }
 
   if (pageContext?.strictMediaMode && !isKnownSafeMediaFixture(candidate)) {
     return {
       category: pageContext.category || "media",
-      reason: pageContext.reason || "page risk context"
+      reason: pageContext.reason || "page risk context",
+      intervention: "remove"
     };
   }
 
@@ -2249,7 +2325,10 @@ function clearProtectedMediaCandidate(target) {
     return;
   }
   target.classList.remove("shieldtext-media-safety-hidden");
+  target.classList.remove("shieldtext-media-safety-removed");
   target.removeAttribute("data-chungmaru-media-hidden");
+  target.removeAttribute("data-chungmaru-media-action");
+  target.removeAttribute("data-chungmaru-media-area");
   target.removeAttribute("data-shieldtext-media-safety");
   target.removeAttribute("data-chungmaru-media-reason");
 }
@@ -2267,20 +2346,80 @@ function clearMediaSafetyProtection() {
   return cleared;
 }
 
-function applyMediaSafetyCandidate(candidate, match) {
+function resolveMediaSafetyIntervention(candidate, match, settings) {
+  const configured = normalizeMediaSafetyInterventionMode(settings?.mediaSafetyInterventionMode);
+  if (configured !== "auto") {
+    return configured;
+  }
+  if (match?.intervention === "remove" || candidate?.isFloatingOverlay) {
+    return "remove";
+  }
+  return "placeholder";
+}
+
+function describeMediaSafetyAction(removedCount, placeholderCount) {
+  if (removedCount > 0 && placeholderCount > 0) {
+    return "mixed";
+  }
+  if (removedCount > 0) {
+    return "remove";
+  }
+  if (placeholderCount > 0) {
+    return "placeholder";
+  }
+  return "none";
+}
+
+function isMediaSafetyCoveredByAncestor(target) {
+  return Boolean(target?.parentElement?.closest?.("[data-chungmaru-media-hidden='true']"));
+}
+
+function isMediaSafetyRedundantTarget(target, appliedTargets = []) {
+  if (!(target instanceof Element)) {
+    return true;
+  }
+  const targetRect = target.getBoundingClientRect();
+  const targetArea = rectArea(targetRect);
+  for (const appliedTarget of appliedTargets) {
+    if (!(appliedTarget instanceof Element)) {
+      continue;
+    }
+    if (target === appliedTarget || appliedTarget.contains(target) || target.contains(appliedTarget)) {
+      return true;
+    }
+    const appliedRect = appliedTarget.getBoundingClientRect();
+    const minArea = Math.max(1, Math.min(targetArea, rectArea(appliedRect)));
+    if (rectIntersectionArea(targetRect, appliedRect) / minArea >= 0.82) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyMediaSafetyCandidate(candidate, match, settings) {
   const target = candidate?.target;
   if (!(target instanceof Element) || !match) {
-    return false;
+    return { applied: false, action: "", areaPx: 0, merged: false };
   }
   if (target.getAttribute("data-chungmaru-media-hidden") === "true") {
-    return false;
+    return { applied: false, action: "", areaPx: 0, merged: true };
+  }
+  if (isMediaSafetyCoveredByAncestor(target)) {
+    return { applied: false, action: "", areaPx: 0, merged: true };
   }
 
-  target.classList.add("shieldtext-media-safety-hidden");
+  const action = resolveMediaSafetyIntervention(candidate, match, settings);
+  const targetRect = target.getBoundingClientRect();
+  const areaPx = Math.round(rectArea(targetRect));
+  target.classList.add(
+    action === "remove" ? "shieldtext-media-safety-removed" : "shieldtext-media-safety-hidden"
+  );
   target.setAttribute("data-chungmaru-media-hidden", "true");
+  target.setAttribute("data-chungmaru-media-action", action);
+  target.setAttribute("data-chungmaru-media-area", String(areaPx));
   target.setAttribute("data-shieldtext-media-safety", match.category || "media");
   target.setAttribute("data-chungmaru-media-reason", match.reason || "media safety");
-  return true;
+  return { applied: true, action, areaPx, merged: false };
 }
 
 function countKnownHarmfulVisibleMediaMisses() {
@@ -2316,6 +2455,11 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       visibleTileCount: 0,
       cheapFilterHitCount: 0,
       actionCount: 0,
+      removedCount: 0,
+      placeholderCount: 0,
+      mergedTargetCount: 0,
+      hiddenAreaPx: 0,
+      viewportCoveragePct: 0,
       missedVisibleTileCount: 0,
       falseHiddenCount: 0,
       collectMs: 0,
@@ -2341,16 +2485,35 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   const cheapFilterMs = performance.now() - cheapFilterStartedAt;
   const applyStartedAt = performance.now();
   let actionCount = 0;
+  let removedCount = 0;
+  let placeholderCount = 0;
+  let mergedTargetCount = 0;
+  let hiddenAreaPx = 0;
   let falseHiddenCount = 0;
   let domAddedToActionMs = 0;
+  const appliedTargets = [];
 
   suppressMutationFeedback(160);
   for (const entry of selected) {
-    const applied = applyMediaSafetyCandidate(entry.candidate, entry.match);
-    if (!applied) {
+    if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
+      mergedTargetCount += 1;
+      continue;
+    }
+    const result = applyMediaSafetyCandidate(entry.candidate, entry.match, activeSettings);
+    if (result.merged) {
+      mergedTargetCount += 1;
+    }
+    if (!result.applied) {
       continue;
     }
     actionCount += 1;
+    hiddenAreaPx += Math.max(0, Number(result.areaPx || 0));
+    if (result.action === "remove") {
+      removedCount += 1;
+    } else {
+      placeholderCount += 1;
+    }
+    appliedTargets.push(entry.candidate.target);
     if (isKnownSafeMediaFixture(entry.candidate)) {
       falseHiddenCount += 1;
     }
@@ -2361,6 +2524,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   }
   const applyMs = performance.now() - applyStartedAt;
   const missedVisibleTileCount = countKnownHarmfulVisibleMediaMisses();
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
   const summary = {
     ok: true,
     status: "scanned",
@@ -2372,6 +2536,12 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     visibleTileCount: candidates.length,
     cheapFilterHitCount: selected.length,
     actionCount,
+    action: describeMediaSafetyAction(removedCount, placeholderCount),
+    removedCount,
+    placeholderCount,
+    mergedTargetCount,
+    hiddenAreaPx: Math.round(hiddenAreaPx),
+    viewportCoveragePct: Math.min(100, Math.round((hiddenAreaPx / viewportArea) * 1000) / 10),
     missedVisibleTileCount,
     falseHiddenCount,
     collectMs: Math.round(collectMs),
@@ -2389,8 +2559,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   if (actionCount > 0 || missedVisibleTileCount > 0 || falseHiddenCount > 0) {
     emitRuntimeLogEvent({
       type: "media-safety-action",
-      ...summary,
-      action: actionCount > 0 ? "hide" : "none"
+      ...summary
     });
   }
 
