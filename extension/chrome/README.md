@@ -28,6 +28,8 @@
 - Google 이미지 검색 탭(`tbm=isch`, `udm=2`)은 결과 DOM이 매우 커서 일반 검색결과 보호/본문 텍스트 분석을 light mode로 전환합니다. 이때는 검색 입력창 중심의 아주 작은 후보만 유지하고, 이미지 그리드의 대량 mutation/scroll 분석과 사이트 판정 스캔은 실행하지 않습니다.
 - Google 일반 검색 탭은 유해 이미지 차단의 media scan 대상에서 제외합니다. 정보성 검색 결과의 썸네일/아이콘 오탐을 줄이고, 텍스트 마스킹과 검색결과 site policy가 각자 역할을 나눠 처리하게 하기 위함입니다.
 - 유해 이미지 차단은 현재 viewport의 `img`, `picture`, `video`, `background-image` 후보를 먼저 보고, 위험 URL/domain/text 신호가 있는 linked media grid는 제한된 범위에서 보강 수집합니다. 기본 동작은 화면을 먼저 가리는 startup pre-mask가 아니라 bootstrap 즉시 scan으로 판정 후 필요한 후보만 숨기는 decision-first 방식입니다. 짧은 startup gate는 내부 설정으로만 남겨 고위험 host 비교 smoke 또는 비상 fallback에서 명시적으로 켤 수 있고, 이미지/영상이 늦게 로드되면 load/metadata 이벤트를 통해 재스캔합니다.
+- 유해 이미지 smoke runner는 기본적으로 Chrome for Testing을 headless로 실행합니다. 테스트 창이 화면 위로 떠서 작업을 방해하지 않으며, 수동 시각 디버깅이 필요한 경우에만 `scripts/chungmaru_chrome_media_safety_smoke.py --headed`를 사용합니다.
+- seed 기반 live smoke는 최종 URL이 Chrome error page 또는 비 HTTP 페이지면 scan/action을 건너뛰고 `invalid_page`로 기록합니다. 정상 페이지도 최종 URL과 매칭되는 탭에만 메시지를 보내 이전 탭의 media action이 섞이지 않게 합니다.
 - 웰빙 위젯은 현재 탭 하나가 아니라 당일 활성 웹 사용량을 누적합니다.
 - 위젯의 탐지 건수와 화남 정도는 현재 도메인 전체가 아니라 현재 페이지 URL 기준으로 계산합니다. 리디렉션 이후 새 페이지로 이동하면 이전 페이지의 욕설/유해표현 수가 섞이지 않습니다.
 - 표정의 노화 정도는 누적 웹 사용 시간에 따라 바뀌고, 화남 정도는 현재 페이지의 유해/욕설 탐지 수가 늘어날수록 단계적으로 강해집니다. 기본은 각각 5단계이며, 상세 설정에서 단계 수와 단계 간격을 조정할 수 있습니다.

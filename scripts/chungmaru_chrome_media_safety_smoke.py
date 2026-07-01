@@ -6,6 +6,7 @@ import csv
 import html
 import http.server
 import json
+import math
 import shutil
 import socket
 import sys
@@ -35,6 +36,8 @@ DEFAULT_CHROME_LOG = Path("/tmp/chungmaru-chrome-media-safety.log")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
 FIXTURE_OUTPUT_PREFIX = "media-safety-smoke"
 LIVE_OUTPUT_PREFIX = "media-safety-live-smoke"
+LIVE_SUMMARY_PREFIX = "media-safety-live-summary"
+DEFAULT_SITE_SEED_FILE = Path("backend/data/site_intel_seed_massive.json")
 DEFAULT_CHROME_FOR_TESTING_ROOT = Path("/private/tmp/chungmaru-chrome-for-testing/chrome")
 CHROME_FOR_TESTING_EXECUTABLE = (
     "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
@@ -326,6 +329,11 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         f"--load-extension={extension_dir}",
         "about:blank",
     ]
+    if args.headless:
+        command.insert(-1, "--headless=new")
+        command.insert(-1, "--disable-gpu")
+    else:
+        command.insert(-1, "--start-minimized")
     args.chrome_log.parent.mkdir(parents=True, exist_ok=True)
     if args.chrome_log.exists():
         args.chrome_log.unlink()
@@ -400,6 +408,64 @@ def get_runtime_logs(worker: CdpWebSocket) -> list[dict[str, Any]]:
         timeout_s=5,
     )
     return value if isinstance(value, list) else []
+
+
+def send_to_matched_tab(
+    worker: CdpWebSocket,
+    page_url: str,
+    message: dict[str, Any],
+    *,
+    inject_on_failure: bool,
+    timeout_s: float = 5,
+) -> dict[str, Any]:
+    expression = (
+        "(async () => {"
+        f"const pageUrl = {json.dumps(page_url)};"
+        f"const message = {json.dumps(message, ensure_ascii=False)};"
+        f"const injectOnFailure = {json.dumps(inject_on_failure)};"
+        "const files = ['content-runtime-status.js', 'content-editable-overlay.js', 'content-self-test.js', 'content-wellbeing-widget.js', 'content-script.js'];"
+        "async function send(tab, phase) {"
+        "  try {"
+        "    const response = await chrome.tabs.sendMessage(tab.id, message);"
+        "    return { ok: true, tabId: tab.id, phase, response };"
+        "  } catch (error) {"
+        "    return { ok: false, tabId: tab.id, phase, reason: String(error && error.message ? error.message : error) };"
+        "  }"
+        "}"
+        "async function inject(tab) {"
+        "  try {"
+        "    await chrome.scripting.insertCSS({ target: { tabId: tab.id }, files: ['content-style.css'] });"
+        "  } catch (error) {}"
+        "  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });"
+        "  await new Promise((resolve) => setTimeout(resolve, 250));"
+        "}"
+        "const tabs = await chrome.tabs.query({});"
+        "const summaries = tabs.slice(0, 8).map((item) => ({ id: item.id, url: item.url || '', title: item.title || '', active: !!item.active }));"
+        "const matches = tabs.filter((item) => String(item.url || '').startsWith(pageUrl));"
+        "const attempts = [];"
+        "for (const tab of matches) {"
+        "  const response = await send(tab, 'manifest');"
+        "  if (response.ok) return { ...response, tabs: summaries, attempts };"
+        "  attempts.push(response);"
+        "}"
+        "if (injectOnFailure) {"
+        "  for (const tab of matches) {"
+        "    try {"
+        "      await inject(tab);"
+        "    } catch (error) {"
+        "      attempts.push({ tabId: tab.id, phase: 'inject', reason: String(error && error.message ? error.message : error) });"
+        "      continue;"
+        "    }"
+        "    const response = await send(tab, 'programmatic-inject');"
+        "    if (response.ok) return { ...response, tabs: summaries, attempts };"
+        "    attempts.push(response);"
+        "  }"
+        "}"
+        "return { ok: false, reason: 'NO_MATCHED_TAB_ACCEPTED_MESSAGE', tabs: summaries, attempts };"
+        "})()"
+    )
+    value = worker.evaluate(expression, timeout_s=timeout_s)
+    return value if isinstance(value, dict) else {"ok": False, "reason": f"unexpected trigger response: {value!r}"}
 
 
 def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
@@ -512,6 +578,13 @@ def int_metric(value: Any) -> int:
       return max(0, int(value or 0))
     except (TypeError, ValueError):
       return 0
+
+
+def float_metric(value: Any) -> float:
+    try:
+      return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+      return 0.0
 
 
 def max_log_metric(logs: list[dict[str, Any]], key: str) -> int:
@@ -634,6 +707,9 @@ def build_result_row(
     )
     origin, path_prefix = origin_and_path_prefix(url)
     final_origin, final_path_prefix = origin_and_path_prefix(str(dom.get("locationHref") or ""))
+    is_live = case.get("scenario") == "live"
+    is_chrome_error_page = final_origin == "chrome-error://chromewebdata"
+    live_page_ok = (not is_live) or (bool(final_origin) and not is_chrome_error_page)
     return {
         "timestamp": now_iso(),
         "case_id": case["case_id"],
@@ -642,11 +718,20 @@ def build_result_row(
         "url_path_prefix": path_prefix,
         "final_url_origin": final_origin,
         "final_url_path_prefix": final_path_prefix,
+        "live_page_ok": live_page_ok,
+        "live_page_status": "chrome-error" if is_chrome_error_page else ("loaded" if final_origin else "unknown"),
         "media_safety_enabled": bool(case["media_safety_enabled"]),
         "developer_log_enabled": bool(case["developer_log_enabled"]),
         "startup_gate_enabled": bool(case.get("media_safety_startup_gate_enabled")),
+        "repeat_index": int_metric(case.get("repeat_index")),
+        "seed_domain": str(case.get("seed_domain") or ""),
+        "seed_category": str(case.get("seed_category") or ""),
+        "seed_risk_level": str(case.get("seed_risk_level") or ""),
+        "seed_title": str(case.get("seed_title") or "")[:120],
         "scan_ok": bool(summary.get("ok")),
         "scan_status": summary.get("status") or "",
+        "error_code": summary.get("errorCode") or "",
+        "reason": str(summary.get("reason") or "")[:220],
         "candidate_count": effective_candidate_count,
         "visible_tile_count": effective_visible_tile_count,
         "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
@@ -695,32 +780,69 @@ def build_result_row(
     }
 
 
+def build_error_result_row(case: dict[str, Any], url: str, error: Exception) -> dict[str, Any]:
+    return build_result_row(
+        case=case,
+        response={
+            "response": {
+                "ok": False,
+                "status": "error",
+                "errorCode": "LIVE_CASE_FAILED",
+                "reason": str(error),
+            },
+            "phase": "harness",
+        },
+        dom={"locationHref": url},
+        logs=[],
+        url=url,
+        pre_manual_dom={},
+    )
+
+
 def send_media_scan_message(
     worker: CdpWebSocket,
     case_url: str,
     message: dict[str, Any],
     *,
+    strict_url_match: bool = False,
     timeout_s: float,
 ) -> dict[str, Any]:
     last_response: dict[str, Any] = {}
     for _attempt in range(6):
-      last_response = send_to_fixture_tab(
-          worker,
-          case_url,
-          message,
-          inject_on_failure=False,
-          timeout_s=timeout_s,
-      )
+      if strict_url_match:
+        last_response = send_to_matched_tab(
+            worker,
+            case_url,
+            message,
+            inject_on_failure=False,
+            timeout_s=timeout_s,
+        )
+      else:
+        last_response = send_to_fixture_tab(
+            worker,
+            case_url,
+            message,
+            inject_on_failure=False,
+            timeout_s=timeout_s,
+        )
       if last_response.get("ok"):
         return last_response
       time.sleep(0.25)
 
+    if strict_url_match:
+      return send_to_matched_tab(
+          worker,
+          case_url,
+          message,
+          inject_on_failure=True,
+          timeout_s=timeout_s,
+      )
     return send_to_fixture_tab(
-        worker,
-        case_url,
-        message,
-        inject_on_failure=True,
-        timeout_s=timeout_s,
+      worker,
+      case_url,
+      message,
+      inject_on_failure=True,
+      timeout_s=timeout_s,
     )
 
 
@@ -780,6 +902,120 @@ def normalize_live_url(value: str) -> str:
     return raw
 
 
+def read_live_url_file(path: Path) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+      raw = line.strip()
+      if not raw or raw.startswith("#"):
+        continue
+      # Allow either plain URL/domain lines or a simple CSV first-column export.
+      url = raw.split(",", 1)[0].strip()
+      if not url:
+        continue
+      targets.append({"url": normalize_live_url(url)})
+    return targets
+
+
+def load_seed_live_targets(
+    seed_file: Path,
+    *,
+    categories: list[str],
+    risk_levels: list[str],
+    max_sites: int = 0,
+) -> list[dict[str, Any]]:
+    entries = json.loads(seed_file.read_text(encoding="utf-8"))
+    if not isinstance(entries, list):
+      raise ValueError(f"seed file must contain a list: {seed_file}")
+
+    category_filter = {item.strip().lower() for item in categories if item.strip()}
+    risk_filter = {item.strip().lower() for item in risk_levels if item.strip()}
+    candidates: list[dict[str, Any]] = []
+    seen_domains: set[str] = set()
+    for entry in entries:
+      if not isinstance(entry, dict):
+        continue
+      domain = str(entry.get("domain") or "").strip().lower()
+      if not domain or domain in seen_domains:
+        continue
+      category = str(entry.get("category") or "").strip().lower()
+      risk_level = str(entry.get("risk_level") or "").strip().lower()
+      if category_filter and category not in category_filter:
+        continue
+      if risk_filter and risk_level not in risk_filter:
+        continue
+      raw_url = str(entry.get("url") or "").strip() or f"https://{domain}/"
+      seen_domains.add(domain)
+      candidates.append({
+          "url": normalize_live_url(raw_url),
+          "seed_domain": domain,
+          "seed_category": category,
+          "seed_risk_level": risk_level,
+          "seed_title": str(entry.get("title") or "")[:120],
+      })
+
+    if max_sites <= 0:
+      return candidates
+    if len(category_filter) <= 1:
+      return candidates[:max_sites]
+
+    category_order = [item.strip().lower() for item in categories if item.strip()]
+    buckets: dict[str, list[dict[str, Any]]] = {category: [] for category in category_order}
+    for candidate in candidates:
+      buckets.setdefault(str(candidate.get("seed_category") or ""), []).append(candidate)
+
+    selected: list[dict[str, Any]] = []
+    while len(selected) < max_sites:
+      changed = False
+      for category in category_order:
+        bucket = buckets.get(category) or []
+        if not bucket:
+          continue
+        selected.append(bucket.pop(0))
+        changed = True
+        if len(selected) >= max_sites:
+          break
+      if not changed:
+        break
+    return selected
+
+
+def build_live_targets(args: argparse.Namespace) -> list[dict[str, Any]]:
+    targets: list[dict[str, Any]] = []
+    for url in args.live_url:
+      targets.append({"url": normalize_live_url(url)})
+    if args.live_url_file:
+      targets.extend(read_live_url_file(args.live_url_file))
+    if args.live_seed_file:
+      categories = args.live_seed_category or ["adult", "gambling"]
+      risk_levels = args.live_seed_risk_level or ["block"]
+      targets.extend(load_seed_live_targets(
+          args.live_seed_file,
+          categories=categories,
+          risk_levels=risk_levels,
+          max_sites=args.live_max_sites,
+      ))
+
+    deduped: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for target in targets:
+      url = normalize_live_url(str(target.get("url") or ""))
+      if url in seen_urls:
+        continue
+      seen_urls.add(url)
+      deduped.append({**target, "url": url})
+    if args.live_max_sites > 0 and not args.live_seed_file:
+      deduped = deduped[:args.live_max_sites]
+    return deduped
+
+
+def startup_gate_values(mode: str) -> list[bool]:
+    if mode == "decision-first":
+      return [False]
+    if mode == "startup-gate":
+      return [True]
+    return [False, True]
+
+
 def run_live_case(
     worker: CdpWebSocket,
     debugging_port: int,
@@ -801,6 +1037,42 @@ def run_live_case(
     try:
       wait_for_page_ready(page, timeout_s=20)
       time.sleep(settle_seconds)
+      pre_scan_dom = inspect_live_dom(page)
+      current_page_url = str(pre_scan_dom.get("locationHref") or "")
+      final_origin, _final_path_prefix = origin_and_path_prefix(current_page_url)
+      if final_origin == "chrome-error://chromewebdata":
+        return build_result_row(
+            case=case,
+            response={
+                "response": {
+                    "ok": True,
+                    "status": "invalid_page",
+                    "errorCode": "CHROME_ERROR_PAGE",
+                    "reason": "Chrome error page; live media scan skipped.",
+                },
+                "phase": "harness",
+            },
+            dom=pre_scan_dom,
+            logs=[],
+            url=live_url,
+        )
+      parsed_current_page = urllib.parse.urlparse(current_page_url)
+      if parsed_current_page.scheme not in {"http", "https"} or not parsed_current_page.netloc:
+        return build_result_row(
+            case=case,
+            response={
+                "response": {
+                    "ok": True,
+                    "status": "invalid_page",
+                    "errorCode": "NON_HTTP_LIVE_PAGE",
+                    "reason": f"Non-http live page; media scan skipped: {current_page_url[:80]}",
+                },
+                "phase": "harness",
+            },
+            dom=pre_scan_dom,
+            logs=[],
+            url=live_url,
+        )
       settings = build_extension_settings(
           bool(case["media_safety_enabled"]),
           str(case.get("media_intervention_mode") or "auto"),
@@ -808,12 +1080,13 @@ def run_live_case(
       )
       response = send_media_scan_message(
           worker,
-          live_url,
+          current_page_url,
           {
               "type": "RUN_MEDIA_SAFETY_SCAN",
               "reason": f"live-smoke-{case['case_id']}",
               "settings": settings,
           },
+          strict_url_match=True,
           timeout_s=15,
       )
       time.sleep(0.3)
@@ -824,6 +1097,18 @@ def run_live_case(
       page.close()
 
 
+def collect_fieldnames(rows: list[dict[str, Any]]) -> list[str]:
+    fieldnames: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+      for key in row.keys():
+        if key in seen:
+          continue
+        seen.add(key)
+        fieldnames.append(key)
+    return fieldnames
+
+
 def write_outputs(output_dir: Path, rows: list[dict[str, Any]], prefix: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     jsonl_path = output_dir / f"{prefix}.jsonl"
@@ -831,11 +1116,104 @@ def write_outputs(output_dir: Path, rows: list[dict[str, Any]], prefix: str) -> 
     with jsonl_path.open("w", encoding="utf-8") as handle:
       for row in rows:
         handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-    fieldnames = list(rows[0].keys()) if rows else []
+    fieldnames = collect_fieldnames(rows)
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
       writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
       writer.writeheader()
       writer.writerows(rows)
+
+
+def percentile(values: list[int], pct: float) -> int:
+    if not values:
+      return 0
+    sorted_values = sorted(values)
+    index = max(0, min(len(sorted_values) - 1, math.ceil((pct / 100) * len(sorted_values)) - 1))
+    return sorted_values[index]
+
+
+def metric_values(rows: list[dict[str, Any]], key: str, *, successful_only: bool = True) -> list[int]:
+    values: list[int] = []
+    for row in rows:
+      if successful_only and (not bool(row.get("scan_ok")) or not bool(row.get("live_page_ok", True))):
+        continue
+      values.append(int_metric(row.get(key)))
+    return values
+
+
+def float_metric_values(rows: list[dict[str, Any]], key: str, *, successful_only: bool = True) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+      if successful_only and (not bool(row.get("scan_ok")) or not bool(row.get("live_page_ok", True))):
+        continue
+      values.append(float_metric(row.get(key)))
+    return values
+
+
+def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, bool, str, str, str], list[dict[str, Any]]] = {}
+    for row in rows:
+      if row.get("scenario") != "live":
+        continue
+      key = (
+          str(row.get("url_origin") or row.get("final_url_origin") or ""),
+          bool(row.get("startup_gate_enabled")),
+          str(row.get("seed_domain") or ""),
+          str(row.get("seed_category") or ""),
+          str(row.get("seed_risk_level") or ""),
+      )
+      groups.setdefault(key, []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    for (url_origin, startup_gate_enabled, seed_domain, seed_category, seed_risk_level), group_rows in groups.items():
+      ok_rows = [row for row in group_rows if bool(row.get("scan_ok")) and bool(row.get("live_page_ok"))]
+      error_rows = [row for row in group_rows if not bool(row.get("scan_ok"))]
+      invalid_page_rows = [row for row in group_rows if not bool(row.get("live_page_ok"))]
+      visual_candidate_rows = [
+          row for row in ok_rows
+          if int_metric(row.get("candidate_sized_visible_media_element_count")) > 0
+      ]
+      action_rows = [row for row in ok_rows if int_metric(row.get("action_count")) > 0]
+      dom_values = metric_values(group_rows, "dom_added_to_action_ms")
+      apply_values = metric_values(group_rows, "apply_ms")
+      collect_values = metric_values(group_rows, "collect_ms")
+      action_values = metric_values(group_rows, "action_count")
+      remaining_values = metric_values(group_rows, "remaining_visible_tile_count", successful_only=False)
+      false_hidden_values = metric_values(group_rows, "false_hidden_count", successful_only=False)
+      coverage_values = float_metric_values(group_rows, "viewport_coverage_pct", successful_only=False)
+      summary_rows.append({
+          "timestamp": now_iso(),
+          "url_origin": url_origin,
+          "startup_gate_enabled": startup_gate_enabled,
+          "seed_domain": seed_domain,
+          "seed_category": seed_category,
+          "seed_risk_level": seed_risk_level,
+          "run_count": len(group_rows),
+          "ok_count": len(ok_rows),
+          "error_count": len(error_rows),
+          "invalid_page_count": len(invalid_page_rows),
+          "visual_candidate_run_count": len(visual_candidate_rows),
+          "action_run_count": len(action_rows),
+          "action_count_median": percentile(action_values, 50),
+          "action_count_max": max(action_values, default=0),
+          "remaining_visible_tile_count_max": max(remaining_values, default=0),
+          "false_hidden_count_max": max(false_hidden_values, default=0),
+          "viewport_coverage_pct_max": round(max(coverage_values, default=0.0), 1),
+          "collect_ms_p50": percentile(collect_values, 50),
+          "collect_ms_p95": percentile(collect_values, 95),
+          "apply_ms_p50": percentile(apply_values, 50),
+          "apply_ms_p95": percentile(apply_values, 95),
+          "dom_added_to_action_ms_p50": percentile(dom_values, 50),
+          "dom_added_to_action_ms_p95": percentile(dom_values, 95),
+          "error_codes": ";".join(sorted({str(row.get("error_code") or "") for row in error_rows if row.get("error_code")})),
+      })
+    return summary_rows
+
+
+def write_live_summary_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> None:
+    summary_rows = summarize_live_rows(rows)
+    if not summary_rows:
+      return
+    write_outputs(output_dir, summary_rows, LIVE_SUMMARY_PREFIX)
 
 
 def assert_acceptance(rows: list[dict[str, Any]]) -> None:
@@ -896,8 +1274,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debugging-port", type=int, default=9337)
     parser.add_argument("--fixture-port", type=int, default=0)
     parser.add_argument("--live-url", action="append", default=[])
+    parser.add_argument("--live-url-file", type=Path, default=None)
+    parser.add_argument("--live-seed-file", nargs="?", const=DEFAULT_SITE_SEED_FILE, type=Path, default=None)
+    parser.add_argument("--live-seed-category", action="append", default=[])
+    parser.add_argument("--live-seed-risk-level", action="append", default=[])
+    parser.add_argument("--live-max-sites", type=int, default=0)
+    parser.add_argument("--live-repeat", type=int, default=1)
     parser.add_argument("--live-settle-seconds", type=float, default=2.0)
+    parser.add_argument("--live-startup-mode", choices=["both", "decision-first", "startup-gate"], default="both")
     parser.add_argument("--media-intervention-mode", choices=["auto", "placeholder", "remove"], default="auto")
+    display_group = parser.add_mutually_exclusive_group()
+    display_group.add_argument(
+        "--headless",
+        dest="headless",
+        action="store_true",
+        default=True,
+        help="Run Chrome in headless mode so smoke tests do not steal focus. This is the default.",
+    )
+    display_group.add_argument(
+        "--headed",
+        dest="headless",
+        action="store_false",
+        help="Show the Chrome test window for manual visual debugging.",
+    )
     parser.add_argument("--clean-profile", action="store_true", default=True)
     parser.add_argument("--keep-chrome", action="store_true")
     return parser.parse_args()
@@ -964,35 +1363,51 @@ def main() -> int:
               "media_safety_startup_gate_enabled": False,
           },
       ]
-      if args.live_url:
-        live_urls = [normalize_live_url(item) for item in args.live_url]
-        for index, live_url in enumerate(live_urls, start=1):
+      live_requested = bool(args.live_url or args.live_url_file or args.live_seed_file)
+      live_targets = build_live_targets(args)
+      if live_requested and not live_targets:
+        raise RuntimeError("live smoke requested but no live targets were selected")
+      if live_targets:
+        repeat_count = max(1, int(args.live_repeat or 1))
+        startup_modes = startup_gate_values(args.live_startup_mode)
+        for index, target in enumerate(live_targets, start=1):
+          live_url = str(target.get("url") or "")
           parsed = urllib.parse.urlparse(live_url)
           host_slug = parsed.netloc.replace(".", "_")
-          for startup_gate_enabled in [False, True]:
-            case = {
-                "case_id": (
-                    f"live_{index}_{host_slug}_"
-                    f"{'startup_gate' if startup_gate_enabled else 'decision_first'}"
-                ),
-                "scenario": "live",
-                "media_safety_enabled": True,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-                "media_safety_startup_gate_enabled": startup_gate_enabled,
-            }
-            worker = connect_service_worker(args.debugging_port)
-            try:
-              rows.append(run_live_case(
-                  worker,
-                  args.debugging_port,
-                  live_url,
-                  case,
-                  settle_seconds=args.live_settle_seconds,
-              ))
-            finally:
-              worker.close()
+          for repeat_index in range(1, repeat_count + 1):
+            for startup_gate_enabled in startup_modes:
+              mode_label = "startup_gate" if startup_gate_enabled else "decision_first"
+              repeat_suffix = f"_r{repeat_index}" if repeat_count > 1 else ""
+              case = {
+                  "case_id": f"live_{index}_{host_slug}_{mode_label}{repeat_suffix}",
+                  "scenario": "live",
+                  "media_safety_enabled": True,
+                  "developer_log_enabled": True,
+                  "media_intervention_mode": args.media_intervention_mode,
+                  "media_safety_startup_gate_enabled": startup_gate_enabled,
+                  "repeat_index": repeat_index,
+                  "seed_domain": target.get("seed_domain") or "",
+                  "seed_category": target.get("seed_category") or "",
+                  "seed_risk_level": target.get("seed_risk_level") or "",
+                  "seed_title": target.get("seed_title") or "",
+              }
+              worker = None
+              try:
+                worker = connect_service_worker(args.debugging_port)
+                rows.append(run_live_case(
+                    worker,
+                    args.debugging_port,
+                    live_url,
+                    case,
+                    settle_seconds=args.live_settle_seconds,
+                ))
+              except Exception as error:  # noqa: BLE001 - bulk live smoke should keep later URLs running
+                rows.append(build_error_result_row(case, live_url, error))
+              finally:
+                if worker is not None:
+                  worker.close()
         write_outputs(args.output_dir, rows, LIVE_OUTPUT_PREFIX)
+        write_live_summary_outputs(args.output_dir, rows)
       else:
         for case in cases:
           worker = connect_service_worker(args.debugging_port)
@@ -1006,8 +1421,11 @@ def main() -> int:
       return 0
     except Exception as error:  # noqa: BLE001 - smoke output should preserve failure reason
       if rows:
-        prefix = LIVE_OUTPUT_PREFIX if args.live_url else FIXTURE_OUTPUT_PREFIX
+        is_live_run = bool(args.live_url or args.live_url_file or args.live_seed_file)
+        prefix = LIVE_OUTPUT_PREFIX if is_live_run else FIXTURE_OUTPUT_PREFIX
         write_outputs(args.output_dir, rows, prefix)
+        if is_live_run:
+          write_live_summary_outputs(args.output_dir, rows)
       payload = {"ok": False, "error": str(error), "rows": rows}
       hint = read_chrome_log_hint(args.chrome_log)
       if hint:
