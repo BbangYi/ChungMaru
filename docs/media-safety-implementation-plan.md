@@ -22,11 +22,12 @@
 - `mediaSafetyEnabled`가 켜진 경우에만 content script가 visible media 후보를 수집한다.
 - 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 검색어/페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
 - 후보 주변 텍스트가 약해도 페이지 전체에 성인/도박/먹튀/토렌트/주소 링크 신호가 겹치면 strict media mode로 visible media를 빠르게 숨긴다.
+- 주소가이드 계열 live test 도메인인 `jusoguide1.com`, `jusowhy1.com`은 유해사이트 차단 fallback에서도 `block`으로 판정한다.
 - 위험 후보는 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible 처리한다. 일반 카드형 결과는 placeholder를 유지하고, 팝업/상단 고정 배너처럼 floating overlay로 판단되는 후보는 `display: none` 기반 영역 제거를 우선 적용한다.
 - 주소가이드/배너 grid처럼 페이지 자체가 위험하고 유해 이미지가 sibling tile로 쪼개진 경우에는 개별 placeholder를 남기지 않고 compact group으로 병합한다. 자식 tile은 제거하고 부모 영역에는 최소 summary 1개만 남긴다.
 - 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
-- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`를 남겨 무엇을 얼마나 가렸는지 설명할 수 있게 했다.
+- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다.
 
 검증된 범위:
@@ -40,12 +41,12 @@
 
 현재 smoke 결과:
 
-| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 2 | 1 | 1 | 19.7% | 0 | 1 | 0 | 1 |
-| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 |
-| jusoguide1.com live | 2 | 2 | 2 | 0 | 0 | 40.7% | N/A | 1 | 1 | 1 |
-| jusowhy1.com live | 29 | 29 | 29 | 1 | 1 | 82.7% | N/A | 2 | 1 | 3 |
+| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | 3 | 2 | 2 | 1 | 1 | 0 | 19.7% | 0 | 1 | 0 | 1 |
+| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 |
+| jusoguide1.com live | 2 | 2 | 2 | 0 | 0 | 0 | 40.7% | N/A | 1 | 0 | 1 |
+| jusowhy1.com live | 24 | 24 | 24 | 1 | 1 | 6 | 84.0% | N/A | 2 | 0 | 191 |
 
 아직 evidence가 부족한 범위:
 

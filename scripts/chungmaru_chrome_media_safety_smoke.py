@@ -407,6 +407,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
           [{"viewportCoveragePct10": float(item.get("viewportCoveragePct") or 0) * 10} for item in logs],
           "viewportCoveragePct10",
       ),
+      "loggedRemainingVisibleTileCount": max_log_metric(logs, "remainingVisibleTileCount"),
       "loggedMissedVisibleTileCount": max_log_metric(logs, "missedVisibleTileCount"),
       "loggedFalseHiddenCount": max_log_metric(logs, "falseHiddenCount"),
       "loggedCollectMs": max_log_metric(logs, "collectMs"),
@@ -464,6 +465,10 @@ def build_result_row(
         float(summary.get("viewportCoveragePct") or 0),
         float(log_summary["loggedViewportCoveragePct10"]) / 10,
     )
+    remaining_visible_tile_count = max(
+        int_metric(summary.get("remainingVisibleTileCount")),
+        log_summary["loggedRemainingVisibleTileCount"],
+    )
     harmful_total = int_metric(dom.get("harmfulTotal"))
     harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
     safe_total = int_metric(dom.get("safeTotal"))
@@ -511,6 +516,7 @@ def build_result_row(
         "collapsed_group_count": collapsed_group_count,
         "hidden_area_px": hidden_area_px,
         "viewport_coverage_pct": round(viewport_coverage_pct, 1),
+        "remaining_visible_tile_count": remaining_visible_tile_count,
         "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
         "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
         "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),

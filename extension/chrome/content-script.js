@@ -135,6 +135,7 @@ const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
 const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 70;
 const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 140;
 const MEDIA_SAFETY_CANDIDATE_LIMIT = 48;
+const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 140;
 const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
 const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
@@ -195,6 +196,16 @@ const SEARCH_RESULT_CURATED_FALLBACK_POLICIES = Object.freeze([
     domain: "adult-webtoon-plus.kr",
     verdict: "block",
     matchedRule: "adult smoke seed"
+  },
+  {
+    domain: "jusoguide1.com",
+    verdict: "block",
+    matchedRule: "adult gambling link guide"
+  },
+  {
+    domain: "jusowhy1.com",
+    verdict: "block",
+    matchedRule: "adult gambling link guide"
   },
   {
     domain: "dcinside.com",
@@ -1931,6 +1942,7 @@ async function requestCurrentSitePolicy() {
 
 const MEDIA_SAFETY_CANDIDATE_SELECTOR = [
   "img",
+  "picture",
   "video[poster]",
   "[role='img'][aria-label]",
   "[style*='background-image']"
@@ -1940,7 +1952,7 @@ const MEDIA_SAFETY_ADULT_PATTERN =
 const MEDIA_SAFETY_GAMBLING_PATTERN =
   /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|bet(?:ting)?|casino|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|롤링\s*\d|배팅\s*보너스)/i;
 const MEDIA_SAFETY_RISK_DOMAIN_PATTERN =
-  /(?:casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)/i;
+  /(?:juso(?:guide|why)|casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)/i;
 const MEDIA_SAFETY_LINK_GUIDE_PATTERN =
   /(?:주소\s*(?:모음|안내|가이드|변경|바로가기)?|링크\s*(?:모음|사이트|주소)?|토렌트|웹툰|성인\s*사이트|먹튀\s*(?:검증|사이트)?)/i;
 
@@ -1983,6 +1995,15 @@ function isMediaRectVisible(rect) {
 function getMediaSourceUrl(element) {
   if (element instanceof HTMLImageElement) {
     return String(element.currentSrc || element.src || element.getAttribute("src") || "");
+  }
+  if (typeof HTMLPictureElement !== "undefined" && element instanceof HTMLPictureElement) {
+    const image = element.querySelector("img");
+    if (image instanceof HTMLImageElement) {
+      return String(image.currentSrc || image.src || image.getAttribute("src") || "");
+    }
+    const source = element.querySelector("source[srcset]");
+    const srcset = String(source?.getAttribute?.("srcset") || "");
+    return srcset.split(",")[0]?.trim().split(/\s+/)[0] || "";
   }
   if (element instanceof HTMLVideoElement) {
     return String(element.poster || element.getAttribute("poster") || "");
@@ -2279,7 +2300,23 @@ function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT) {
   return candidates;
 }
 
+function isStrictGenericMediaPage(pageContext, profile) {
+  return pageContext?.strictMediaMode === true && profile === "generic";
+}
+
 function getMediaSafetyMatch(candidate, pageContext = null) {
+  if (
+    pageContext?.strictMediaMode &&
+    candidate?.profile === "generic" &&
+    !isKnownSafeMediaFixture(candidate)
+  ) {
+    return {
+      category: pageContext.category || "media",
+      reason: pageContext.reason || "page risk context",
+      intervention: "remove"
+    };
+  }
+
   const haystack = normalizeText([
     candidate?.contextText,
     candidate?.domain,
@@ -2615,6 +2652,25 @@ function countKnownHarmfulVisibleMediaMisses() {
   return missed;
 }
 
+function countVisibleUnprotectedMediaCandidates(limit = 6) {
+  let count = 0;
+  for (const node of document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node)) {
+      continue;
+    }
+    if (isKnownSafeMediaFixture({ element: node, target: node })) {
+      continue;
+    }
+    if (isMediaRectVisible(node.getBoundingClientRect())) {
+      count += 1;
+      if (count >= limit) {
+        return count;
+      }
+    }
+  }
+  return count;
+}
+
 function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   const activeSettings = getMergedSettings(settings || cachedSettings || {});
   if (!isMediaSafetyEnabled(activeSettings)) {
@@ -2634,6 +2690,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       collapsedGroupCount: 0,
       hiddenAreaPx: 0,
       viewportCoveragePct: 0,
+      remainingVisibleTileCount: 0,
       missedVisibleTileCount: 0,
       falseHiddenCount: 0,
       collectMs: 0,
@@ -2644,12 +2701,16 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   }
 
   const startedAt = performance.now();
-  const collectStartedAt = performance.now();
-  const candidates = collectMediaSafetyCandidates();
-  const collectMs = performance.now() - collectStartedAt;
-  const cheapFilterStartedAt = performance.now();
   const pageContext = getMediaSafetyPageContext();
   const profile = getMediaSafetyProfile();
+  const collectStartedAt = performance.now();
+  const candidates = collectMediaSafetyCandidates(
+    isStrictGenericMediaPage(pageContext, profile)
+      ? MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT
+      : MEDIA_SAFETY_CANDIDATE_LIMIT
+  );
+  const collectMs = performance.now() - collectStartedAt;
+  const cheapFilterStartedAt = performance.now();
   const selected = [];
   for (const candidate of candidates) {
     const match = getMediaSafetyMatch(candidate, pageContext);
@@ -2724,8 +2785,87 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
     );
   }
+
+  if (isStrictGenericMediaPage(pageContext, profile) && countVisibleUnprotectedMediaCandidates() > 0) {
+    const residualSelected = [];
+    for (const candidate of collectMediaSafetyCandidates(MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT)) {
+      if (!(candidate?.target instanceof Element)) {
+        continue;
+      }
+      if (candidate.target.getAttribute("data-chungmaru-media-hidden") === "true") {
+        continue;
+      }
+      const match = getMediaSafetyMatch(candidate, pageContext);
+      if (match) {
+        residualSelected.push({ candidate, match });
+      }
+    }
+
+    const residualGrouping = selectMediaSafetyCompactGroups(
+      residualSelected,
+      pageContext,
+      profile,
+      activeSettings
+    );
+    for (const group of residualGrouping.groups) {
+      const result = applyMediaSafetyCompactGroup(group);
+      if (result.hiddenCount <= 0) {
+        continue;
+      }
+      actionCount += result.hiddenCount;
+      removedCount += result.hiddenCount;
+      hiddenAreaPx += result.areaPx;
+      collapsedGroupCount += 1;
+      mergedTargetCount += Math.max(0, result.hiddenCount - 1);
+      for (const entry of group.entries) {
+        appliedTargets.push(entry.candidate.target);
+        if (isKnownSafeMediaFixture(entry.candidate)) {
+          falseHiddenCount += 1;
+        }
+        domAddedToActionMs = Math.max(
+          domAddedToActionMs,
+          performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+        );
+      }
+    }
+
+    for (const entry of residualSelected) {
+      if (residualGrouping.groupedTargets.has(entry.candidate?.target)) {
+        continue;
+      }
+      if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
+        mergedTargetCount += 1;
+        continue;
+      }
+      const result = applyMediaSafetyCandidate(entry.candidate, entry.match, activeSettings);
+      if (result.merged) {
+        mergedTargetCount += 1;
+      }
+      if (!result.applied) {
+        continue;
+      }
+      actionCount += 1;
+      hiddenAreaPx += Math.max(0, Number(result.areaPx || 0));
+      if (result.action === "remove") {
+        removedCount += 1;
+      } else {
+        placeholderCount += 1;
+      }
+      appliedTargets.push(entry.candidate.target);
+      if (isKnownSafeMediaFixture(entry.candidate)) {
+        falseHiddenCount += 1;
+      }
+      domAddedToActionMs = Math.max(
+        domAddedToActionMs,
+        performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+      );
+    }
+  }
   const applyMs = performance.now() - applyStartedAt;
   const missedVisibleTileCount = countKnownHarmfulVisibleMediaMisses();
+  const remainingVisibleTileCount = isStrictGenericMediaPage(pageContext, profile)
+    ? countVisibleUnprotectedMediaCandidates()
+    : 0;
   const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
   const summary = {
     ok: true,
@@ -2745,6 +2885,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     collapsedGroupCount,
     hiddenAreaPx: Math.round(hiddenAreaPx),
     viewportCoveragePct: Math.min(100, Math.round((hiddenAreaPx / viewportArea) * 1000) / 10),
+    remainingVisibleTileCount,
     missedVisibleTileCount,
     falseHiddenCount,
     collectMs: Math.round(collectMs),
@@ -2764,6 +2905,14 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       type: "media-safety-action",
       ...summary
     });
+  }
+
+  if (
+    remainingVisibleTileCount > 0 &&
+    isStrictGenericMediaPage(pageContext, profile) &&
+    options.reason !== "strict-settle"
+  ) {
+    scheduleMediaSafetyScan(activeSettings, { reason: "strict-settle", delayMs: 180 });
   }
 
   return summary;

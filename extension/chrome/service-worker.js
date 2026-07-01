@@ -137,6 +137,24 @@ const CURATED_SITE_POLICY_FALLBACKS = Object.freeze([
     reason: "청마루 기본 성인 콘텐츠 테스트 seed와 일치합니다."
   },
   {
+    domain: "jusoguide1.com",
+    verdict: "block",
+    site_category: "adult-gambling-link-guide",
+    risk_score: 0.94,
+    security_threat: false,
+    harmful_content: true,
+    reason: "성인/카지노/도박 주소를 모아 노출하는 주소가이드형 사이트입니다."
+  },
+  {
+    domain: "jusowhy1.com",
+    verdict: "block",
+    site_category: "adult-gambling-link-guide",
+    risk_score: 0.94,
+    security_threat: false,
+    harmful_content: true,
+    reason: "성인/카지노/도박 주소를 모아 노출하는 주소가이드형 사이트입니다."
+  },
+  {
     domain: "dcinside.com",
     verdict: "warning",
     site_category: "community",
@@ -187,6 +205,7 @@ function normalizeRuntimeLogEvent(event) {
     collapsedGroupCount: Math.max(0, Math.round(Number(event?.collapsedGroupCount || 0))),
     hiddenAreaPx: Math.max(0, Math.round(Number(event?.hiddenAreaPx || 0))),
     viewportCoveragePct: Math.min(100, Math.max(0, Math.round(Number(event?.viewportCoveragePct || 0) * 10) / 10)),
+    remainingVisibleTileCount: Math.max(0, Math.round(Number(event?.remainingVisibleTileCount || 0))),
     falseHiddenCount: Math.max(0, Math.round(Number(event?.falseHiddenCount || 0))),
     domAddedToActionMs: Math.max(0, Math.round(Number(event?.domAddedToActionMs || 0))),
     collectMs: Math.max(0, Math.round(Number(event?.collectMs || 0))),

@@ -34,7 +34,7 @@
 - 백엔드 연동은 기본값이 꺼짐입니다. 평소에는 로컬/확장 내 규칙과 캐시만 쓰며 `/health`, `/analyze_batch`, `/site/check`, warmup 요청을 보내지 않습니다.
 - 백엔드 모델 검증이 필요할 때만 상세 설정의 개발자 테스트 모드에서 비밀번호 `chungmaru-dev`를 입력하고 `백엔드 연동 켜기`를 체크한 뒤 `연결 확인` 또는 사이트 판정 테스트를 실행합니다.
 - 개발자 테스트 모드에서는 비밀번호 `chungmaru-dev`로 위젯 사용 시간, 탐지 개수, 사이트 판정, 단계별 이미지 매핑을 임시로 시뮬레이션할 수 있습니다. 단계별 이미지는 URL/data URL을 직접 쓰거나, 단계 선택 후 이미지를 붙여넣어 `local:<단계>` 참조로 저장할 수 있습니다. 이미지 슬롯은 설정된 늙음/화남 단계 수에 맞춰 `age1`부터 최대 `age10`, `anger1`부터 최대 `anger10`까지 표시됩니다.
-- 개발자 테스트 모드의 `사이트 판정 확인`은 실제 이동 없이 URL 하나를 백엔드 `/site/check` 또는 확장 내 fallback 정책으로 조회합니다. 백엔드 연동이 꺼져 있으면 수동 도메인/내장 fallback만 사용합니다. `adult-webtoon-plus.kr`는 `block`, `dcinside.com`은 `warning` smoke에 사용합니다.
+- 개발자 테스트 모드의 `사이트 판정 확인`은 실제 이동 없이 URL 하나를 백엔드 `/site/check` 또는 확장 내 fallback 정책으로 조회합니다. 백엔드 연동이 꺼져 있으면 수동 도메인/내장 fallback만 사용합니다. `adult-webtoon-plus.kr`, `jusoguide1.com`, `jusowhy1.com`는 `block`, `dcinside.com`은 `warning` smoke에 사용합니다.
 - 같은 영역의 `체크리스트 복사`는 Chrome 새로고침, 백엔드 연결, 사이트 판정, 검색 결과 보호, 위젯 초기화 확인 순서를 Markdown으로 복사합니다.
 - 이미 로드된 페이지에서 뒤늦게 `block` 판정이 확인되면 화면 중앙에 확대한 청마루 얼굴과 함께 전면 보호 화면을 띄웁니다.
 
@@ -60,12 +60,13 @@
 백엔드 seed 스크립트 기준 테스트용 범주는 아래와 같습니다.
 
 - 성인 콘텐츠: `adult-webtoon-plus.kr`, `secret-room-adult.kr`
+- 성인/도박 주소 허브: `jusoguide1.com`, `jusowhy1.com`
 - 도박/토토: `vip-toto-365.kr`, `power-casino-choice.kr`
 - 피싱/계정 탈취: `naver-secure-login.kr`, `paypal-password-reset.com`
 - 악성코드/비공식 설치 파일: `driver-update-korea.kr`, `office-free-patch.kr`
 
 위 seed 도메인 중 일부는 실제 접속 테스트용 사이트가 아니라 정책/API 결과를 만들기 위한 예시 데이터입니다. 브라우저에서 바로 접속 전 경고 화면을 보려면 `상세 설정`의 `항상 차단할 도메인`에 안전한 테스트 도메인(예: `example.com`)을 임시로 넣고 저장한 뒤 해당 사이트에 접속합니다.
-검색 결과 보호와 접속 전 경고는 백엔드가 켜져 있으면 `/site/check`가 `block` 또는 `warning`으로 판단한 결과를 카드 단위로 보호합니다. 빠른 smoke를 위해 extension 쪽에도 백엔드 seed와 동일한 최소 fallback이 들어 있습니다. Google에서 `디시인사이드`를 검색하면 `dcinside.com` 결과는 `warning`, `adult-webtoon-plus.kr`와 `google-account-verify.com` 결과는 `block`으로 처리됩니다. 같은 도메인으로 직접 이동해도 백엔드 상태와 무관하게 접속 전 경고가 뜹니다. 추가 수동 테스트가 필요하면 Google 검색 결과에 실제로 보이는 도메인을 `항상 차단할 도메인`에 임시로 넣고 저장하면 됩니다.
+검색 결과 보호와 접속 전 경고는 백엔드가 켜져 있으면 `/site/check`가 `block` 또는 `warning`으로 판단한 결과를 카드 단위로 보호합니다. 빠른 smoke를 위해 extension 쪽에도 백엔드 seed와 동일한 최소 fallback이 들어 있습니다. Google에서 `디시인사이드`를 검색하면 `dcinside.com` 결과는 `warning`, `adult-webtoon-plus.kr`, `jusoguide1.com`, `jusowhy1.com`, `google-account-verify.com` 결과는 `block`으로 처리됩니다. 같은 도메인으로 직접 이동해도 백엔드 상태와 무관하게 접속 전 경고가 뜹니다. 추가 수동 테스트가 필요하면 Google 검색 결과에 실제로 보이는 도메인을 `항상 차단할 도메인`에 임시로 넣고 저장하면 됩니다.
 
 위젯 사용시간이나 탐지 카운트가 이전 테스트 때문에 남아 있으면 `상세 설정` > `개발자 테스트`에서 비밀번호 `chungmaru-dev`로 연 뒤 `위젯 통계 초기화`를 누르면 됩니다.
 
