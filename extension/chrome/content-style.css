@@ -426,6 +426,26 @@
   display: none !important;
 }
 
+.shieldtext-media-safety-group-summary {
+  grid-column: 1 / -1 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 38px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 12px !important;
+  margin: 0 !important;
+  background: #161616 !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  text-align: center !important;
+}
+
 .shieldtext-media-safety-hidden > :not(.shieldtext-media-safety-notice) {
   visibility: hidden !important;
   pointer-events: none !important;

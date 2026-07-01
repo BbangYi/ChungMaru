@@ -426,6 +426,7 @@ function summarizeRuntimeLogCounts(items) {
     mediaActionCount: 0,
     mediaRemovedCount: 0,
     mediaPlaceholderCount: 0,
+    mediaCollapsedGroupCount: 0,
     mediaMissedVisibleTileCount: 0,
     manualNoteCount: 0,
     settingsChangeCount: 0
@@ -457,6 +458,7 @@ function summarizeRuntimeLogCounts(items) {
       summary.mediaActionCount += Number(item.actionCount || 0);
       summary.mediaRemovedCount = (summary.mediaRemovedCount || 0) + Number(item.removedCount || 0);
       summary.mediaPlaceholderCount = (summary.mediaPlaceholderCount || 0) + Number(item.placeholderCount || 0);
+      summary.mediaCollapsedGroupCount = (summary.mediaCollapsedGroupCount || 0) + Number(item.collapsedGroupCount || 0);
       summary.mediaMissedVisibleTileCount += Number(item.missedVisibleTileCount || 0);
     }
     if (item?.type === "manual-note") {
@@ -502,6 +504,7 @@ function buildRuntimeLogNotionReport(items, context = {}) {
         item.removedCount ? `removed=${item.removedCount}` : "",
         item.placeholderCount ? `placeholder=${item.placeholderCount}` : "",
         item.mergedTargetCount ? `merged=${item.mergedTargetCount}` : "",
+        item.collapsedGroupCount ? `groups=${item.collapsedGroupCount}` : "",
         item.hiddenAreaPx ? `area=${item.hiddenAreaPx}px` : "",
         item.viewportCoveragePct ? `viewport=${item.viewportCoveragePct}%` : "",
         item.falseHiddenCount ? `falseHidden=${item.falseHiddenCount}` : "",
@@ -571,6 +574,7 @@ function summarizeRuntimeLogs(items) {
       removedCount: Number(item.removedCount || 0),
       placeholderCount: Number(item.placeholderCount || 0),
       mergedTargetCount: Number(item.mergedTargetCount || 0),
+      collapsedGroupCount: Number(item.collapsedGroupCount || 0),
       hiddenAreaPx: Number(item.hiddenAreaPx || 0),
       viewportCoveragePct: Number(item.viewportCoveragePct || 0),
       falseHiddenCount: Number(item.falseHiddenCount || 0),

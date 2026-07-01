@@ -23,9 +23,10 @@
 - 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 검색어/페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
 - 후보 주변 텍스트가 약해도 페이지 전체에 성인/도박/먹튀/토렌트/주소 링크 신호가 겹치면 strict media mode로 visible media를 빠르게 숨긴다.
 - 위험 후보는 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible 처리한다. 일반 카드형 결과는 placeholder를 유지하고, 팝업/상단 고정 배너처럼 floating overlay로 판단되는 후보는 `display: none` 기반 영역 제거를 우선 적용한다.
+- 주소가이드/배너 grid처럼 페이지 자체가 위험하고 유해 이미지가 sibling tile로 쪼개진 경우에는 개별 placeholder를 남기지 않고 compact group으로 병합한다. 자식 tile은 제거하고 부모 영역에는 최소 summary 1개만 남긴다.
 - 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
-- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `hiddenAreaPx`, `viewportCoveragePct`를 남겨 무엇을 얼마나 가렸는지 설명할 수 있게 했다.
+- Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`를 남겨 무엇을 얼마나 가렸는지 설명할 수 있게 했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다.
 
 검증된 범위:
@@ -39,12 +40,12 @@
 
 현재 smoke 결과:
 
-| 케이스 | 후보 수 | 처리 수 | 영역 제거 | placeholder | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 0 | 2 | 13.0% | 0 | 2 | 1 | 2 |
-| controlled clean fixture | 2 | 0 | 0 | 0 | 0.0% | 0 | 1 | 1 | 0 |
-| jusoguide1.com live | 2 | 2 | 2 | 0 | 40.7% | N/A | 1 | 1 | 2 |
-| jusowhy1.com live | 25 | 25 | 24 | 1 | 100.0% | N/A | 2 | 2 | 13 |
+| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | 3 | 2 | 2 | 1 | 1 | 19.7% | 0 | 1 | 0 | 1 |
+| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 |
+| jusoguide1.com live | 2 | 2 | 2 | 0 | 0 | 40.7% | N/A | 1 | 1 | 1 |
+| jusowhy1.com live | 29 | 29 | 29 | 1 | 1 | 82.7% | N/A | 2 | 1 | 3 |
 
 아직 evidence가 부족한 범위:
 
@@ -182,7 +183,7 @@ OCR 결과는 기존 청마루 텍스트 정규화와 모델 판단 경로에 �
 
 상단 고정 팝업이나 모달형 배너는 이미지 노드만 가리면 닫기 바, 재열람 방지 바, 뒤쪽 배너 조각이 남을 수 있다. v1은 이미지의 가까운 조상 중 `fixed`/`sticky`, 높은 `z-index`, `popup`/`modal`/`banner`류 class/id, 이미지와의 overlap을 함께 보고 floating overlay 컨테이너를 target으로 승격한다. 이렇게 잡힌 target은 자동 모드에서 영역 제거로 처리해 placeholder가 과도하게 커지는 문제를 줄인다.
 
-동일 영역 또는 포함 관계로 겹치는 후보는 한 번만 처리하고 `mergedTargetCount`로 남긴다. 사용자가 볼 결과와 개발자가 볼 로그를 분리하기 위해, 제품 화면에는 단순히 제거/가림만 적용하고 개발자 로그/CSV에서 `removedCount`, `placeholderCount`, `hiddenAreaPx`, `viewportCoveragePct`로 처리 규모를 확인한다.
+동일 영역 또는 포함 관계로 겹치는 후보는 한 번만 처리하고 `mergedTargetCount`로 남긴다. 주소가이드/배너 grid처럼 같은 부모 아래에 유해 tile이 여러 개 붙은 경우에는 compact group으로 접어 `collapsedGroupCount`와 `compact_summary_count`를 남긴다. 사용자가 볼 결과와 개발자가 볼 로그를 분리하기 위해, 제품 화면에는 제거/가림 또는 최소 summary만 적용하고 개발자 로그/CSV에서 `removedCount`, `placeholderCount`, `hiddenAreaPx`, `viewportCoveragePct`로 처리 규모를 확인한다.
 
 ## 고급 설정 UI
 

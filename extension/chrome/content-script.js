@@ -142,6 +142,9 @@ const MEDIA_SAFETY_MIN_AREA_PX = 3600;
 const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 320;
 const MEDIA_SAFETY_OVERLAY_Z_INDEX = 10;
 const MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO = 0.65;
+const MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT = 2;
+const MEDIA_SAFETY_COMPACT_GROUP_MAX_DEPTH = 5;
+const MEDIA_SAFETY_COMPACT_GROUP_MAX_VIEWPORT_AREA_RATIO = 2.5;
 const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
@@ -505,6 +508,7 @@ let googleSearchLocalPreflightTimerId = null;
 let mediaSafetyFrameId = null;
 let mediaSafetyTimerId = null;
 let mediaSafetyRunId = 0;
+let mediaSafetyGroupId = 0;
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -933,7 +937,7 @@ function isShieldTextManagedElement(element) {
 
   return Boolean(
     element.closest(
-      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true'], [data-chungmaru-media-hidden='true']"
+      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true'], [data-chungmaru-media-hidden='true'], [data-chungmaru-media-summary='true']"
     )
   );
 }
@@ -2326,9 +2330,11 @@ function clearProtectedMediaCandidate(target) {
   }
   target.classList.remove("shieldtext-media-safety-hidden");
   target.classList.remove("shieldtext-media-safety-removed");
+  target.classList.remove("shieldtext-media-safety-group");
   target.removeAttribute("data-chungmaru-media-hidden");
   target.removeAttribute("data-chungmaru-media-action");
   target.removeAttribute("data-chungmaru-media-area");
+  target.removeAttribute("data-chungmaru-media-group-id");
   target.removeAttribute("data-shieldtext-media-safety");
   target.removeAttribute("data-chungmaru-media-reason");
 }
@@ -2339,6 +2345,14 @@ function clearMediaSafetyProtection() {
   }
 
   let cleared = 0;
+  for (const summary of document.querySelectorAll("[data-chungmaru-media-summary='true']")) {
+    summary.remove();
+    cleared += 1;
+  }
+  for (const group of document.querySelectorAll(".shieldtext-media-safety-group")) {
+    group.classList.remove("shieldtext-media-safety-group");
+    group.removeAttribute("data-chungmaru-media-group-id");
+  }
   for (const target of document.querySelectorAll(".shieldtext-media-safety-hidden, [data-chungmaru-media-hidden='true']")) {
     clearProtectedMediaCandidate(target);
     cleared += 1;
@@ -2368,6 +2382,165 @@ function describeMediaSafetyAction(removedCount, placeholderCount) {
     return "placeholder";
   }
   return "none";
+}
+
+function shouldUseCompactMediaGroup(pageContext, profile, settings) {
+  const configured = normalizeMediaSafetyInterventionMode(settings?.mediaSafetyInterventionMode);
+  return (
+    configured === "auto" &&
+    pageContext?.strictMediaMode === true &&
+    profile === "generic"
+  );
+}
+
+function countVisibleMediaDescendants(root, limit = MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+  if (!(root instanceof Element)) {
+    return 0;
+  }
+  let count = 0;
+  for (const node of root.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node)) {
+      continue;
+    }
+    if (isMediaRectVisible(node.getBoundingClientRect())) {
+      count += 1;
+      if (count >= limit) {
+        return count;
+      }
+    }
+  }
+  return count;
+}
+
+function getMediaSafetyCompactGroupRoot(target) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  let current = target.parentElement;
+  let depth = 0;
+  while (current && depth < MEDIA_SAFETY_COMPACT_GROUP_MAX_DEPTH) {
+    if (["HTML", "BODY"].includes(current.tagName)) {
+      return null;
+    }
+    const rect = current.getBoundingClientRect();
+    if (
+      rect &&
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rectArea(rect) <= viewportArea * MEDIA_SAFETY_COMPACT_GROUP_MAX_VIEWPORT_AREA_RATIO &&
+      countVisibleMediaDescendants(current) >= MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return null;
+}
+
+function selectMediaSafetyCompactGroups(selected, pageContext, profile, settings) {
+  if (!shouldUseCompactMediaGroup(pageContext, profile, settings)) {
+    return { groups: [], groupedTargets: new Set() };
+  }
+  const byRoot = new Map();
+  for (const entry of selected) {
+    const target = entry?.candidate?.target;
+    if (!(target instanceof Element) || entry?.candidate?.isFloatingOverlay) {
+      continue;
+    }
+    const root = getMediaSafetyCompactGroupRoot(target);
+    if (!root) {
+      continue;
+    }
+    if (!byRoot.has(root)) {
+      byRoot.set(root, []);
+    }
+    byRoot.get(root).push(entry);
+  }
+
+  const groups = [];
+  const groupedTargets = new Set();
+  for (const [root, entries] of byRoot.entries()) {
+    const uniqueEntries = [];
+    const seen = new Set();
+    for (const entry of entries) {
+      const target = entry?.candidate?.target;
+      if (!(target instanceof Element) || seen.has(target)) {
+        continue;
+      }
+      seen.add(target);
+      uniqueEntries.push(entry);
+    }
+    if (uniqueEntries.length < MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+      continue;
+    }
+    groups.push({ root, entries: uniqueEntries });
+    for (const entry of uniqueEntries) {
+      groupedTargets.add(entry.candidate.target);
+    }
+  }
+  return { groups, groupedTargets };
+}
+
+function ensureMediaSafetyGroupSummary(root, count, reason) {
+  if (!(root instanceof Element)) {
+    return null;
+  }
+  const existing = Array.from(root.children).find((child) => (
+    child instanceof Element &&
+    child.getAttribute("data-chungmaru-media-summary") === "true"
+  ));
+  const summary = existing || document.createElement("div");
+  summary.className = "shieldtext-media-safety-group-summary";
+  summary.setAttribute("data-chungmaru-media-summary", "true");
+  summary.setAttribute("role", "note");
+  summary.textContent = `청마루 이미지 보호 · 유해 이미지 ${count}개 숨김`;
+  if (reason) {
+    summary.setAttribute("title", reason);
+  }
+  if (!existing) {
+    root.insertBefore(summary, root.firstChild);
+  }
+  return summary;
+}
+
+function applyMediaSafetyCompactGroup(group) {
+  const root = group?.root;
+  const entries = Array.isArray(group?.entries) ? group.entries : [];
+  if (!(root instanceof Element) || entries.length < MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+    return { hiddenCount: 0, areaPx: 0 };
+  }
+
+  const groupId = root.getAttribute("data-chungmaru-media-group-id") || `media-group-${++mediaSafetyGroupId}`;
+  root.classList.add("shieldtext-media-safety-group");
+  root.setAttribute("data-chungmaru-media-group-id", groupId);
+
+  let hiddenCount = 0;
+  let areaPx = 0;
+  let reason = "";
+  for (const entry of entries) {
+    const target = entry?.candidate?.target;
+    if (!(target instanceof Element) || target.getAttribute("data-chungmaru-media-hidden") === "true") {
+      continue;
+    }
+    const targetRect = target.getBoundingClientRect();
+    areaPx += Math.max(0, Math.round(rectArea(targetRect)));
+    target.classList.add("shieldtext-media-safety-removed");
+    target.setAttribute("data-chungmaru-media-hidden", "true");
+    target.setAttribute("data-chungmaru-media-action", "compact");
+    target.setAttribute("data-chungmaru-media-area", String(Math.round(rectArea(targetRect))));
+    target.setAttribute("data-chungmaru-media-group-id", groupId);
+    target.setAttribute("data-shieldtext-media-safety", entry.match?.category || "media");
+    target.setAttribute("data-chungmaru-media-reason", entry.match?.reason || "media safety compact group");
+    reason = reason || entry.match?.reason || "";
+    hiddenCount += 1;
+  }
+
+  if (hiddenCount > 0) {
+    ensureMediaSafetyGroupSummary(root, hiddenCount, reason || "media safety compact group");
+  }
+  return { hiddenCount, areaPx };
 }
 
 function isMediaSafetyCoveredByAncestor(target) {
@@ -2458,6 +2631,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       removedCount: 0,
       placeholderCount: 0,
       mergedTargetCount: 0,
+      collapsedGroupCount: 0,
       hiddenAreaPx: 0,
       viewportCoveragePct: 0,
       missedVisibleTileCount: 0,
@@ -2475,6 +2649,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   const collectMs = performance.now() - collectStartedAt;
   const cheapFilterStartedAt = performance.now();
   const pageContext = getMediaSafetyPageContext();
+  const profile = getMediaSafetyProfile();
   const selected = [];
   for (const candidate of candidates) {
     const match = getMediaSafetyMatch(candidate, pageContext);
@@ -2488,13 +2663,40 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   let removedCount = 0;
   let placeholderCount = 0;
   let mergedTargetCount = 0;
+  let collapsedGroupCount = 0;
   let hiddenAreaPx = 0;
   let falseHiddenCount = 0;
   let domAddedToActionMs = 0;
   const appliedTargets = [];
+  const compactGrouping = selectMediaSafetyCompactGroups(selected, pageContext, profile, activeSettings);
 
   suppressMutationFeedback(160);
+  for (const group of compactGrouping.groups) {
+    const result = applyMediaSafetyCompactGroup(group);
+    if (result.hiddenCount <= 0) {
+      continue;
+    }
+    actionCount += result.hiddenCount;
+    removedCount += result.hiddenCount;
+    hiddenAreaPx += result.areaPx;
+    collapsedGroupCount += 1;
+    mergedTargetCount += Math.max(0, result.hiddenCount - 1);
+    for (const entry of group.entries) {
+      appliedTargets.push(entry.candidate.target);
+      if (isKnownSafeMediaFixture(entry.candidate)) {
+        falseHiddenCount += 1;
+      }
+      domAddedToActionMs = Math.max(
+        domAddedToActionMs,
+        performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+      );
+    }
+  }
+
   for (const entry of selected) {
+    if (compactGrouping.groupedTargets.has(entry.candidate?.target)) {
+      continue;
+    }
     if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
       mergedTargetCount += 1;
       continue;
@@ -2529,7 +2731,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     ok: true,
     status: "scanned",
     source: "content-script",
-    profile: getMediaSafetyProfile(),
+    profile,
     reason: options.reason || "media-safety-scan",
     durationMs: Math.round(performance.now() - startedAt),
     candidateCount: candidates.length,
@@ -2540,6 +2742,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     removedCount,
     placeholderCount,
     mergedTargetCount,
+    collapsedGroupCount,
     hiddenAreaPx: Math.round(hiddenAreaPx),
     viewportCoveragePct: Math.min(100, Math.round((hiddenAreaPx / viewportArea) * 1000) / 10),
     missedVisibleTileCount,

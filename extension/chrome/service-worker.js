@@ -184,6 +184,7 @@ function normalizeRuntimeLogEvent(event) {
     removedCount: Math.max(0, Math.round(Number(event?.removedCount || 0))),
     placeholderCount: Math.max(0, Math.round(Number(event?.placeholderCount || 0))),
     mergedTargetCount: Math.max(0, Math.round(Number(event?.mergedTargetCount || 0))),
+    collapsedGroupCount: Math.max(0, Math.round(Number(event?.collapsedGroupCount || 0))),
     hiddenAreaPx: Math.max(0, Math.round(Number(event?.hiddenAreaPx || 0))),
     viewportCoveragePct: Math.min(100, Math.max(0, Math.round(Number(event?.viewportCoveragePct || 0) * 10) / 10)),
     falseHiddenCount: Math.max(0, Math.round(Number(event?.falseHiddenCount || 0))),

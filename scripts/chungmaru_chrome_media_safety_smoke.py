@@ -312,6 +312,7 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
     value = page.evaluate(
         """(() => {
           const hidden = Array.from(document.querySelectorAll('[data-chungmaru-media-hidden="true"]'));
+          const summaries = Array.from(document.querySelectorAll('[data-chungmaru-media-summary="true"]'));
           const harmful = Array.from(document.querySelectorAll('[data-chungmaru-media-harmful="true"]'));
           const safe = Array.from(document.querySelectorAll('[data-chungmaru-media-safe="true"]'));
           const markerHidden = (marker) => Boolean(
@@ -320,6 +321,7 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
           );
           return {
             hiddenCount: hidden.length,
+            compactSummaryCount: summaries.length,
             harmfulTotal: harmful.length,
             harmfulHiddenCount: harmful.filter(markerHidden).length,
             safeTotal: safe.length,
@@ -346,6 +348,7 @@ def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
             return rect.width >= 24 && rect.height >= 24 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth;
           };
           const hidden = Array.from(document.querySelectorAll('[data-chungmaru-media-hidden="true"]'));
+          const summaries = Array.from(document.querySelectorAll('[data-chungmaru-media-summary="true"]'));
           const media = Array.from(document.querySelectorAll('img, video[poster], [role="img"], picture, source'));
           const backgrounds = Array.from(document.querySelectorAll('a, article, div, section')).filter((node) => {
             const image = window.getComputedStyle(node).backgroundImage || '';
@@ -355,6 +358,7 @@ def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
             locationHref: window.location.href,
             readyState: document.readyState,
             hiddenCount: hidden.length,
+            compactSummaryCount: summaries.length,
             harmfulTotal: 0,
             harmfulHiddenCount: 0,
             safeTotal: 0,
@@ -397,6 +401,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedRemovedCount": sum_action_log_metric(logs, "removedCount"),
       "loggedPlaceholderCount": sum_action_log_metric(logs, "placeholderCount"),
       "loggedMergedTargetCount": max_log_metric(logs, "mergedTargetCount"),
+      "loggedCollapsedGroupCount": max_log_metric(logs, "collapsedGroupCount"),
       "loggedHiddenAreaPx": max_log_metric(logs, "hiddenAreaPx"),
       "loggedViewportCoveragePct10": max_log_metric(
           [{"viewportCoveragePct10": float(item.get("viewportCoveragePct") or 0) * 10} for item in logs],
@@ -453,6 +458,7 @@ def build_result_row(
     removed_count = max(int_metric(summary.get("removedCount")), log_summary["loggedRemovedCount"])
     placeholder_count = max(int_metric(summary.get("placeholderCount")), log_summary["loggedPlaceholderCount"])
     merged_target_count = max(int_metric(summary.get("mergedTargetCount")), log_summary["loggedMergedTargetCount"])
+    collapsed_group_count = max(int_metric(summary.get("collapsedGroupCount")), log_summary["loggedCollapsedGroupCount"])
     hidden_area_px = max(int_metric(summary.get("hiddenAreaPx")), log_summary["loggedHiddenAreaPx"])
     viewport_coverage_pct = max(
         float(summary.get("viewportCoveragePct") or 0),
@@ -502,6 +508,7 @@ def build_result_row(
         "removed_count": removed_count,
         "placeholder_count": placeholder_count,
         "merged_target_count": merged_target_count,
+        "collapsed_group_count": collapsed_group_count,
         "hidden_area_px": hidden_area_px,
         "viewport_coverage_pct": round(viewport_coverage_pct, 1),
         "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
@@ -514,6 +521,7 @@ def build_result_row(
         "runtime_log_count": len(logs),
         "media_runtime_log_count": len(media_logs),
         "hidden_count": hidden_count,
+        "compact_summary_count": int_metric(dom.get("compactSummaryCount")),
         "harmful_total": harmful_total,
         "harmful_hidden_count": harmful_hidden_count,
         "safe_total": safe_total,
