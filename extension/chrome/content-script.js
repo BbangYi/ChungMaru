@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
   mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -620,6 +621,10 @@ function buildSettingsSnapshotKey(settings) {
     siteNavigationWarningEnabled: normalizedSettings.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: normalizedSettings.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: normalizedSettings.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(
+      normalizedSettings.mediaSafetyInterventionMode
+    ),
+    mediaSafetyStartupGateEnabled: normalizedSettings.mediaSafetyStartupGateEnabled === true,
     showWellbeingWidget: normalizedSettings.showWellbeingWidget !== false,
     wellbeingWidgetStyle: normalizedSettings.wellbeingWidgetStyle || DEFAULT_SETTINGS.wellbeingWidgetStyle,
     wellbeingAvatarImages: String(normalizedSettings.wellbeingAvatarImages || ""),
@@ -1071,6 +1076,7 @@ function getMergedSettings(storedSettings) {
     searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled === true,
     mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(storedSettings?.mediaSafetyInterventionMode),
+    mediaSafetyStartupGateEnabled: storedSettings?.mediaSafetyStartupGateEnabled === true,
     wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       storedSettings?.wellbeingAgeStageCount,
@@ -2025,6 +2031,10 @@ function clearMediaSafetyStartupGate() {
 
 function maybeEnableMediaSafetyStartupGate(settings = cachedSettings) {
   if (!document?.documentElement || !isMediaSafetyEnabled(settings)) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+  if (settings?.mediaSafetyStartupGateEnabled !== true) {
     clearMediaSafetyStartupGate();
     return false;
   }

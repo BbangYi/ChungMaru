@@ -27,7 +27,7 @@
 - 검색 결과 보호는 Google 검색 결과에 노출된 링크를 수동 차단/경고 도메인, 확장 내 curated fallback, `/site/check`의 domain-level 판정으로 확인합니다. 검색어/요약에 성인 키워드가 있다는 이유만으로 정상 도메인을 가리지 않도록, 백엔드 결과는 exact domain 또는 보안 위협 수준의 사이트 신호가 있을 때만 적용합니다. 차단 판정은 링크와 요약을 숨기고, 경고 판정은 흐림 처리합니다. 백엔드 판정은 한 번에 최대 8개 결과만 제한적으로 확인하고 10분 동안 캐시합니다.
 - Google 이미지 검색 탭(`tbm=isch`, `udm=2`)은 결과 DOM이 매우 커서 일반 검색결과 보호/본문 텍스트 분석을 light mode로 전환합니다. 이때는 검색 입력창 중심의 아주 작은 후보만 유지하고, 이미지 그리드의 대량 mutation/scroll 분석과 사이트 판정 스캔은 실행하지 않습니다.
 - Google 일반 검색 탭은 유해 이미지 차단의 media scan 대상에서 제외합니다. 정보성 검색 결과의 썸네일/아이콘 오탐을 줄이고, 텍스트 마스킹과 검색결과 site policy가 각자 역할을 나눠 처리하게 하기 위함입니다.
-- 유해 이미지 차단은 현재 viewport의 `img`, `picture`, `video`, `background-image` 후보를 먼저 보고, 위험 URL/domain/text 신호가 있는 linked media grid는 제한된 범위에서 보강 수집합니다. 고위험 host 또는 명시적 위험 Google 이미지 검색에서는 짧은 startup gate와 즉시 scan으로 로드 중 노출을 줄이고, 이미지/영상이 늦게 로드되면 load/metadata 이벤트를 통해 재스캔합니다.
+- 유해 이미지 차단은 현재 viewport의 `img`, `picture`, `video`, `background-image` 후보를 먼저 보고, 위험 URL/domain/text 신호가 있는 linked media grid는 제한된 범위에서 보강 수집합니다. 기본 동작은 화면을 먼저 가리는 startup pre-mask가 아니라 bootstrap 즉시 scan으로 판정 후 필요한 후보만 숨기는 decision-first 방식입니다. 짧은 startup gate는 내부 설정으로만 남겨 고위험 host 비교 smoke 또는 비상 fallback에서 명시적으로 켤 수 있고, 이미지/영상이 늦게 로드되면 load/metadata 이벤트를 통해 재스캔합니다.
 - 웰빙 위젯은 현재 탭 하나가 아니라 당일 활성 웹 사용량을 누적합니다.
 - 위젯의 탐지 건수와 화남 정도는 현재 도메인 전체가 아니라 현재 페이지 URL 기준으로 계산합니다. 리디렉션 이후 새 페이지로 이동하면 이전 페이지의 욕설/유해표현 수가 섞이지 않습니다.
 - 표정의 노화 정도는 누적 웹 사용 시간에 따라 바뀌고, 화남 정도는 현재 페이지의 유해/욕설 탐지 수가 늘어날수록 단계적으로 강해집니다. 기본은 각각 5단계이며, 상세 설정에서 단계 수와 단계 간격을 조정할 수 있습니다.

@@ -150,6 +150,26 @@ def build_media_page(scenario: str) -> str:
         <p>지연 로드 케이스의 정상 카드입니다.</p>
       </article>
       <script>
+        window.__chungmaruLateMediaInsertedAt = 0;
+        window.__chungmaruLateMediaHiddenAt = 0;
+        const markLateMediaHidden = () => {
+          if (window.__chungmaruLateMediaHiddenAt) return;
+          const card = document.getElementById("late-harmful-card");
+          if (!card) return;
+          const hidden = card.matches('[data-chungmaru-media-hidden="true"]') ||
+            Boolean(card.closest('[data-chungmaru-media-hidden="true"]')) ||
+            Boolean(card.querySelector('[data-chungmaru-media-hidden="true"]'));
+          if (hidden) {
+            window.__chungmaruLateMediaHiddenAt = performance.now();
+          }
+        };
+        const lateMediaObserver = new MutationObserver(markLateMediaHidden);
+        lateMediaObserver.observe(document.documentElement, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+          attributeFilter: ["data-chungmaru-media-hidden"]
+        });
         window.setTimeout(() => {
           const card = document.getElementById("late-harmful-card");
           if (!card) return;
@@ -159,7 +179,9 @@ def build_media_page(scenario: str) -> str:
           image.alt = "카지노 토토 가입코드 첫충 페이백 지연 로드 배너";
           image.src = "/media.svg?tone=gambling&label=%EC%A7%80%EC%97%B0%20%EC%B9%B4%EC%A7%80%EB%85%B8%20%EB%B0%B0%EB%84%88";
           link.appendChild(image);
+          window.__chungmaruLateMediaInsertedAt = performance.now();
           card.insertBefore(link, card.firstChild);
+          markLateMediaHidden();
         }, 240);
       </script>
     """
@@ -314,7 +336,16 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         log_handle.close()
 
 
-def build_extension_settings(media_safety_enabled: bool, media_intervention_mode: str = "auto") -> dict[str, Any]:
+def connect_service_worker(debugging_port: int, timeout_s: float = 10) -> CdpWebSocket:
+    _extension_id, target = wait_for_service_worker(debugging_port, timeout_s=timeout_s)
+    return CdpWebSocket(str(target["webSocketDebuggerUrl"]))
+
+
+def build_extension_settings(
+    media_safety_enabled: bool,
+    media_intervention_mode: str = "auto",
+    startup_gate_enabled: bool = False,
+) -> dict[str, Any]:
     return {
         "enabled": True,
         "sensitivity": 60,
@@ -331,6 +362,7 @@ def build_extension_settings(media_safety_enabled: bool, media_intervention_mode
         "searchResultProtectionEnabled": False,
         "mediaSafetyEnabled": media_safety_enabled,
         "mediaSafetyInterventionMode": media_intervention_mode,
+        "mediaSafetyStartupGateEnabled": startup_gate_enabled,
         "showWellbeingWidget": False,
         "backendEnabled": False,
         "backendApiBaseUrl": "http://127.0.0.1:8000",
@@ -344,8 +376,9 @@ def set_extension_state(
     media_safety_enabled: bool,
     developer_log_enabled: bool,
     media_intervention_mode: str = "auto",
+    startup_gate_enabled: bool = False,
 ) -> dict[str, Any]:
-    settings = build_extension_settings(media_safety_enabled, media_intervention_mode)
+    settings = build_extension_settings(media_safety_enabled, media_intervention_mode, startup_gate_enabled)
     expression = (
         "(async () => {"
         "  await chrome.storage.local.remove(['runtimeEventLog', 'lastStats', 'lastPayload', 'lastDecision']);"
@@ -376,6 +409,8 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
           const summaries = Array.from(document.querySelectorAll('[data-chungmaru-media-summary="true"]'));
           const harmful = Array.from(document.querySelectorAll('[data-chungmaru-media-harmful="true"]'));
           const safe = Array.from(document.querySelectorAll('[data-chungmaru-media-safe="true"]'));
+          const lateInsertedAt = Number(window.__chungmaruLateMediaInsertedAt || 0);
+          const lateHiddenAt = Number(window.__chungmaruLateMediaHiddenAt || 0);
           const markerHidden = (marker) => Boolean(
             marker.closest('[data-chungmaru-media-hidden="true"]') ||
             marker.querySelector('[data-chungmaru-media-hidden="true"]')
@@ -391,7 +426,12 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
             hiddenReasons: hidden.map((node) => ({
               safety: node.getAttribute('data-shieldtext-media-safety') || '',
               reason: node.getAttribute('data-chungmaru-media-reason') || ''
-            }))
+            })),
+            lateInsertedAt,
+            lateHiddenAt,
+            lateDecisionMs: lateInsertedAt > 0 && lateHiddenAt >= lateInsertedAt
+              ? Math.round(lateHiddenAt - lateInsertedAt)
+              : 0
           };
         })()""",
         timeout_s=5,
@@ -604,6 +644,7 @@ def build_result_row(
         "final_url_path_prefix": final_path_prefix,
         "media_safety_enabled": bool(case["media_safety_enabled"]),
         "developer_log_enabled": bool(case["developer_log_enabled"]),
+        "startup_gate_enabled": bool(case.get("media_safety_startup_gate_enabled")),
         "scan_ok": bool(summary.get("ok")),
         "scan_status": summary.get("status") or "",
         "candidate_count": effective_candidate_count,
@@ -624,6 +665,10 @@ def build_result_row(
         "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
         "apply_ms": max(int_metric(summary.get("applyMs")), log_summary["loggedApplyMs"]),
         "dom_added_to_action_ms": max(int_metric(summary.get("domAddedToActionMs")), log_summary["loggedDomAddedToActionMs"]),
+        "late_decision_ms": max(
+            int_metric(dom.get("lateDecisionMs")),
+            int_metric(pre_manual_dom.get("lateDecisionMs")),
+        ),
         **log_summary,
         "runtime_log_count": len(logs),
         "media_runtime_log_count": len(media_logs),
@@ -690,6 +735,7 @@ def run_case(
         media_safety_enabled=bool(case["media_safety_enabled"]),
         developer_log_enabled=bool(case["developer_log_enabled"]),
         media_intervention_mode=str(case.get("media_intervention_mode") or "auto"),
+        startup_gate_enabled=bool(case.get("media_safety_startup_gate_enabled")),
     )
     time.sleep(0.25)
     case_url = f"{fixture_url}?scenario={case['scenario']}&case={case['case_id']}"
@@ -702,6 +748,7 @@ def run_case(
       settings = build_extension_settings(
           bool(case["media_safety_enabled"]),
           str(case.get("media_intervention_mode") or "auto"),
+          bool(case.get("media_safety_startup_gate_enabled")),
       )
       response = send_media_scan_message(
           worker,
@@ -746,6 +793,7 @@ def run_live_case(
         media_safety_enabled=bool(case["media_safety_enabled"]),
         developer_log_enabled=bool(case["developer_log_enabled"]),
         media_intervention_mode=str(case.get("media_intervention_mode") or "auto"),
+        startup_gate_enabled=bool(case.get("media_safety_startup_gate_enabled")),
     )
     time.sleep(0.25)
     target = create_tab(debugging_port, live_url)
@@ -756,6 +804,7 @@ def run_live_case(
       settings = build_extension_settings(
           bool(case["media_safety_enabled"]),
           str(case.get("media_intervention_mode") or "auto"),
+          bool(case.get("media_safety_startup_gate_enabled")),
       )
       response = send_media_scan_message(
           worker,
@@ -819,6 +868,8 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_late_load should auto-hide delayed media before manual smoke scan")
     if late_load and late_load["safe_hidden_count"] != 0:
       failures.append("log_on_late_load should not hide safe delayed fixture media")
+    if late_load and late_load["late_decision_ms"] <= 0:
+      failures.append("log_on_late_load should record delayed media decision latency")
     if failures:
       raise RuntimeError("; ".join(failures))
 
@@ -862,80 +913,95 @@ def main() -> int:
     try:
       wait_for_targets(args.debugging_port, timeout_s=20)
       extension_id, _target = wait_for_service_worker(args.debugging_port, timeout_s=20)
-      worker_targets = wait_for_service_worker(args.debugging_port, timeout_s=10)
-      worker = CdpWebSocket(str(worker_targets[1]["webSocketDebuggerUrl"]))
-      try:
-        fixture_url = f"http://127.0.0.1:{fixture_port}/"
-        cases = [
-            {
-                "case_id": "media_off_harmful",
-                "scenario": "harmful",
-                "media_safety_enabled": False,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-            {
-                "case_id": "log_off_harmful",
-                "scenario": "harmful",
-                "media_safety_enabled": True,
-                "developer_log_enabled": False,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-            {
-                "case_id": "log_on_harmful",
-                "scenario": "harmful",
-                "media_safety_enabled": True,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-            {
-                "case_id": "log_on_clean",
-                "scenario": "clean",
-                "media_safety_enabled": True,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-            {
-                "case_id": "log_on_address_guide_video",
-                "scenario": "address-guide-video",
-                "media_safety_enabled": True,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-            {
-                "case_id": "log_on_late_load",
-                "scenario": "late-load",
-                "media_safety_enabled": True,
-                "developer_log_enabled": True,
-                "media_intervention_mode": args.media_intervention_mode,
-            },
-        ]
-        if args.live_url:
-          live_urls = [normalize_live_url(item) for item in args.live_url]
-          for index, live_url in enumerate(live_urls, start=1):
-            parsed = urllib.parse.urlparse(live_url)
+      fixture_url = f"http://127.0.0.1:{fixture_port}/"
+      cases = [
+          {
+              "case_id": "media_off_harmful",
+              "scenario": "harmful",
+              "media_safety_enabled": False,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_off_harmful",
+              "scenario": "harmful",
+              "media_safety_enabled": True,
+              "developer_log_enabled": False,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_harmful",
+              "scenario": "harmful",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_clean",
+              "scenario": "clean",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_address_guide_video",
+              "scenario": "address-guide-video",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_late_load",
+              "scenario": "late-load",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+      ]
+      if args.live_url:
+        live_urls = [normalize_live_url(item) for item in args.live_url]
+        for index, live_url in enumerate(live_urls, start=1):
+          parsed = urllib.parse.urlparse(live_url)
+          host_slug = parsed.netloc.replace(".", "_")
+          for startup_gate_enabled in [False, True]:
             case = {
-                "case_id": f"live_{index}_{parsed.netloc.replace('.', '_')}",
+                "case_id": (
+                    f"live_{index}_{host_slug}_"
+                    f"{'startup_gate' if startup_gate_enabled else 'decision_first'}"
+                ),
                 "scenario": "live",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
                 "media_intervention_mode": args.media_intervention_mode,
+                "media_safety_startup_gate_enabled": startup_gate_enabled,
             }
-            rows.append(run_live_case(
-                worker,
-                args.debugging_port,
-                live_url,
-                case,
-                settle_seconds=args.live_settle_seconds,
-            ))
-          write_outputs(args.output_dir, rows, LIVE_OUTPUT_PREFIX)
-        else:
-          for case in cases:
+            worker = connect_service_worker(args.debugging_port)
+            try:
+              rows.append(run_live_case(
+                  worker,
+                  args.debugging_port,
+                  live_url,
+                  case,
+                  settle_seconds=args.live_settle_seconds,
+              ))
+            finally:
+              worker.close()
+        write_outputs(args.output_dir, rows, LIVE_OUTPUT_PREFIX)
+      else:
+        for case in cases:
+          worker = connect_service_worker(args.debugging_port)
+          try:
             rows.append(run_case(worker, args.debugging_port, fixture_url, case))
-          write_outputs(args.output_dir, rows, FIXTURE_OUTPUT_PREFIX)
-          assert_acceptance(rows)
-      finally:
-        worker.close()
+          finally:
+            worker.close()
+        write_outputs(args.output_dir, rows, FIXTURE_OUTPUT_PREFIX)
+        assert_acceptance(rows)
       print(json.dumps({"ok": True, "rows": rows, "output_dir": str(args.output_dir)}, ensure_ascii=False, indent=2))
       return 0
     except Exception as error:  # noqa: BLE001 - smoke output should preserve failure reason

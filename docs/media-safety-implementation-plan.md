@@ -29,12 +29,12 @@
 - 주소가이드/배너 grid처럼 페이지 자체가 위험하고 유해 이미지가 sibling tile로 쪼개진 경우에는 개별 placeholder를 남기지 않고 compact group으로 병합한다. 자식 tile은 제거하고 부모 영역에는 최소 summary 1개만 남긴다.
 - `video > source[src]`만 있는 WebM 배너도 `video`/linked media 후보로 처리한다. 특정 class 전용 selector가 아니라 viewport 샘플링과 위험 URL/domain/text 신호가 있는 linked media grid 수집을 조합한다.
 - scroll/resize/mutation 재스캔에는 최소 간격을 두고, 실제 media 후보가 추가된 mutation에서만 media scan을 예약해 배너 많은 페이지의 렉을 줄인다. 이미지/영상이 페이지 로드보다 늦게 올라오는 경우에는 media load/metadata 이벤트로 짧은 지연 뒤 다시 스캔한다.
-- 고위험 host 또는 명시적 위험 Google 이미지 검색에서는 media safety 설정이 켜져 있을 때만 짧은 startup gate를 걸고 bootstrap에서 즉시 scan을 실행해 초기 paint 중 유해 media가 잠깐 보이는 시간을 줄인다. 일반 페이지에는 이 gate를 적용하지 않는다.
+- 제품 기본 동작은 startup pre-mask가 아니라 decision-first다. bootstrap에서 즉시 scan을 실행해 먼저 판정하고, cheap signal이 맞는 후보만 숨긴다. 짧은 startup gate는 `mediaSafetyStartupGateEnabled` 내부 설정으로만 남기고 기본값은 `false`다. 고위험 host 비교 smoke 또는 비상 fallback에서만 명시적으로 켠다.
 - 이미 `data-chungmaru-media-hidden="true"` 또는 compact summary 아래에 있는 요소는 후보 수집 단계에서 제외해 같은 요소를 반복 처리하지 않는다.
 - 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
 - Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`, `candidateSizedVisibleMediaElementCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
-- fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남긴다.
+- fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled`/`mediaSafetyStartupGateEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남기고, 이미지 삽입 후 숨김까지 걸린 시간은 `lateDecisionMs`로 남긴다.
 
 검증된 범위:
 
@@ -47,20 +47,24 @@
 
 현재 smoke 결과:
 
-| 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 후보 크기 visible | pre-manual harmful hidden | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | applyMs | domAddedToActionMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 2 | 13.0% | 0 | 2 | 0 | 1 | 2 |
-| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 | 0 |
-| address-guide video fixture | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 8 | 41.9% | 0 | 2 | 0 | 0 | 1 |
-| late-load fixture | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 8.7% | 0 | 1 | 0 | 0 | 0 |
-| jusoguide1.com live | 18 | 18 | 18 | 0 | 0 | 0 | 0 | N/A | 78.7% | N/A | 6 | 0 | 6 | 4 |
-| jusowhy1.com live | 34 | 34 | 34 | 2 | 1 | 0 | 0 | N/A | 95.1% | N/A | 3 | 0 | 16 | 9 |
+| 케이스 | startup gate | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 후보 크기 visible | pre-manual harmful hidden | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | applyMs | domAddedToActionMs | lateDecisionMs |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | off | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 2 | 13.0% | 0 | 2 | 0 | 1 | 2 | 0 |
+| controlled clean fixture | off | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 2 | 0 | 0 | 0 | 0 |
+| address-guide video fixture | off | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 8 | 41.9% | 0 | 3 | 0 | 0 | 1 | 0 |
+| late-load fixture | off | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 8.7% | 0 | 1 | 0 | 1 | 1 | 42 |
+| jusoguide1.com live decision-first | off | 18 | 18 | 18 | 0 | 0 | 0 | 0 | N/A | 78.7% | N/A | 4 | 0 | 5 | 1 | 0 |
+| jusoguide1.com live startup-gate | on | 18 | 18 | 18 | 0 | 0 | 0 | 0 | N/A | 100.0% | N/A | 6 | 0 | 6 | 95 | 0 |
+| jusowhy1.com live decision-first | off | 5 | 5 | 5 | 0 | 0 | 0 | 0 | N/A | 61.8% | N/A | 3 | 0 | 2 | 2 | 0 |
+| jusowhy1.com live startup-gate | on | 34 | 34 | 34 | 2 | 1 | 0 | 0 | N/A | 100.0% | N/A | 6 | 0 | 13 | 9 | 0 |
 
 해석 주의:
 
 - `visible_media_element_count`에는 30~32px 아이콘도 포함된다. 실제 차단 후보 크기 기준 잔여는 `candidate_sized_visible_media_element_count`로 확인한다.
 - fixture의 `pre_manual_harmful_hidden_count`는 수동 smoke scan 전 자동으로 숨겨진 유해 media 수다. `late-load` fixture는 240ms 뒤 삽입된 이미지가 수동 scan 전에 숨겨졌음을 확인한다.
-- live URL의 `domAddedToActionMs`는 이번 smoke에서 4ms/9ms로 확인됐다. 다만 1회 실행 기준이므로 반복 실행 p50/p95와 실제 화면 녹화로 보강해야 한다.
+- `late-load` fixture의 decision-first 경로는 이미지 삽입 후 숨김까지 `lateDecisionMs=42ms`였다. 즉 사전 pre-mask 없이도 fixture 기준에서는 사용자가 인식하기 어려운 수준으로 빠르게 따라잡는다.
+- live URL의 decision-first 경로는 `domAddedToActionMs`가 `jusoguide1.com=1ms`, `jusowhy1.com=2ms`였다. startup gate ON은 같은 사이트에서 화면 점유율과 처리 수가 커져 과보호로 보일 수 있으므로 제품 기본값으로 두지 않는다.
+- live URL은 1회 실행 기준이므로 반복 실행 p50/p95와 실제 화면 녹화로 보강해야 한다.
 
 아직 evidence가 부족한 범위:
 

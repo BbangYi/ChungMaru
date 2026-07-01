@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
   mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -82,6 +83,8 @@ function mergeSettings(stored) {
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: stored?.mediaSafetyInterventionMode || DEFAULT_SETTINGS.mediaSafetyInterventionMode,
+    mediaSafetyStartupGateEnabled: stored?.mediaSafetyStartupGateEnabled === true,
     categories: {
       ...DEFAULT_SETTINGS.categories,
       ...(stored?.categories || {})

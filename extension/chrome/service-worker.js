@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   searchResultProtectionEnabled: true,
   mediaSafetyEnabled: false,
   mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -292,6 +293,7 @@ const SETTINGS_RUNTIME_LOG_KEYS = Object.freeze([
   "searchResultProtectionEnabled",
   "mediaSafetyEnabled",
   "mediaSafetyInterventionMode",
+  "mediaSafetyStartupGateEnabled",
   "showWellbeingWidget",
   "wellbeingWidgetStyle",
   "wellbeingAvatarImages",
@@ -334,6 +336,7 @@ function summarizeSettingsForRuntimeLog(settings = {}) {
     `search=${settings?.searchResultProtectionEnabled !== false}`,
     `media=${settings?.mediaSafetyEnabled === true}`,
     `mediaMode=${settings?.mediaSafetyInterventionMode || DEFAULT_SETTINGS.mediaSafetyInterventionMode}`,
+    `mediaStartupGate=${settings?.mediaSafetyStartupGateEnabled === true}`,
     `widget=${settings?.showWellbeingWidget !== false}`,
     `mode=${settings?.interventionMode || DEFAULT_SETTINGS.interventionMode}`
   ].join("; ");
@@ -778,6 +781,7 @@ function mergeSettings(stored) {
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
     mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
     mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(stored?.mediaSafetyInterventionMode),
+    mediaSafetyStartupGateEnabled: stored?.mediaSafetyStartupGateEnabled === true,
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       stored?.wellbeingAgeStageCount,
