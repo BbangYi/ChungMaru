@@ -137,14 +137,20 @@ const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 140;
 const MEDIA_SAFETY_CANDIDATE_LIMIT = 48;
 const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 96;
 const MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT = 180;
-const MEDIA_SAFETY_ADDRESS_GUIDE_NODE_LIMIT = 260;
+const MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT = 260;
+const MEDIA_SAFETY_DENSE_LINK_SCAN_NODE_LIMIT = 260;
+const MEDIA_SAFETY_DENSE_LINK_MIN_COUNT = 4;
 const MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS = 260;
 const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 520;
+const MEDIA_SAFETY_MEDIA_LOAD_SCAN_DELAY_MS = 24;
+const MEDIA_SAFETY_MEDIA_LOAD_RESCAN_INTERVAL_MS = 90;
 const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
 const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
 const MEDIA_SAFETY_MIN_AREA_PX = 3600;
-const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 320;
+const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 96;
+const MEDIA_SAFETY_VIEWPORT_SAMPLE_COLUMNS = 5;
+const MEDIA_SAFETY_VIEWPORT_SAMPLE_ROWS = 7;
 const MEDIA_SAFETY_OVERLAY_Z_INDEX = 10;
 const MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO = 0.65;
 const MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT = 2;
@@ -525,6 +531,7 @@ let mediaSafetyTimerId = null;
 let mediaSafetyRunId = 0;
 let mediaSafetyGroupId = 0;
 let mediaSafetyLastScanAt = 0;
+let mediaSafetyLoadListenersInitialized = false;
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -1955,17 +1962,13 @@ const MEDIA_SAFETY_CANDIDATE_SELECTOR = [
   "[role='img'][aria-label]",
   "[style*='background-image']"
 ].join(", ");
-const MEDIA_SAFETY_BANNER_CONTAINER_SELECTOR = [
-  ".jbanner-large-item",
-  ".jbanner-small-item",
-  "[class*='banner'][class*='item']",
-  "[class*='ad'][class*='item']"
-].join(", ");
-const MEDIA_SAFETY_ADDRESS_GUIDE_SELECTOR = [
-  ".jbanner-large-section video",
-  ".jbanner-large-item video",
-  ".jbanner-small-item video",
-  "a[href*='/bbs/bannerhit.php'] video"
+const MEDIA_SAFETY_LINKED_MEDIA_SELECTOR = [
+  "a[href] img",
+  "a[href] picture",
+  "a[href] video",
+  "a[href] [role='img'][aria-label]",
+  "a[href][style*='background-image']",
+  "a[href] [style*='background-image']"
 ].join(", ");
 const MEDIA_SAFETY_ADULT_PATTERN =
   /(?:19\s*금|19\s*세|19\s*등급|성인(?:물|용|인증|만화|영상|방송)?|야동|포르노|porn|porno|adult|nsfw|섹스|sex(?:y|ual)?|노출|가슴|비키니|란제리|속옷|은밀한|후방\s*주의|무삭제|AV\s*(?:추천|배우|영상)?)/i;
@@ -2012,6 +2015,13 @@ function isMediaRectVisible(rect) {
     rect.top <= window.innerHeight + MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
     rect.right >= -MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
     rect.left <= window.innerWidth + MEDIA_SAFETY_VIEWPORT_BUFFER_PX
+  );
+}
+
+function isMediaSafetyAlreadyProtectedElement(element) {
+  return Boolean(
+    element instanceof Element &&
+      element.closest("[data-chungmaru-media-hidden='true'], [data-chungmaru-media-summary='true']")
   );
 }
 
@@ -2106,17 +2116,68 @@ function getMetaContent(name) {
   }
 }
 
-function hasAddressGuideBannerGrid() {
-  return Boolean(
-    document.querySelector(
-      ".jbanner-large-section .jbanner-media, .jbanner-large-item video, .jbanner-small-item video, a[href*='/bbs/bannerhit.php'] video"
-    )
-  );
-}
-
 function getBoundedPageText(limit = MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT) {
   const text = document.body?.textContent || "";
   return text.length > limit * 2 ? text.slice(0, limit * 2) : text;
+}
+
+function hasRiskyMediaLinkSignal(value) {
+  const text = normalizeText(String(value || ""));
+  if (!text) {
+    return false;
+  }
+  return (
+    MEDIA_SAFETY_GAMBLING_PATTERN.test(text) ||
+    MEDIA_SAFETY_ADULT_PATTERN.test(text) ||
+    MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(text)
+  );
+}
+
+function getLinkedMediaDenseGridInfo(pageHasRiskContext) {
+  const seen = new Set();
+  let visibleLinkedCount = 0;
+  let riskyLinkedCount = 0;
+  const nodes = Array.from(document.querySelectorAll(MEDIA_SAFETY_LINKED_MEDIA_SELECTOR)).slice(
+    0,
+    MEDIA_SAFETY_DENSE_LINK_SCAN_NODE_LIMIT
+  );
+
+  for (const node of nodes) {
+    if (
+      !(node instanceof Element) ||
+      seen.has(node) ||
+      isShieldTextManagedElement(node) ||
+      isMediaSafetyAlreadyProtectedElement(node)
+    ) {
+      continue;
+    }
+    seen.add(node);
+    if (!isMediaRectVisible(node.getBoundingClientRect())) {
+      continue;
+    }
+
+    visibleLinkedCount += 1;
+    const link = node.closest("a[href]");
+    const sourceUrl = getMediaSourceUrl(node);
+    const signalText = [
+      link instanceof HTMLAnchorElement ? link.href : "",
+      sourceUrl,
+      domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl),
+      getBoundedElementText(link || node, 180)
+    ].filter(Boolean).join(" ");
+    if (pageHasRiskContext || hasRiskyMediaLinkSignal(signalText)) {
+      riskyLinkedCount += 1;
+    }
+    if (riskyLinkedCount >= MEDIA_SAFETY_DENSE_LINK_MIN_COUNT) {
+      break;
+    }
+  }
+
+  return {
+    visibleLinkedCount,
+    riskyLinkedCount,
+    isDenseRiskGrid: riskyLinkedCount >= MEDIA_SAFETY_DENSE_LINK_MIN_COUNT
+  };
 }
 
 function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
@@ -2130,15 +2191,6 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
 
   const host = normalizeDomainForPolicy(location.hostname || "");
   const hasRiskHost = MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host);
-  if (hasAddressGuideBannerGrid()) {
-    return {
-      strictMediaMode: true,
-      category: "gambling",
-      reason: "address-guide banner grid",
-      mode: "address-guide"
-    };
-  }
-
   const linkText = Array.from(document.querySelectorAll("a[href]"))
     .slice(0, 80)
     .map((link) => {
@@ -2164,14 +2216,20 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
   const hasAdult = MEDIA_SAFETY_ADULT_PATTERN.test(pageText);
   const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(pageText);
   const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
+  const pageHasRiskContext = hasRiskHost || (hasGambling && hasLinkGuide) || (hasAdult && hasGambling && hasLinkGuide);
+  const denseGrid = getLinkedMediaDenseGridInfo(pageHasRiskContext);
   const isHighConfidenceHub =
-    hasRiskHost ||
-    (hasGambling && hasLinkGuide) ||
-    (hasAdult && hasGambling && hasLinkGuide);
+    pageHasRiskContext ||
+    denseGrid.isDenseRiskGrid;
   return {
     strictMediaMode: isHighConfidenceHub,
     category: hasAdult && hasGambling ? "mixed" : hasAdult ? "adult" : "gambling",
-    reason: hasLinkGuide ? "page risk link context" : "page risk context"
+    reason: denseGrid.isDenseRiskGrid
+      ? "dense risky media link grid"
+      : hasLinkGuide
+        ? "page risk link context"
+        : "page risk context",
+    mode: denseGrid.isDenseRiskGrid ? "dense-risk-grid" : ""
   };
 }
 
@@ -2263,7 +2321,7 @@ function getMediaSafetyContainer(element, mediaRect) {
     ? ["[data-ri]", "[data-ved]", "[role='listitem']", "a[href]", "figure", "article", "li"]
     : isYouTubePage()
       ? ["ytd-thumbnail", "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-compact-video-renderer", "a[href]"]
-      : [MEDIA_SAFETY_BANNER_CONTAINER_SELECTOR, "a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
+      : ["a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
 
   for (const selector of selectors) {
     const ancestor = element.closest(selector);
@@ -2299,7 +2357,7 @@ function buildMediaSafetyCandidate(element, profile) {
   if (!(element instanceof Element)) {
     return null;
   }
-  if (!element.isConnected || isShieldTextManagedElement(element)) {
+  if (!element.isConnected || isShieldTextManagedElement(element) || isMediaSafetyAlreadyProtectedElement(element)) {
     return null;
   }
 
@@ -2315,6 +2373,9 @@ function buildMediaSafetyCandidate(element, profile) {
   const container = getMediaSafetyContainer(element, mediaRect);
   const target = getMediaSafetyTarget(element, container, mediaRect);
   if (!(target instanceof Element)) {
+    return null;
+  }
+  if (isShieldTextManagedElement(target) || isMediaSafetyAlreadyProtectedElement(target)) {
     return null;
   }
 
@@ -2346,23 +2407,85 @@ function buildMediaSafetyCandidate(element, profile) {
   };
 }
 
+function pushMediaSafetyNode(nodes, seen, node) {
+  if (
+    !(node instanceof Element) ||
+    seen.has(node) ||
+    isShieldTextManagedElement(node) ||
+    isMediaSafetyAlreadyProtectedElement(node)
+  ) {
+    return;
+  }
+  seen.add(node);
+  nodes.push(node);
+}
+
+function pushMediaSafetyNodesFromElement(nodes, seen, element, descendantLimit = 4) {
+  if (
+    !(element instanceof Element) ||
+    element === document.body ||
+    element === document.documentElement ||
+    isShieldTextManagedElement(element) ||
+    isMediaSafetyAlreadyProtectedElement(element)
+  ) {
+    return;
+  }
+
+  if (element.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    pushMediaSafetyNode(nodes, seen, element);
+  }
+
+  const closestMedia = element.closest(MEDIA_SAFETY_CANDIDATE_SELECTOR);
+  if (closestMedia instanceof Element) {
+    pushMediaSafetyNode(nodes, seen, closestMedia);
+  }
+
+  const container = element.closest("a[href], picture, figure, article, li, [role='listitem']");
+  if (!(container instanceof Element) || container === document.body || container === document.documentElement) {
+    return;
+  }
+  if (container.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    pushMediaSafetyNode(nodes, seen, container);
+  }
+
+  for (const child of Array.from(container.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(
+    0,
+    descendantLimit
+  )) {
+    pushMediaSafetyNode(nodes, seen, child);
+  }
+}
+
+function collectViewportMediaSeedNodes(nodes, seen) {
+  const width = Math.max(0, Number(window.innerWidth || 0));
+  const height = Math.max(0, Number(window.innerHeight || 0));
+  if (!width || !height || typeof document.elementsFromPoint !== "function") {
+    return;
+  }
+
+  for (let row = 0; row < MEDIA_SAFETY_VIEWPORT_SAMPLE_ROWS; row += 1) {
+    const y = Math.min(height - 1, Math.max(0, ((row + 0.5) * height) / MEDIA_SAFETY_VIEWPORT_SAMPLE_ROWS));
+    for (let column = 0; column < MEDIA_SAFETY_VIEWPORT_SAMPLE_COLUMNS; column += 1) {
+      const x = Math.min(width - 1, Math.max(0, ((column + 0.5) * width) / MEDIA_SAFETY_VIEWPORT_SAMPLE_COLUMNS));
+      for (const element of document.elementsFromPoint(x, y).slice(0, 8)) {
+        pushMediaSafetyNodesFromElement(nodes, seen, element);
+      }
+    }
+  }
+}
+
 function getMediaSafetyCandidateNodes(pageContext = null) {
   const nodes = [];
   const seen = new Set();
-  const pushNode = (node) => {
-    if (!(node instanceof Element) || seen.has(node)) {
-      return;
-    }
-    seen.add(node);
-    nodes.push(node);
-  };
 
-  if (pageContext?.mode === "address-guide") {
-    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_ADDRESS_GUIDE_SELECTOR)).slice(
+  collectViewportMediaSeedNodes(nodes, seen);
+
+  if (pageContext?.strictMediaMode === true || pageContext?.mode === "dense-risk-grid") {
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_LINKED_MEDIA_SELECTOR)).slice(
       0,
-      MEDIA_SAFETY_ADDRESS_GUIDE_NODE_LIMIT
+      MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT
     )) {
-      pushNode(node);
+      pushMediaSafetyNode(nodes, seen, node);
     }
   }
 
@@ -2370,7 +2493,7 @@ function getMediaSafetyCandidateNodes(pageContext = null) {
     0,
     MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT
   )) {
-    pushNode(node);
+    pushMediaSafetyNode(nodes, seen, node);
   }
 
   return nodes;
@@ -2537,7 +2660,7 @@ function countVisibleMediaDescendants(root, limit = MEDIA_SAFETY_COMPACT_GROUP_M
   }
   let count = 0;
   for (const node of root.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
-    if (!(node instanceof Element) || isShieldTextManagedElement(node)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
       continue;
     }
     if (isMediaRectVisible(node.getBoundingClientRect())) {
@@ -2659,7 +2782,7 @@ function applyMediaSafetyCompactGroup(group) {
   let reason = "";
   for (const entry of entries) {
     const target = entry?.candidate?.target;
-    if (!(target instanceof Element) || target.getAttribute("data-chungmaru-media-hidden") === "true") {
+    if (!(target instanceof Element) || isMediaSafetyAlreadyProtectedElement(target)) {
       continue;
     }
     const targetRect = target.getBoundingClientRect();
@@ -2712,7 +2835,7 @@ function applyMediaSafetyCandidate(candidate, match, settings) {
   if (!(target instanceof Element) || !match) {
     return { applied: false, action: "", areaPx: 0, merged: false };
   }
-  if (target.getAttribute("data-chungmaru-media-hidden") === "true") {
+  if (isMediaSafetyAlreadyProtectedElement(target)) {
     return { applied: false, action: "", areaPx: 0, merged: true };
   }
   if (isMediaSafetyCoveredByAncestor(target)) {
@@ -2756,7 +2879,7 @@ function countKnownHarmfulVisibleMediaMisses() {
 function countVisibleUnprotectedMediaCandidates(limit = 6) {
   let count = 0;
   for (const node of document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
-    if (!(node instanceof Element) || isShieldTextManagedElement(node)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
       continue;
     }
     if (isKnownSafeMediaFixture({ element: node, target: node })) {
@@ -2776,8 +2899,15 @@ function nodeHasPotentialMediaSafetyCandidate(node) {
   if (!(node instanceof Element)) {
     return false;
   }
-  if (isShieldTextManagedElement(node)) {
+  if (isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
     return false;
+  }
+  if (
+    typeof HTMLSourceElement !== "undefined" &&
+    node instanceof HTMLSourceElement &&
+    node.parentElement instanceof HTMLVideoElement
+  ) {
+    return !isMediaSafetyAlreadyProtectedElement(node.parentElement);
   }
   if (node.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
     return true;
@@ -2810,6 +2940,9 @@ function getMediaSafetyRescanInterval(reason) {
   }
   if (normalizedReason === "visibility") {
     return MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS;
+  }
+  if (normalizedReason === "media-load") {
+    return MEDIA_SAFETY_MEDIA_LOAD_RESCAN_INTERVAL_MS;
   }
   return MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS;
 }
@@ -2967,7 +3100,7 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
       if (!(candidate?.target instanceof Element)) {
         continue;
       }
-      if (candidate.target.getAttribute("data-chungmaru-media-hidden") === "true") {
+      if (isMediaSafetyAlreadyProtectedElement(candidate.target)) {
         continue;
       }
       const match = getMediaSafetyMatch(candidate, pageContext);
@@ -3161,6 +3294,53 @@ function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
     return;
   }
   scheduleFrame();
+}
+
+function getMediaSafetyLoadElement(target) {
+  if (target instanceof HTMLImageElement || target instanceof HTMLVideoElement) {
+    return target;
+  }
+  if (
+    typeof HTMLSourceElement !== "undefined" &&
+    target instanceof HTMLSourceElement &&
+    target.parentElement instanceof HTMLVideoElement
+  ) {
+    return target.parentElement;
+  }
+  if (target instanceof Element && target.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    return target;
+  }
+  return null;
+}
+
+function handleMediaSafetyLoadEvent(event) {
+  const element = getMediaSafetyLoadElement(event?.target);
+  if (
+    !(element instanceof Element) ||
+    isShieldTextManagedElement(element) ||
+    isMediaSafetyAlreadyProtectedElement(element) ||
+    !isMediaSafetyEnabled(cachedSettings)
+  ) {
+    return;
+  }
+  if (!isMediaRectVisible(element.getBoundingClientRect())) {
+    return;
+  }
+  scheduleMediaSafetyScan(cachedSettings, {
+    reason: "media-load",
+    delayMs: MEDIA_SAFETY_MEDIA_LOAD_SCAN_DELAY_MS
+  });
+}
+
+function initializeMediaSafetyLoadListeners() {
+  if (mediaSafetyLoadListenersInitialized) {
+    return;
+  }
+  mediaSafetyLoadListenersInitialized = true;
+
+  document.addEventListener("load", handleMediaSafetyLoadEvent, true);
+  document.addEventListener("loadedmetadata", handleMediaSafetyLoadEvent, true);
+  document.addEventListener("loadeddata", handleMediaSafetyLoadEvent, true);
 }
 
 function suppressMutationFeedback(ms = 160) {
@@ -12571,6 +12751,7 @@ async function bootstrap() {
   initializeSearchResultProtectionClickGuard();
   initializeInputListeners();
   initializeViewportListeners();
+  initializeMediaSafetyLoadListeners();
   initializeNavigationListeners();
   initializeLabSelfTestListeners();
 

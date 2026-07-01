@@ -27,8 +27,9 @@
 - 주소가이드 계열 live test 도메인인 `jusoguide1.com`, `jusowhy1.com`은 유해사이트 차단 fallback에서도 `block`으로 판정한다.
 - 위험 후보는 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible 처리한다. 일반 카드형 결과는 placeholder를 유지하고, 팝업/상단 고정 배너처럼 floating overlay로 판단되는 후보는 `display: none` 기반 영역 제거를 우선 적용한다.
 - 주소가이드/배너 grid처럼 페이지 자체가 위험하고 유해 이미지가 sibling tile로 쪼개진 경우에는 개별 placeholder를 남기지 않고 compact group으로 병합한다. 자식 tile은 제거하고 부모 영역에는 최소 summary 1개만 남긴다.
-- `video > source[src]`만 있는 주소가이드 WebM 배너를 잡기 위해 `video` 후보와 주소가이드 전용 `.jbanner-*` selector를 우선 수집한다.
-- scroll/resize/mutation 재스캔에는 최소 간격을 두고, 실제 media 후보가 추가된 mutation에서만 media scan을 예약해 배너 많은 페이지의 렉을 줄인다.
+- `video > source[src]`만 있는 WebM 배너도 `video`/linked media 후보로 처리한다. 특정 class 전용 selector가 아니라 viewport 샘플링과 위험 URL/domain/text 신호가 있는 linked media grid 수집을 조합한다.
+- scroll/resize/mutation 재스캔에는 최소 간격을 두고, 실제 media 후보가 추가된 mutation에서만 media scan을 예약해 배너 많은 페이지의 렉을 줄인다. 이미지/영상이 페이지 로드보다 늦게 올라오는 경우에는 media load/metadata 이벤트로 짧은 지연 뒤 다시 스캔한다.
+- 이미 `data-chungmaru-media-hidden="true"` 또는 compact summary 아래에 있는 요소는 후보 수집 단계에서 제외해 같은 요소를 반복 처리하지 않는다.
 - 개발자 패널에서만 이미지 처리 방식을 `자동`, `가림 유지`, `영역 제거`로 바꿀 수 있다. 일반 사용자 UI에는 노출하지 않는다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
 - Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`, `candidateSizedVisibleMediaElementCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
@@ -47,16 +48,16 @@
 
 | 케이스 | 후보 수 | 처리 수 | 영역 제거 | compact group | summary | remaining | 후보 크기 visible | 화면 점유율 | clean 오탐 | collectMs | cheapFilterMs | applyMs | domAddedToActionMs |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| controlled harmful fixture | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 13.0% | 0 | 1 | 0 | 1 | 2 |
-| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 1 | 0 | 0 | 0 |
-| address-guide video fixture | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 41.9% | 0 | 1 | 0 | 0 | 1 |
-| jusoguide1.com live | 21 | 21 | 21 | 0 | 0 | 0 | 0 | 88.4% | N/A | 3 | 0 | 3 | 268 |
-| jusowhy1.com live | 25 | 25 | 25 | 1 | 1 | 0 | 0 | 85.0% | N/A | 2 | 0 | 9 | 123 |
+| controlled harmful fixture | 3 | 2 | 0 | 0 | 0 | 0 | 0 | 13.0% | 0 | 2 | 0 | 2 | 2 |
+| controlled clean fixture | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0% | 0 | 2 | 0 | 0 | 0 |
+| address-guide video fixture | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 41.9% | 0 | 2 | 0 | 0 | 1 |
+| jusoguide1.com live | 18 | 18 | 18 | 0 | 0 | 0 | 0 | 100.0% | N/A | 5 | 0 | 6 | 2 |
+| jusowhy1.com live | 34 | 34 | 34 | 2 | 1 | 0 | 0 | 100.0% | N/A | 5 | 0 | 17 | 12 |
 
 해석 주의:
 
 - `visible_media_element_count`에는 30~32px 아이콘도 포함된다. 실제 차단 후보 크기 기준 잔여는 `candidate_sized_visible_media_element_count`로 확인한다.
-- live URL에서 `domAddedToActionMs`는 자동 scan과 수동 smoke scan 사이의 동적 로딩 타이밍을 포함한다. hot path 비용은 `collectMs`, `cheapFilterMs`, `applyMs`를 함께 봐야 한다.
+- live URL의 `domAddedToActionMs`는 이번 smoke에서 2ms/12ms로 확인됐다. 다만 1회 실행 기준이므로 반복 실행 p50/p95와 실제 화면 녹화로 보강해야 한다.
 
 아직 evidence가 부족한 범위:
 
