@@ -139,11 +139,37 @@ def build_media_page(scenario: str) -> str:
         <p>일반 풍경 썸네일입니다.</p>
       </article>
     """
+    late_load_cards = """
+      <article id="late-harmful-card" class="media-card" data-chungmaru-media-harmful="true">
+        <h2>카지노 주소 모음</h2>
+        <p>카지노, 토토, 바카라, 첫충, 페이백 배너가 지연 로드되는 fixture입니다.</p>
+      </article>
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="학교 공지 안내 이미지" src="/media.svg?tone=clean&label=%ED%95%99%EA%B5%90%20%EA%B3%B5%EC%A7%80" />
+        <h2>학교 공지</h2>
+        <p>지연 로드 케이스의 정상 카드입니다.</p>
+      </article>
+      <script>
+        window.setTimeout(() => {
+          const card = document.getElementById("late-harmful-card");
+          if (!card) return;
+          const link = document.createElement("a");
+          link.href = "https://jusoguide1.com/bbs/bannerhit.php?bn_id=777";
+          const image = document.createElement("img");
+          image.alt = "카지노 토토 가입코드 첫충 페이백 지연 로드 배너";
+          image.src = "/media.svg?tone=gambling&label=%EC%A7%80%EC%97%B0%20%EC%B9%B4%EC%A7%80%EB%85%B8%20%EB%B0%B0%EB%84%88";
+          link.appendChild(image);
+          card.insertBefore(link, card.firstChild);
+        }, 240);
+      </script>
+    """
     cards = clean_cards if scenario == "clean" else harmful_cards
     if scenario == "address-guide-video":
       cards = f"""<section class="jbanner-large-section">
       {address_guide_cards}
     </section>"""
+    elif scenario == "late-load":
+      cards = late_load_cards
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -233,7 +259,7 @@ class MediaFixtureHandler(http.server.BaseHTTPRequestHandler):
             return
 
         scenario = params.get("scenario", ["harmful"])[0]
-        if scenario not in {"clean", "harmful", "address-guide-video"}:
+        if scenario not in {"clean", "harmful", "address-guide-video", "late-load"}:
           scenario = "harmful"
         body = build_media_page(scenario).encode("utf-8")
         self.send_response(200)
@@ -518,6 +544,7 @@ def build_result_row(
     dom: dict[str, Any],
     logs: list[dict[str, Any]],
     url: str = "",
+    pre_manual_dom: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     media_logs = [
         item for item in logs
@@ -546,6 +573,7 @@ def build_result_row(
     harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
     safe_total = int_metric(dom.get("safeTotal"))
     safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
+    pre_manual_dom = pre_manual_dom if isinstance(pre_manual_dom, dict) else {}
     dom_candidate_count = harmful_total + safe_total if media_enabled else 0
     effective_action_count = max(
         int_metric(summary.get("actionCount")),
@@ -599,6 +627,9 @@ def build_result_row(
         **log_summary,
         "runtime_log_count": len(logs),
         "media_runtime_log_count": len(media_logs),
+        "pre_manual_hidden_count": int_metric(pre_manual_dom.get("hiddenCount")),
+        "pre_manual_harmful_hidden_count": int_metric(pre_manual_dom.get("harmfulHiddenCount")),
+        "pre_manual_safe_hidden_count": int_metric(pre_manual_dom.get("safeHiddenCount")),
         "hidden_count": hidden_count,
         "compact_summary_count": int_metric(dom.get("compactSummaryCount")),
         "harmful_total": harmful_total,
@@ -667,6 +698,7 @@ def run_case(
     try:
       wait_for_page_ready(page, timeout_s=10)
       time.sleep(0.45)
+      pre_manual_dom = inspect_media_dom(page)
       settings = build_extension_settings(
           bool(case["media_safety_enabled"]),
           str(case.get("media_intervention_mode") or "auto"),
@@ -684,7 +716,7 @@ def run_case(
       time.sleep(0.2)
       dom = inspect_media_dom(page)
       logs = get_runtime_logs(worker)
-      return build_result_row(case=case, response=response, dom=dom, logs=logs)
+      return build_result_row(case=case, response=response, dom=dom, logs=logs, pre_manual_dom=pre_manual_dom)
     finally:
       page.close()
 
@@ -764,6 +796,7 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
     log_on = by_case["log_on_harmful"]
     clean = by_case["log_on_clean"]
     address_guide = by_case.get("log_on_address_guide_video")
+    late_load = by_case.get("log_on_late_load")
 
     failures = []
     if media_off["hidden_count"] != 0 or media_off["action_count"] != 0:
@@ -782,6 +815,10 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_address_guide_video should hide source-backed video banners")
     if address_guide and address_guide["remaining_visible_tile_count"] != 0:
       failures.append("log_on_address_guide_video should not leave visible video banner tiles")
+    if late_load and late_load["pre_manual_harmful_hidden_count"] < 1:
+      failures.append("log_on_late_load should auto-hide delayed media before manual smoke scan")
+    if late_load and late_load["safe_hidden_count"] != 0:
+      failures.append("log_on_late_load should not hide safe delayed fixture media")
     if failures:
       raise RuntimeError("; ".join(failures))
 
@@ -861,6 +898,13 @@ def main() -> int:
             {
                 "case_id": "log_on_address_guide_video",
                 "scenario": "address-guide-video",
+                "media_safety_enabled": True,
+                "developer_log_enabled": True,
+                "media_intervention_mode": args.media_intervention_mode,
+            },
+            {
+                "case_id": "log_on_late_load",
+                "scenario": "late-load",
                 "media_safety_enabled": True,
                 "developer_log_enabled": True,
                 "media_intervention_mode": args.media_intervention_mode,

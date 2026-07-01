@@ -426,6 +426,14 @@
   display: none !important;
 }
 
+html[data-chungmaru-media-startup-gate="true"] img,
+html[data-chungmaru-media-startup-gate="true"] picture,
+html[data-chungmaru-media-startup-gate="true"] video,
+html[data-chungmaru-media-startup-gate="true"] [role="img"][aria-label],
+html[data-chungmaru-media-startup-gate="true"] [style*="background-image"] {
+  visibility: hidden !important;
+}
+
 .shieldtext-media-safety-group-summary {
   grid-column: 1 / -1 !important;
   box-sizing: border-box !important;

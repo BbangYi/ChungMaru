@@ -144,6 +144,7 @@ const MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS = 260;
 const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 520;
 const MEDIA_SAFETY_MEDIA_LOAD_SCAN_DELAY_MS = 24;
 const MEDIA_SAFETY_MEDIA_LOAD_RESCAN_INTERVAL_MS = 90;
+const MEDIA_SAFETY_STARTUP_GATE_TTL_MS = 1200;
 const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
 const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
@@ -532,6 +533,7 @@ let mediaSafetyRunId = 0;
 let mediaSafetyGroupId = 0;
 let mediaSafetyLastScanAt = 0;
 let mediaSafetyLoadListenersInitialized = false;
+let mediaSafetyStartupGateTimerId = null;
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -787,6 +789,11 @@ function teardownInvalidatedExtensionContext() {
     window.clearTimeout(mediaSafetyTimerId);
     mediaSafetyTimerId = null;
   }
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+    mediaSafetyStartupGateTimerId = null;
+  }
+  clearMediaSafetyStartupGate();
   if (suppressedMutationRefreshTimerId) {
     window.clearTimeout(suppressedMutationRefreshTimerId);
     suppressedMutationRefreshTimerId = null;
@@ -1987,6 +1994,56 @@ function isMediaSafetyEnabled(settings = cachedSettings) {
   );
 }
 
+function hasHighConfidenceMediaSafetyStartupContext(profile = getMediaSafetyProfile()) {
+  if (shouldSkipMediaSafetyProfile(profile)) {
+    return false;
+  }
+  const host = normalizeDomainForPolicy(location.hostname || "");
+  if (MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host)) {
+    return true;
+  }
+  if (profile === "google-images") {
+    const queryContext = getSearchQueryContext();
+    return (
+      MEDIA_SAFETY_ADULT_PATTERN.test(queryContext) ||
+      MEDIA_SAFETY_GAMBLING_PATTERN.test(queryContext) ||
+      MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(queryContext)
+    );
+  }
+  return false;
+}
+
+function clearMediaSafetyStartupGate() {
+  if (document?.documentElement) {
+    document.documentElement.removeAttribute("data-chungmaru-media-startup-gate");
+  }
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+    mediaSafetyStartupGateTimerId = null;
+  }
+}
+
+function maybeEnableMediaSafetyStartupGate(settings = cachedSettings) {
+  if (!document?.documentElement || !isMediaSafetyEnabled(settings)) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+  if (!hasHighConfidenceMediaSafetyStartupContext()) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+
+  document.documentElement.setAttribute("data-chungmaru-media-startup-gate", "true");
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+  }
+  mediaSafetyStartupGateTimerId = window.setTimeout(() => {
+    mediaSafetyStartupGateTimerId = null;
+    clearMediaSafetyStartupGate();
+  }, MEDIA_SAFETY_STARTUP_GATE_TTL_MS);
+  return true;
+}
+
 function getMediaSafetyProfile() {
   if (isGoogleImageSearchPage()) {
     return "google-images";
@@ -2604,6 +2661,7 @@ function clearMediaSafetyProtection() {
   if (!document?.body && !document?.documentElement) {
     return 0;
   }
+  clearMediaSafetyStartupGate();
 
   let cleared = 0;
   for (const summary of document.querySelectorAll("[data-chungmaru-media-summary='true']")) {
@@ -3204,6 +3262,14 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     url: compactRuntimeUrl(location.href)
   };
 
+  if (
+    candidates.length > 0 ||
+    actionCount > 0 ||
+    !hasHighConfidenceMediaSafetyStartupContext(profile)
+  ) {
+    clearMediaSafetyStartupGate();
+  }
+
   emitRuntimeLogEvent({
     type: "media-safety-scan",
     ...summary
@@ -3294,6 +3360,41 @@ function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
     return;
   }
   scheduleFrame();
+}
+
+function runImmediateMediaSafetyScan(settings = cachedSettings, options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return null;
+  }
+
+  const activeSettings = settings || cachedSettings || {};
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    clearMediaSafetyProtection();
+    return null;
+  }
+  if (shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    clearMediaSafetyProtection();
+    return null;
+  }
+
+  try {
+    return runMediaSafetyScan(activeSettings, options);
+  } catch (error) {
+    emitRuntimeLogEvent({
+      type: "media-safety-error",
+      ok: false,
+      status: "failed",
+      source: "content-script",
+      errorCode: String(error?.errorCode || "MEDIA_SAFETY_IMMEDIATE_SCAN_FAILED"),
+      reason: serializeFailureReason(error),
+      domain: normalizeDomainForPolicy(location.hostname || ""),
+      url: compactRuntimeUrl(location.href)
+    });
+    if (!handleExtensionContextError(error)) {
+      console.warn("[청마루] immediate media safety scan failed", error);
+    }
+    return null;
+  }
 }
 
 function getMediaSafetyLoadElement(target) {
@@ -12745,8 +12846,10 @@ async function bootstrap() {
   if (!document.body || !document.documentElement) return;
 
   bootstrapStarted = true;
-  await refreshDeveloperRuntimeLogEnabled().catch(() => false);
-  const initialSettings = await loadSettings({ force: true }).catch(() => getMergedSettings({}));
+  const [initialSettings] = await Promise.all([
+    loadSettings({ force: true }).catch(() => getMergedSettings({})),
+    refreshDeveloperRuntimeLogEnabled().catch(() => false)
+  ]);
   initializeVisibilityObserver();
   initializeSearchResultProtectionClickGuard();
   initializeInputListeners();
@@ -12762,7 +12865,8 @@ async function bootstrap() {
     initializeObserver();
     return;
   }
-  scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
+  maybeEnableMediaSafetyStartupGate(initialSettings);
+  runImmediateMediaSafetyScan(initialSettings, { reason: "bootstrap-fast" });
 
   requestCurrentSitePolicy().catch((error) => {
     handleExtensionContextError(error);
@@ -12780,13 +12884,13 @@ async function bootstrap() {
       limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
       force: true
     });
-    scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
+    scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap-followup", delayMs: 120 });
     initializeObserver();
     return;
   }
 
   scheduleSearchResultProtection(initialSettings);
-  scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap", delayMs: 0 });
+  scheduleMediaSafetyScan(initialSettings, { reason: "bootstrap-followup", delayMs: 120 });
   if (!isTextMaskingEnabled(initialSettings)) {
     initializeObserver();
     scheduleHotPathStatsPersist({
