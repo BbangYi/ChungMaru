@@ -13,14 +13,15 @@
 
 ## 현재 구현 상태 (2026-07-01)
 
-현재 `유해 이미지 차단`은 모델/OCR 이전의 v1 골격이 들어간 상태다. 계획 대비 위치는 Phase 1과 Phase 2의 1차 구현 완료, Phase 3 smoke benchmark 실행 준비 단계로 본다.
+현재 `유해 이미지 차단`은 모델/OCR 이전의 v1 골격이 들어간 상태다. 계획 대비 위치는 Phase 1과 Phase 2의 1차 구현 완료, Phase 3 smoke benchmark의 controlled fixture + live URL 1차 검증 완료 단계로 본다.
 
 완료된 범위:
 
 - Options 개발자 패널에만 `Runtime Log` 토글을 추가했고, 기본값은 off다.
 - Service worker의 `recordRuntimeLogEvent` 경로를 중앙 게이트로 정리해 개발자 로그가 꺼져 있으면 `runtimeEventLog`에 기록하지 않는다.
 - `mediaSafetyEnabled`가 켜진 경우에만 content script가 visible media 후보를 수집한다.
-- 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 페이지 검색어/문맥의 cheap signal로 adult/gambling 후보를 판단한다.
+- 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 검색어/페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
+- 후보 주변 텍스트가 약해도 페이지 전체에 성인/도박/먹튀/토렌트/주소 링크 신호가 겹치면 strict media mode로 visible media를 빠르게 숨긴다.
 - 위험 후보는 실제 DOM 삭제가 아니라 `data-chungmaru-media-hidden="true"`와 CSS class를 붙여 reversible hide/blur 처리한다.
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다.
@@ -32,12 +33,23 @@
 - media safety 관련 diff whitespace check 통과
 - Chrome for Testing 150.0.7871.46 기준 fixture smoke 통과
 - `evaluation/media-safety/results/current/media-safety-smoke.csv`와 `.jsonl` 생성
+- `evaluation/media-safety/results/current/media-safety-live-smoke.csv`와 `.jsonl` 생성
+
+현재 smoke 결과:
+
+| 케이스 | 후보 수 | 숨김 수 | clean 오탐 | collectMs | cheapFilterMs | domAddedToActionMs |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| controlled harmful fixture | 3 | 2 | 0 | 1 | 1 | 1 |
+| controlled clean fixture | 2 | 0 | 0 | 1 | 1 | 0 |
+| jusoguide1.com live | 4 | 4 | N/A | 2 | 1 | 1 |
+| jusowhy1.com live | 50 | 50 | N/A | 1 | 1 | 2 |
 
 아직 evidence가 부족한 범위:
 
 - Google Chrome stable은 여전히 `--load-extension`을 차단하므로 smoke runner는 Chrome for Testing 또는 Chromium이 필요하다.
-- 현재 smoke는 controlled fixture 기준이다. 실제 Google Images/도박 배너 페이지의 화면 녹화와 row-level latency evidence는 아직 필요하다.
-- p50/p95는 현재 smoke가 1회성 fixture 4 case라 통계값으로 일반화하기 어렵다. 반복 실행 또는 실제 페이지 smoke로 보강해야 한다.
+- live smoke는 현재 두 URL의 1회 실행 기준이다. p50/p95는 반복 실행으로 보강해야 한다.
+- live URL은 truth label이 없으므로 `falseHiddenCount`를 오탐률로 해석하면 안 된다. clean fixture 또는 별도 benign live page로 negative sample을 유지해야 한다.
+- 실제 Google Images/도박 배너 페이지의 화면 녹화와 row-level latency evidence는 아직 필요하다.
 
 다음 단계는 classifier/OCR이 아니라, Chrome for Testing 또는 Chromium 기반 runner에서 실제 Google Images/도박 배너 페이지 smoke를 추가하고 현재 v1 cheap filter의 속도와 오탐/미탐 수치를 고정하는 것이다.
 

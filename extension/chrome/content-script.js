@@ -135,6 +135,7 @@ const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 70;
 const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 140;
 const MEDIA_SAFETY_CANDIDATE_LIMIT = 48;
 const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
+const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
 const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
 const MEDIA_SAFETY_MIN_AREA_PX = 3600;
 const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 320;
@@ -1932,6 +1933,8 @@ const MEDIA_SAFETY_GAMBLING_PATTERN =
   /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|bet(?:ting)?|casino|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|롤링\s*\d|배팅\s*보너스)/i;
 const MEDIA_SAFETY_RISK_DOMAIN_PATTERN =
   /(?:casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)/i;
+const MEDIA_SAFETY_LINK_GUIDE_PATTERN =
+  /(?:주소\s*(?:모음|안내|가이드|변경|바로가기)?|링크\s*(?:모음|사이트|주소)?|토렌트|웹툰|성인\s*사이트|먹튀\s*(?:검증|사이트)?)/i;
 
 function isMediaSafetyEnabled(settings = cachedSettings) {
   return (
@@ -2032,6 +2035,48 @@ function getSearchQueryContext() {
   } catch {
     return normalizeText(document.title || "");
   }
+}
+
+function getMetaContent(name) {
+  try {
+    return document.querySelector(`meta[name='${name}']`)?.getAttribute?.("content") || "";
+  } catch {
+    return "";
+  }
+}
+
+function getMediaSafetyPageContext() {
+  const linkText = Array.from(document.querySelectorAll("a[href]"))
+    .slice(0, 120)
+    .map((link) => {
+      if (!(link instanceof HTMLAnchorElement)) {
+        return "";
+      }
+      return [
+        link.innerText,
+        link.textContent,
+        link.getAttribute("title"),
+        link.getAttribute("aria-label"),
+        link.href
+      ].filter(Boolean).join(" ");
+    })
+    .join(" ");
+  const pageText = normalizeText([
+    getSearchQueryContext(),
+    getMetaContent("description"),
+    document.body?.innerText || "",
+    linkText,
+    location.hostname || ""
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT);
+  const hasAdult = MEDIA_SAFETY_ADULT_PATTERN.test(pageText);
+  const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(pageText);
+  const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
+  const signalCount = [hasAdult, hasGambling, hasLinkGuide].filter(Boolean).length;
+  return {
+    strictMediaMode: signalCount >= 2,
+    category: hasAdult && hasGambling ? "mixed" : hasAdult ? "adult" : "gambling",
+    reason: hasLinkGuide ? "page risk link context" : "page risk context"
+  };
 }
 
 function isReasonableMediaAncestor(candidate, mediaRect) {
@@ -2157,7 +2202,7 @@ function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT) {
   return candidates;
 }
 
-function getMediaSafetyMatch(candidate) {
+function getMediaSafetyMatch(candidate, pageContext = null) {
   const haystack = normalizeText([
     candidate?.contextText,
     candidate?.domain,
@@ -2179,6 +2224,13 @@ function getMediaSafetyMatch(candidate) {
     return {
       category: "adult",
       reason: "adult keyword/context"
+    };
+  }
+
+  if (pageContext?.strictMediaMode && !isKnownSafeMediaFixture(candidate)) {
+    return {
+      category: pageContext.category || "media",
+      reason: pageContext.reason || "page risk context"
     };
   }
 
@@ -2278,9 +2330,10 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
   const candidates = collectMediaSafetyCandidates();
   const collectMs = performance.now() - collectStartedAt;
   const cheapFilterStartedAt = performance.now();
+  const pageContext = getMediaSafetyPageContext();
   const selected = [];
   for (const candidate of candidates) {
-    const match = getMediaSafetyMatch(candidate);
+    const match = getMediaSafetyMatch(candidate, pageContext);
     if (match) {
       selected.push({ candidate, match });
     }

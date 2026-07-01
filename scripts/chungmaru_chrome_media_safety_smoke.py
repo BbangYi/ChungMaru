@@ -33,6 +33,8 @@ DEFAULT_EXTENSION_DIR = Path("extension/chrome")
 DEFAULT_PROFILE_DIR = Path("/tmp/chungmaru-chrome-media-safety-profile")
 DEFAULT_CHROME_LOG = Path("/tmp/chungmaru-chrome-media-safety.log")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
+FIXTURE_OUTPUT_PREFIX = "media-safety-smoke"
+LIVE_OUTPUT_PREFIX = "media-safety-live-smoke"
 DEFAULT_CHROME_FOR_TESTING_ROOT = Path("/private/tmp/chungmaru-chrome-for-testing/chrome")
 CHROME_FOR_TESTING_EXECUTABLE = (
     "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
@@ -229,9 +231,13 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         f"--remote-debugging-port={args.debugging_port}",
         "--no-first-run",
         "--no-default-browser-check",
+        "--window-size=1440,900",
+        "--window-position=-4000,0",
+        "--force-device-scale-factor=1",
         "--disable-background-networking",
         "--disable-component-extensions-with-background-pages",
         "--disable-features=DisableLoadExtensionCommandLineSwitch",
+        "--disable-notifications",
         "--enable-unsafe-extension-debugging",
         "--enable-logging=stderr",
         f"--load-extension={extension_dir}",
@@ -327,6 +333,43 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
+    value = page.evaluate(
+        """(() => {
+          const isVisible = (node) => {
+            if (!node || !(node instanceof Element)) return false;
+            const style = window.getComputedStyle(node);
+            if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') === 0) return false;
+            const rect = node.getBoundingClientRect();
+            return rect.width >= 24 && rect.height >= 24 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth;
+          };
+          const hidden = Array.from(document.querySelectorAll('[data-chungmaru-media-hidden="true"]'));
+          const media = Array.from(document.querySelectorAll('img, video[poster], [role="img"], picture, source'));
+          const backgrounds = Array.from(document.querySelectorAll('a, article, div, section')).filter((node) => {
+            const image = window.getComputedStyle(node).backgroundImage || '';
+            return image.includes('url(');
+          });
+          return {
+            locationHref: window.location.href,
+            readyState: document.readyState,
+            hiddenCount: hidden.length,
+            harmfulTotal: 0,
+            harmfulHiddenCount: 0,
+            safeTotal: 0,
+            safeHiddenCount: 0,
+            domElementCount: document.querySelectorAll('*').length,
+            bodyTextLength: (document.body && document.body.innerText ? document.body.innerText.length : 0),
+            mediaElementCount: media.length,
+            visibleMediaElementCount: media.filter(isVisible).length,
+            backgroundImageElementCount: backgrounds.length,
+            visibleBackgroundImageElementCount: backgrounds.filter(isVisible).length
+          };
+        })()""",
+        timeout_s=5,
+    )
+    return value if isinstance(value, dict) else {}
+
+
 def int_metric(value: Any) -> int:
     try:
       return max(0, int(value or 0))
@@ -355,6 +398,98 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedCheapFilterMs": max_log_metric(logs, "cheapFilterMs"),
       "loggedApplyMs": max_log_metric(logs, "applyMs"),
       "loggedDomAddedToActionMs": max_log_metric(logs, "domAddedToActionMs"),
+    }
+
+
+def origin_and_path_prefix(url: str) -> tuple[str, str]:
+    parsed = urllib.parse.urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+    path = parsed.path or "/"
+    if len(path) > 80:
+      path = path[:80]
+    return origin, path
+
+
+def build_result_row(
+    *,
+    case: dict[str, Any],
+    response: dict[str, Any],
+    dom: dict[str, Any],
+    logs: list[dict[str, Any]],
+    url: str = "",
+) -> dict[str, Any]:
+    media_logs = [
+        item for item in logs
+        if str(item.get("type") or "").startswith("media-safety")
+    ]
+    summary = response.get("response") if isinstance(response, dict) else {}
+    if not isinstance(summary, dict):
+      summary = {}
+    log_summary = summarize_media_logs(media_logs)
+    media_enabled = bool(case["media_safety_enabled"])
+    hidden_count = int_metric(dom.get("hiddenCount"))
+    harmful_total = int_metric(dom.get("harmfulTotal"))
+    harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
+    safe_total = int_metric(dom.get("safeTotal"))
+    safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
+    dom_candidate_count = harmful_total + safe_total if media_enabled else 0
+    effective_action_count = max(
+        int_metric(summary.get("actionCount")),
+        log_summary["loggedActionCount"],
+        hidden_count if media_enabled else 0,
+    )
+    effective_candidate_count = max(
+        int_metric(summary.get("candidateCount")),
+        log_summary["loggedCandidateCount"],
+        dom_candidate_count,
+        effective_action_count,
+    )
+    effective_visible_tile_count = max(
+        int_metric(summary.get("visibleTileCount")),
+        log_summary["loggedVisibleTileCount"],
+        dom_candidate_count,
+        effective_action_count,
+    )
+    origin, path_prefix = origin_and_path_prefix(url)
+    final_origin, final_path_prefix = origin_and_path_prefix(str(dom.get("locationHref") or ""))
+    return {
+        "timestamp": now_iso(),
+        "case_id": case["case_id"],
+        "scenario": case["scenario"],
+        "url_origin": origin,
+        "url_path_prefix": path_prefix,
+        "final_url_origin": final_origin,
+        "final_url_path_prefix": final_path_prefix,
+        "media_safety_enabled": bool(case["media_safety_enabled"]),
+        "developer_log_enabled": bool(case["developer_log_enabled"]),
+        "scan_ok": bool(summary.get("ok")),
+        "scan_status": summary.get("status") or "",
+        "candidate_count": effective_candidate_count,
+        "visible_tile_count": effective_visible_tile_count,
+        "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
+        "action_count": effective_action_count,
+        "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
+        "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
+        "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
+        "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
+        "apply_ms": max(int_metric(summary.get("applyMs")), log_summary["loggedApplyMs"]),
+        "dom_added_to_action_ms": max(int_metric(summary.get("domAddedToActionMs")), log_summary["loggedDomAddedToActionMs"]),
+        **log_summary,
+        "runtime_log_count": len(logs),
+        "media_runtime_log_count": len(media_logs),
+        "hidden_count": hidden_count,
+        "harmful_total": harmful_total,
+        "harmful_hidden_count": harmful_hidden_count,
+        "safe_total": safe_total,
+        "safe_hidden_count": safe_hidden_count,
+        "dom_element_count": int_metric(dom.get("domElementCount")),
+        "body_text_length": int_metric(dom.get("bodyTextLength")),
+        "media_element_count": int_metric(dom.get("mediaElementCount")),
+        "visible_media_element_count": int_metric(dom.get("visibleMediaElementCount")),
+        "background_image_element_count": int_metric(dom.get("backgroundImageElementCount")),
+        "visible_background_image_element_count": int_metric(dom.get("visibleBackgroundImageElementCount")),
+        "document_ready_state": str(dom.get("readyState") or ""),
+        "message_phase": response.get("phase") if isinstance(response, dict) else "",
     }
 
 
@@ -419,68 +554,71 @@ def run_case(
       time.sleep(0.2)
       dom = inspect_media_dom(page)
       logs = get_runtime_logs(worker)
-      media_logs = [
-          item for item in logs
-          if str(item.get("type") or "").startswith("media-safety")
-      ]
-      summary = response.get("response") if isinstance(response, dict) else {}
-      if not isinstance(summary, dict):
-          summary = {}
-      log_summary = summarize_media_logs(media_logs)
-      media_enabled = bool(case["media_safety_enabled"])
-      hidden_count = int_metric(dom.get("hiddenCount"))
-      harmful_total = int_metric(dom.get("harmfulTotal"))
-      harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
-      safe_total = int_metric(dom.get("safeTotal"))
-      safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
-      dom_candidate_count = harmful_total + safe_total if media_enabled else 0
-      effective_action_count = max(
-          int_metric(summary.get("actionCount")),
-          log_summary["loggedActionCount"],
-          hidden_count if media_enabled else 0,
-      )
-      return {
-          "timestamp": now_iso(),
-          "case_id": case["case_id"],
-          "scenario": case["scenario"],
-          "media_safety_enabled": bool(case["media_safety_enabled"]),
-          "developer_log_enabled": bool(case["developer_log_enabled"]),
-          "scan_ok": bool(summary.get("ok")),
-          "scan_status": summary.get("status") or "",
-          "candidate_count": max(int_metric(summary.get("candidateCount")), log_summary["loggedCandidateCount"], dom_candidate_count),
-          "visible_tile_count": max(int_metric(summary.get("visibleTileCount")), log_summary["loggedVisibleTileCount"], dom_candidate_count),
-          "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
-          "action_count": effective_action_count,
-          "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
-          "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
-          "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
-          "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
-          "apply_ms": max(int_metric(summary.get("applyMs")), log_summary["loggedApplyMs"]),
-          "dom_added_to_action_ms": max(int_metric(summary.get("domAddedToActionMs")), log_summary["loggedDomAddedToActionMs"]),
-          **log_summary,
-          "runtime_log_count": len(logs),
-          "media_runtime_log_count": len(media_logs),
-          "hidden_count": hidden_count,
-          "harmful_total": harmful_total,
-          "harmful_hidden_count": harmful_hidden_count,
-          "safe_total": safe_total,
-          "safe_hidden_count": safe_hidden_count,
-          "message_phase": response.get("phase") if isinstance(response, dict) else "",
-      }
+      return build_result_row(case=case, response=response, dom=dom, logs=logs)
     finally:
       page.close()
 
 
-def write_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> None:
+def normalize_live_url(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+      raise ValueError("live URL cannot be empty")
+    if "://" not in raw:
+      raw = f"https://{raw}"
+    parsed = urllib.parse.urlparse(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+      raise ValueError(f"unsupported live URL: {value}")
+    return raw
+
+
+def run_live_case(
+    worker: CdpWebSocket,
+    debugging_port: int,
+    live_url: str,
+    case: dict[str, Any],
+    *,
+    settle_seconds: float,
+) -> dict[str, Any]:
+    set_extension_state(
+        worker,
+        media_safety_enabled=bool(case["media_safety_enabled"]),
+        developer_log_enabled=bool(case["developer_log_enabled"]),
+    )
+    time.sleep(0.25)
+    target = create_tab(debugging_port, live_url)
+    page = CdpWebSocket(str(target["webSocketDebuggerUrl"]))
+    try:
+      wait_for_page_ready(page, timeout_s=20)
+      time.sleep(settle_seconds)
+      settings = build_extension_settings(bool(case["media_safety_enabled"]))
+      response = send_media_scan_message(
+          worker,
+          live_url,
+          {
+              "type": "RUN_MEDIA_SAFETY_SCAN",
+              "reason": f"live-smoke-{case['case_id']}",
+              "settings": settings,
+          },
+          timeout_s=15,
+      )
+      time.sleep(0.3)
+      dom = inspect_live_dom(page)
+      logs = get_runtime_logs(worker)
+      return build_result_row(case=case, response=response, dom=dom, logs=logs, url=live_url)
+    finally:
+      page.close()
+
+
+def write_outputs(output_dir: Path, rows: list[dict[str, Any]], prefix: str) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    jsonl_path = output_dir / "media-safety-smoke.jsonl"
-    csv_path = output_dir / "media-safety-smoke.csv"
+    jsonl_path = output_dir / f"{prefix}.jsonl"
+    csv_path = output_dir / f"{prefix}.csv"
     with jsonl_path.open("w", encoding="utf-8") as handle:
       for row in rows:
         handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
     fieldnames = list(rows[0].keys()) if rows else []
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
-      writer = csv.DictWriter(handle, fieldnames=fieldnames)
+      writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
       writer.writeheader()
       writer.writerows(rows)
 
@@ -530,6 +668,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--debugging-port", type=int, default=9337)
     parser.add_argument("--fixture-port", type=int, default=0)
+    parser.add_argument("--live-url", action="append", default=[])
+    parser.add_argument("--live-settle-seconds", type=float, default=2.0)
     parser.add_argument("--clean-profile", action="store_true", default=True)
     parser.add_argument("--keep-chrome", action="store_true")
     return parser.parse_args()
@@ -575,17 +715,37 @@ def main() -> int:
                 "developer_log_enabled": True,
             },
         ]
-        for case in cases:
-          rows.append(run_case(worker, args.debugging_port, fixture_url, case))
-        write_outputs(args.output_dir, rows)
-        assert_acceptance(rows)
+        if args.live_url:
+          live_urls = [normalize_live_url(item) for item in args.live_url]
+          for index, live_url in enumerate(live_urls, start=1):
+            parsed = urllib.parse.urlparse(live_url)
+            case = {
+                "case_id": f"live_{index}_{parsed.netloc.replace('.', '_')}",
+                "scenario": "live",
+                "media_safety_enabled": True,
+                "developer_log_enabled": True,
+            }
+            rows.append(run_live_case(
+                worker,
+                args.debugging_port,
+                live_url,
+                case,
+                settle_seconds=args.live_settle_seconds,
+            ))
+          write_outputs(args.output_dir, rows, LIVE_OUTPUT_PREFIX)
+        else:
+          for case in cases:
+            rows.append(run_case(worker, args.debugging_port, fixture_url, case))
+          write_outputs(args.output_dir, rows, FIXTURE_OUTPUT_PREFIX)
+          assert_acceptance(rows)
       finally:
         worker.close()
       print(json.dumps({"ok": True, "rows": rows, "output_dir": str(args.output_dir)}, ensure_ascii=False, indent=2))
       return 0
     except Exception as error:  # noqa: BLE001 - smoke output should preserve failure reason
       if rows:
-        write_outputs(args.output_dir, rows)
+        prefix = LIVE_OUTPUT_PREFIX if args.live_url else FIXTURE_OUTPUT_PREFIX
+        write_outputs(args.output_dir, rows, prefix)
       payload = {"ok": False, "error": str(error), "rows": rows}
       hint = read_chrome_log_hint(args.chrome_log)
       if hint:
