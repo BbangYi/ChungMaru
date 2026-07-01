@@ -37,7 +37,7 @@
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled`/`mediaSafetyStartupGateEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남기고, 이미지 삽입 후 숨김까지 걸린 시간은 `lateDecisionMs`로 남긴다.
 - smoke harness는 기본값을 headless 실행으로 바꿨다. 테스트 중 Chrome for Testing 창이 사용자의 화면 위로 올라오지 않으며, 사람이 직접 눈으로 확인할 때만 `--headed`를 명시한다.
 - live smoke는 최종 URL이 `chrome-error://chromewebdata` 또는 비 HTTP 페이지인 경우 scan/action을 건너뛰고 `invalid_page`로 기록한다. 정상 live page도 최종 URL과 매칭되는 탭에만 메시지를 보내므로, 이전 탭이나 active tab에 action log가 섞이지 않는다.
-- `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
+- `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
 
 검증된 범위:
 
@@ -58,27 +58,31 @@
 | address-guide video fixture | off | 8 | 1 | 1 | 0 | 0 | 0 | 0 | 8 | 41.9% | 0 | 2 | 0 | 0 | 1 | 0 |
 | late-load fixture | off | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 1 | 8.7% | 0 | 1 | 0 | 0 | 0 | 41 |
 
-현재 seed live smoke 결과:
+현재 curated visual-rich live smoke 결과:
 
-| 입력 | 실행 | 정상 로드 | Chrome error/invalid | action run | invalid action | visual candidate run | loaded max collectMs | loaded max applyMs |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| adult/gambling block seed | 20 | 6 | 14 | 0 | 0 | 0 | 2 | 0 |
+입력 파일은 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`이고, 각 URL을 3회 반복했다.
 
-정상 로드된 seed 도메인은 `xhamster.com`, `888sport.com`, `pinnacle.casino`, `ladbrokes.com`, `10bet.com`, `bongacams.live`였다. 이 중 `888sport.com`과 `bongacams.live`는 visible media가 있었지만 후보 크기 기준에는 못 미쳤고, 나머지는 첫 viewport에 후보 크기 media가 없거나 빈/축소 페이지였다.
+| 도메인 | 분류 | 실행 | 정상 로드 | action run | action 중앙값 | action 최대 | 영역 제거/숨김 | compact 병합 | remaining visible 최대 | 후보 크기 visible 최대 | false hidden 최대 | 화면 점유율 최대 | collectMs p50/p95 | applyMs p50/p95 | domAddedToActionMs p50/p95 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `jusoguide1.com` | gambling block | 3 | 3 | 3 | 17 | 18 | 3/17/17 | 0 | 6 | 0 | 0 | 100.0% | 6/9 | 5/6 | 2/2 |
+| `jusowhy1.com` | gambling block | 3 | 3 | 3 | 34 | 34 | 5/0/34 | 0 | 0 | 0 | 0 | 100.0% | 3/7 | 1/12 | 1/9 |
+| `example.com` | benign allow | 3 | 3 | 0 | 0 | 0 | 0/0/0 | 0 | 0 | 0 | 0 | 0.0% | 1/1 | 0/0 | 0/0 |
+| `wikipedia.org` | benign allow | 3 | 3 | 0 | 0 | 0 | 0/0/0 | 0 | 0 | 1 | 0 | 0.0% | 7/7 | 0/0 | 0/0 |
 
 해석 주의:
 
 - `visible_media_element_count`에는 30~32px 아이콘도 포함된다. 실제 차단 후보 크기 기준 잔여는 `candidate_sized_visible_media_element_count`로 확인한다.
 - fixture의 `pre_manual_harmful_hidden_count`는 수동 smoke scan 전 자동으로 숨겨진 유해 media 수다. `late-load` fixture는 240ms 뒤 삽입된 이미지가 수동 scan 전에 숨겨졌음을 확인한다.
 - `late-load` fixture의 decision-first 경로는 이미지 삽입 후 숨김까지 `lateDecisionMs=41ms`였다. 즉 사전 pre-mask 없이도 fixture 기준에서는 사용자가 인식하기 어려운 수준으로 빠르게 따라잡는다.
-- seed bulk는 유해 사이트 정책 목록의 reachability를 확인하는 데 유용하지만, 이미지 배너 마스킹 품질을 직접 평가하기에는 부적합한 URL이 많다. 실제 품질 평가는 `jusoguide1.com`, `jusowhy1.com`처럼 visible banner grid가 있는 reachable subset을 따로 고정해야 한다.
-- live seed URL은 1회 실행 기준이므로 반복 실행 p50/p95와 실제 화면 녹화로 보강해야 한다.
+- seed bulk는 유해 사이트 정책 목록의 reachability를 확인하는 데 유용하지만, 이미지 배너 마스킹 품질을 직접 평가하기에는 부적합한 URL이 많다. 실제 품질 평가는 `jusoguide1.com`, `jusowhy1.com`처럼 visible banner grid가 있는 reachable subset을 따로 고정해 반복 실행한다.
+- 현재 visual-rich live smoke는 4개 URL의 3회 반복 기준이다. 정상 페이지 12/12가 로드됐고, benign negative인 `example.com`, `wikipedia.org`에서는 action과 false hidden이 모두 0이었다. `wikipedia.org`는 후보 크기의 visible image가 있었지만 숨기지 않아 정상 이미지 negative sample 역할을 한다.
+- `jusoguide1.com` 반복 2~3회에서 `remainingVisibleTileCount=6`이 남았지만 `candidateSizedVisibleMediaElementCount=0`이다. 현재 로그 기준 remaining은 30px 내외 아이콘도 포함하므로, 발표 지표에서는 후보 크기 visible 잔여와 구분해 설명해야 한다.
 - headless smoke 후 남은 Chrome for Testing 프로세스가 없음을 `ps aux | rg "Google Chrome for Testing|chungmaru-chrome-media-safety"`로 확인했다.
 
 아직 evidence가 부족한 범위:
 
 - Google Chrome stable은 여전히 `--load-extension`을 차단하므로 smoke runner는 Chrome for Testing 또는 Chromium이 필요하다.
-- live smoke는 현재 seed 20개의 1회 실행 기준이다. p50/p95는 반복 실행으로 보강해야 한다.
+- live smoke는 현재 visual-rich subset 4개 URL의 3회 반복 기준이다. 더 큰 benign set, 실제 Google Images/YouTube thumbnail set, 화면 녹화 evidence는 아직 보강해야 한다.
 - live URL은 truth label이 없으므로 `falseHiddenCount`를 오탐률로 해석하면 안 된다. clean fixture 또는 별도 benign live page로 negative sample을 유지해야 한다.
 - 실제 Google Images/도박 배너 페이지의 화면 녹화와 row-level latency evidence는 아직 필요하다.
 

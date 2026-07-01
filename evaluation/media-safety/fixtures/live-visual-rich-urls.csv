@@ -1,0 +1,5 @@
+url,seed_domain,seed_category,seed_risk_level,seed_title
+https://jusoguide1.com,jusoguide1.com,gambling,block,Address guide gambling banner grid
+https://jusowhy1.com,jusowhy1.com,gambling,block,Address why gambling banner grid
+https://example.com,example.com,benign,allow,Benign static page
+https://www.wikipedia.org,wikipedia.org,benign,allow,Benign media-light landing page

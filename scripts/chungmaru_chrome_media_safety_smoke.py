@@ -904,12 +904,35 @@ def normalize_live_url(value: str) -> str:
 
 def read_live_url_file(path: Path) -> list[dict[str, Any]]:
     targets: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-      raw = line.strip()
-      if not raw or raw.startswith("#"):
-        continue
+    lines = [
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if not lines:
+      return targets
+
+    header = [item.strip().lower() for item in next(csv.reader([lines[0]]))]
+    if "url" in header or "domain" in header:
+      for row in csv.DictReader(lines):
+        normalized = {str(key or "").strip().lower(): str(value or "").strip() for key, value in row.items()}
+        raw_url = normalized.get("url") or normalized.get("domain") or normalized.get("seed_domain") or ""
+        if not raw_url:
+          continue
+        url = normalize_live_url(raw_url)
+        parsed = urllib.parse.urlparse(url)
+        domain = normalized.get("seed_domain") or normalized.get("domain") or parsed.netloc
+        targets.append({
+            "url": url,
+            "seed_domain": domain,
+            "seed_category": normalized.get("seed_category") or normalized.get("category") or "",
+            "seed_risk_level": normalized.get("seed_risk_level") or normalized.get("risk_level") or "",
+            "seed_title": (normalized.get("seed_title") or normalized.get("title") or "")[:120],
+        })
+      return targets
+
+    for line in lines:
       # Allow either plain URL/domain lines or a simple CSV first-column export.
-      url = raw.split(",", 1)[0].strip()
+      url = line.split(",", 1)[0].strip()
       if not url:
         continue
       targets.append({"url": normalize_live_url(url)})
