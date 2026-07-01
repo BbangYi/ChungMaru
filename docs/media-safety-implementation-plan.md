@@ -38,6 +38,7 @@
 - smoke harness는 기본값을 headless 실행으로 바꿨다. 테스트 중 Chrome for Testing 창이 사용자의 화면 위로 올라오지 않으며, 사람이 직접 눈으로 확인할 때만 `--headed`를 명시한다.
 - live smoke는 최종 URL이 `chrome-error://chromewebdata` 또는 비 HTTP 페이지인 경우 scan/action을 건너뛰고 `invalid_page`로 기록한다. 정상 live page도 최종 URL과 매칭되는 탭에만 메시지를 보내므로, 이전 탭이나 active tab에 action log가 섞이지 않는다.
 - `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
+- `--capture-visual-evidence`를 켜면 headless 상태에서 현재 viewport screenshot을 `evaluation/media-safety/results/current/visual/`에 저장하고, `media-safety-visual-evidence.*` manifest로 live smoke row와 연결한다. 기본은 repeat 1개만 캡처해 artifact sprawl을 막는다.
 
 검증된 범위:
 
@@ -48,6 +49,8 @@
 - `evaluation/media-safety/results/current/media-safety-smoke.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-live-smoke.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-live-summary.csv`와 `.jsonl` 생성
+- `evaluation/media-safety/results/current/media-safety-visual-evidence.csv`와 `.jsonl` 생성
+- `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
 
 현재 fixture smoke 결과:
 
@@ -62,12 +65,12 @@
 
 입력 파일은 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`이고, 각 URL을 3회 반복했다.
 
-| 도메인 | 분류 | 실행 | 정상 로드 | action run | action 중앙값 | action 최대 | 영역 제거/숨김 | compact 병합 | remaining visible 최대 | 후보 크기 visible 최대 | false hidden 최대 | 화면 점유율 최대 | collectMs p50/p95 | applyMs p50/p95 | domAddedToActionMs p50/p95 |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `jusoguide1.com` | gambling block | 3 | 3 | 3 | 17 | 18 | 3/17/17 | 0 | 6 | 0 | 0 | 100.0% | 6/9 | 5/6 | 2/2 |
-| `jusowhy1.com` | gambling block | 3 | 3 | 3 | 34 | 34 | 5/0/34 | 0 | 0 | 0 | 0 | 100.0% | 3/7 | 1/12 | 1/9 |
-| `example.com` | benign allow | 3 | 3 | 0 | 0 | 0 | 0/0/0 | 0 | 0 | 0 | 0 | 0.0% | 1/1 | 0/0 | 0/0 |
-| `wikipedia.org` | benign allow | 3 | 3 | 0 | 0 | 0 | 0/0/0 | 0 | 0 | 1 | 0 | 0.0% | 7/7 | 0/0 | 0/0 |
+| 도메인 | 분류 | 실행 | 정상 로드 | action run | action 중앙/최대 | remaining visible 최대 | 후보 크기 visible 최대 | false hidden 최대 | 화면 점유율 최대 | collectMs p50/p95 | applyMs p50/p95 | domAddedToActionMs p50/p95 | visual artifact |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `jusoguide1.com` | gambling block | 3 | 3 | 3 | 17/18 | 0 | 0 | 0 | 78.7% | 3/4 | 1/3 | 0/1 | `visual/live-1-jusoguide1-com-decision-first-r1.png` |
+| `jusowhy1.com` | gambling block | 3 | 3 | 3 | 34/34 | 0 | 0 | 0 | 100.0% | 3/3 | 6/7 | 5/5 | `visual/live-2-jusowhy1-com-decision-first-r1.png` |
+| `example.com` | benign allow | 3 | 3 | 0 | 0/0 | 0 | 0 | 0 | 0.0% | 0/0 | 0/0 | 0/0 | `visual/live-3-example-com-decision-first-r1.png` |
+| `wikipedia.org` | benign allow | 3 | 3 | 0 | 0/0 | 0 | 1 | 0 | 0.0% | 1/1 | 0/0 | 0/0 | `visual/live-4-www-wikipedia-org-decision-first-r1.png` |
 
 해석 주의:
 
@@ -76,7 +79,8 @@
 - `late-load` fixture의 decision-first 경로는 이미지 삽입 후 숨김까지 `lateDecisionMs=41ms`였다. 즉 사전 pre-mask 없이도 fixture 기준에서는 사용자가 인식하기 어려운 수준으로 빠르게 따라잡는다.
 - seed bulk는 유해 사이트 정책 목록의 reachability를 확인하는 데 유용하지만, 이미지 배너 마스킹 품질을 직접 평가하기에는 부적합한 URL이 많다. 실제 품질 평가는 `jusoguide1.com`, `jusowhy1.com`처럼 visible banner grid가 있는 reachable subset을 따로 고정해 반복 실행한다.
 - 현재 visual-rich live smoke는 4개 URL의 3회 반복 기준이다. 정상 페이지 12/12가 로드됐고, benign negative인 `example.com`, `wikipedia.org`에서는 action과 false hidden이 모두 0이었다. `wikipedia.org`는 후보 크기의 visible image가 있었지만 숨기지 않아 정상 이미지 negative sample 역할을 한다.
-- `jusoguide1.com` 반복 2~3회에서 `remainingVisibleTileCount=6`이 남았지만 `candidateSizedVisibleMediaElementCount=0`이다. 현재 로그 기준 remaining은 30px 내외 아이콘도 포함하므로, 발표 지표에서는 후보 크기 visible 잔여와 구분해 설명해야 한다.
+- `jusoguide1.com`, `jusowhy1.com`의 screenshot은 큰 배너 grid가 사라지거나 compact summary로 축소된 상태를 보여 준다. 페이지 내 텍스트 랭킹 목록은 media safety의 이미지/배너 차단 범위가 아니라 텍스트 마스킹 또는 사이트 보호 범위로 분리해 설명해야 한다.
+- 현재 로그 기준 `remainingVisibleTileCount`는 30px 내외 아이콘도 포함할 수 있으므로, 발표 지표에서는 후보 크기 visible 잔여인 `candidateSizedVisibleMediaElementCount`와 구분해 설명해야 한다.
 - headless smoke 후 남은 Chrome for Testing 프로세스가 없음을 `ps aux | rg "Google Chrome for Testing|chungmaru-chrome-media-safety"`로 확인했다.
 
 아직 evidence가 부족한 범위:

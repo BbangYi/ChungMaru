@@ -1,5 +1,5 @@
 timestamp,url_origin,startup_gate_enabled,seed_domain,seed_category,seed_risk_level,run_count,ok_count,error_count,invalid_page_count,visual_candidate_run_count,action_run_count,action_count_median,action_count_max,remaining_visible_tile_count_max,false_hidden_count_max,viewport_coverage_pct_max,collect_ms_p50,collect_ms_p95,apply_ms_p50,apply_ms_p95,dom_added_to_action_ms_p50,dom_added_to_action_ms_p95,error_codes
-2026-07-01T16:37:05+09:00,https://jusoguide1.com,False,jusoguide1.com,gambling,block,3,3,0,0,0,3,17,18,6,0,100.0,6,9,5,6,2,2,
-2026-07-01T16:37:05+09:00,https://jusowhy1.com,False,jusowhy1.com,gambling,block,3,3,0,0,0,3,34,34,0,0,100.0,3,7,1,12,1,9,
-2026-07-01T16:37:05+09:00,https://example.com,False,example.com,benign,allow,3,3,0,0,0,0,0,0,0,0,0.0,1,1,0,0,0,0,
-2026-07-01T16:37:05+09:00,https://www.wikipedia.org,False,wikipedia.org,benign,allow,3,3,0,0,3,0,0,0,0,0,0.0,7,7,0,0,0,0,
+2026-07-01T16:55:13+09:00,https://jusoguide1.com,False,jusoguide1.com,gambling,block,3,3,0,0,0,3,17,18,0,0,78.7,3,4,1,3,0,1,
+2026-07-01T16:55:13+09:00,https://jusowhy1.com,False,jusowhy1.com,gambling,block,3,3,0,0,0,3,34,34,0,0,100.0,3,3,6,7,5,5,
+2026-07-01T16:55:13+09:00,https://example.com,False,example.com,benign,allow,3,3,0,0,0,0,0,0,0,0,0.0,0,0,0,0,0,0,
+2026-07-01T16:55:13+09:00,https://www.wikipedia.org,False,wikipedia.org,benign,allow,3,3,0,0,3,0,0,0,0,0,0.0,1,1,0,0,0,0,

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import html
 import http.server
@@ -34,9 +35,11 @@ DEFAULT_EXTENSION_DIR = Path("extension/chrome")
 DEFAULT_PROFILE_DIR = Path("/tmp/chungmaru-chrome-media-safety-profile")
 DEFAULT_CHROME_LOG = Path("/tmp/chungmaru-chrome-media-safety.log")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
+DEFAULT_VISUAL_EVIDENCE_DIR = DEFAULT_OUTPUT_DIR / "visual"
 FIXTURE_OUTPUT_PREFIX = "media-safety-smoke"
 LIVE_OUTPUT_PREFIX = "media-safety-live-smoke"
 LIVE_SUMMARY_PREFIX = "media-safety-live-summary"
+VISUAL_EVIDENCE_PREFIX = "media-safety-visual-evidence"
 DEFAULT_SITE_SEED_FILE = Path("backend/data/site_intel_seed_massive.json")
 DEFAULT_CHROME_FOR_TESTING_ROOT = Path("/private/tmp/chungmaru-chrome-for-testing/chrome")
 CHROME_FOR_TESTING_EXECUTABLE = (
@@ -342,6 +345,57 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         return subprocess.Popen(command, stdout=log_handle, stderr=log_handle)
     finally:
         log_handle.close()
+
+
+def safe_artifact_slug(value: str, *, max_length: int = 96) -> str:
+    slug = "".join(
+        char.lower() if char.isalnum() else "-"
+        for char in str(value or "")
+    )
+    slug = "-".join(part for part in slug.split("-") if part)
+    return (slug or "artifact")[:max_length]
+
+
+def prepare_visual_evidence_dir(path: Path, output_dir: Path) -> None:
+    resolved_path = path.resolve()
+    resolved_output_dir = output_dir.resolve()
+    try:
+      resolved_path.relative_to(resolved_output_dir)
+    except ValueError as error:
+      raise RuntimeError(
+          f"visual evidence dir must be inside output dir: {resolved_path}"
+      ) from error
+    if path.exists():
+      shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def should_capture_visual_evidence(case: dict[str, Any], capture_repeat: int) -> bool:
+    if case.get("scenario") != "live":
+      return False
+    repeat_index = int_metric(case.get("repeat_index"))
+    return capture_repeat <= 0 or repeat_index == capture_repeat
+
+
+def capture_page_screenshot(page: CdpWebSocket, output_dir: Path, case: dict[str, Any]) -> Path:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    case_id = safe_artifact_slug(str(case.get("case_id") or "live"))
+    path = output_dir / f"{case_id}.png"
+    page.call("Page.enable", timeout_s=5)
+    result = page.call(
+        "Page.captureScreenshot",
+        {
+            "format": "png",
+            "fromSurface": True,
+            "captureBeyondViewport": False,
+        },
+        timeout_s=10,
+    )
+    data = str(result.get("data") or "")
+    if not data:
+      raise RuntimeError("Page.captureScreenshot returned empty data")
+    path.write_bytes(base64.b64decode(data))
+    return path
 
 
 def connect_service_worker(debugging_port: int, timeout_s: float = 10) -> CdpWebSocket:
@@ -1046,6 +1100,8 @@ def run_live_case(
     case: dict[str, Any],
     *,
     settle_seconds: float,
+    visual_evidence_dir: Path | None = None,
+    visual_evidence_repeat: int = 1,
 ) -> dict[str, Any]:
     set_extension_state(
         worker,
@@ -1115,7 +1171,18 @@ def run_live_case(
       time.sleep(0.3)
       dom = inspect_live_dom(page)
       logs = get_runtime_logs(worker)
-      return build_result_row(case=case, response=response, dom=dom, logs=logs, url=live_url)
+      row = build_result_row(case=case, response=response, dom=dom, logs=logs, url=live_url)
+      row["visual_artifact_path"] = ""
+      row["visual_artifact_bytes"] = 0
+      row["visual_capture_error"] = ""
+      if visual_evidence_dir is not None and should_capture_visual_evidence(case, visual_evidence_repeat):
+        try:
+          screenshot_path = capture_page_screenshot(page, visual_evidence_dir, case)
+          row["visual_artifact_path"] = str(screenshot_path)
+          row["visual_artifact_bytes"] = screenshot_path.stat().st_size
+        except Exception as error:  # noqa: BLE001 - visual evidence must not fail latency smoke
+          row["visual_capture_error"] = str(error)[:220]
+      return row
     finally:
       page.close()
 
@@ -1239,6 +1306,48 @@ def write_live_summary_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> 
     write_outputs(output_dir, summary_rows, LIVE_SUMMARY_PREFIX)
 
 
+def write_visual_evidence_outputs(output_dir: Path, rows: list[dict[str, Any]]) -> None:
+    fieldnames = [
+        "timestamp",
+        "case_id",
+        "url_origin",
+        "seed_domain",
+        "seed_category",
+        "seed_risk_level",
+        "repeat_index",
+        "startup_gate_enabled",
+        "live_page_ok",
+        "scan_ok",
+        "action_count",
+        "removed_count",
+        "placeholder_count",
+        "remaining_visible_tile_count",
+        "candidate_sized_visible_media_element_count",
+        "false_hidden_count",
+        "collect_ms",
+        "apply_ms",
+        "dom_added_to_action_ms",
+        "visual_artifact_path",
+        "visual_artifact_bytes",
+        "visual_capture_error",
+    ]
+    manifest_rows = [
+        {field: row.get(field, "") for field in fieldnames}
+        for row in rows
+        if row.get("visual_artifact_path") or row.get("visual_capture_error")
+    ]
+    output_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = output_dir / f"{VISUAL_EVIDENCE_PREFIX}.jsonl"
+    csv_path = output_dir / f"{VISUAL_EVIDENCE_PREFIX}.csv"
+    with jsonl_path.open("w", encoding="utf-8") as handle:
+      for row in manifest_rows:
+        handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+      writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
+      writer.writeheader()
+      writer.writerows(manifest_rows)
+
+
 def assert_acceptance(rows: list[dict[str, Any]]) -> None:
     by_case = {row["case_id"]: row for row in rows}
     media_off = by_case["media_off_harmful"]
@@ -1305,6 +1414,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--live-repeat", type=int, default=1)
     parser.add_argument("--live-settle-seconds", type=float, default=2.0)
     parser.add_argument("--live-startup-mode", choices=["both", "decision-first", "startup-gate"], default="both")
+    parser.add_argument("--capture-visual-evidence", action="store_true")
+    parser.add_argument("--visual-evidence-dir", type=Path, default=DEFAULT_VISUAL_EVIDENCE_DIR)
+    parser.add_argument(
+        "--visual-evidence-repeat",
+        type=int,
+        default=1,
+        help="Capture only this live repeat index. Use 0 to capture every repeat.",
+    )
     parser.add_argument("--media-intervention-mode", choices=["auto", "placeholder", "remove"], default="auto")
     display_group = parser.add_mutually_exclusive_group()
     display_group.add_argument(
@@ -1328,6 +1445,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     args.chrome_path = detect_chrome_path(args.chrome_path)
+    if args.output_dir != DEFAULT_OUTPUT_DIR and args.visual_evidence_dir == DEFAULT_VISUAL_EVIDENCE_DIR:
+      args.visual_evidence_dir = args.output_dir / "visual"
+    if args.capture_visual_evidence:
+      prepare_visual_evidence_dir(args.visual_evidence_dir, args.output_dir)
     fixture_port = args.fixture_port or find_free_port()
     fixture_server = start_fixture_server(fixture_port)
     chrome = launch_media_smoke_chrome(args)
@@ -1423,6 +1544,8 @@ def main() -> int:
                     live_url,
                     case,
                     settle_seconds=args.live_settle_seconds,
+                    visual_evidence_dir=args.visual_evidence_dir if args.capture_visual_evidence else None,
+                    visual_evidence_repeat=max(0, int(args.visual_evidence_repeat or 0)),
                 ))
               except Exception as error:  # noqa: BLE001 - bulk live smoke should keep later URLs running
                 rows.append(build_error_result_row(case, live_url, error))
@@ -1431,6 +1554,8 @@ def main() -> int:
                   worker.close()
         write_outputs(args.output_dir, rows, LIVE_OUTPUT_PREFIX)
         write_live_summary_outputs(args.output_dir, rows)
+        if args.capture_visual_evidence:
+          write_visual_evidence_outputs(args.output_dir, rows)
       else:
         for case in cases:
           worker = connect_service_worker(args.debugging_port)
@@ -1449,6 +1574,8 @@ def main() -> int:
         write_outputs(args.output_dir, rows, prefix)
         if is_live_run:
           write_live_summary_outputs(args.output_dir, rows)
+          if args.capture_visual_evidence:
+            write_visual_evidence_outputs(args.output_dir, rows)
       payload = {"ok": False, "error": str(error), "rows": rows}
       hint = read_chrome_log_hint(args.chrome_log)
       if hint:
