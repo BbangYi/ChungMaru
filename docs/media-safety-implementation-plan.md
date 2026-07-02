@@ -11,7 +11,7 @@
 - 모든 처리 결과는 로그와 evidence로 남는다.
 - 무거운 모델보다 빠른 DOM/텍스트/URL 신호를 먼저 쓰고, classifier/OCR은 필요한 후보에만 적용한다.
 
-## 현재 구현 상태 (2026-07-01)
+## 현재 구현 상태 (2026-07-02)
 
 현재 `유해 이미지 차단`은 모델/OCR 이전의 v1 골격이 들어간 상태다. 계획 대비 위치는 Phase 1과 Phase 2의 1차 구현 완료, Phase 3 smoke benchmark의 controlled fixture + live URL 1차 검증 완료 단계로 본다.
 
@@ -22,6 +22,7 @@
 - `mediaSafetyEnabled`가 켜진 경우에만 content script가 visible media 후보를 수집한다.
 - 첫 버전은 모델 없이 `alt`, `title`, `aria-label`, 주변 카드 텍스트, link URL/domain, 제한된 페이지 문맥의 cheap signal로 adult/gambling 후보를 판단한다.
 - Google 일반 검색 결과는 media safety에서 제외하고 텍스트/사이트 보호만 적용한다. 검색어가 `NSFW`라는 이유만으로 Naver 같은 정상 검색결과 이미지를 가리지 않기 위한 보수화다.
+- Google Images와 YouTube 같은 thumbnail 플랫폼에서는 검색어/가시 텍스트가 명확히 위험하지 않으면 플랫폼 URL, 썸네일 CDN, 난수형 video/image id만으로 차단하지 않는다. 후보 수집은 유지하되 `visibleText`와 `urlText`를 분리해 URL 오탐을 줄였다.
 - 검색결과 보호는 수동/curated/exact domain 또는 보안 위협 수준의 site-level 신호가 있을 때만 적용한다. 검색결과 제목/요약의 성인 키워드만으로 정상 도메인을 가리지 않는다.
 - 후보 주변 텍스트가 약해도 페이지 전체에 도박/먹튀/주소 링크 신호가 겹치거나 주소가이드형 배너 grid가 확인되면 strict media mode로 visible media를 빠르게 숨긴다.
 - 주소가이드 계열 live test 도메인인 `jusoguide1.com`, `jusowhy1.com`은 유해사이트 차단 fallback에서도 `block`으로 판정한다.
@@ -51,6 +52,7 @@
 - `evaluation/media-safety/results/current/media-safety-live-summary.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-visual-evidence.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
+- `evaluation/media-safety/results/current/benign-thumbnail/`에 Google Images/YouTube benign thumbnail negative smoke 결과와 headless screenshot 8개 생성
 
 현재 fixture smoke 결과:
 
@@ -72,6 +74,19 @@
 | `example.com` | benign allow | 3 | 3 | 0 | 0/0 | 0 | 0 | 0 | 0.0% | 0/0 | 0/0 | 0/0 | `visual/live-3-example-com-decision-first-r1.png` |
 | `wikipedia.org` | benign allow | 3 | 3 | 0 | 0/0 | 0 | 1 | 0 | 0.0% | 1/1 | 0/0 | 0/0 | `visual/live-4-www-wikipedia-org-decision-first-r1.png` |
 
+현재 benign thumbnail live smoke 결과:
+
+입력 파일은 `evaluation/media-safety/fixtures/live-benign-thumbnail-urls.csv`이고, 각 URL을 1회 실행했다. Google Images와 YouTube는 2개 benign query씩 묶어 summary에서 2회로 집계된다.
+
+| 도메인 | 분류 | 실행 | 정상 로드 | action run | action 중앙/최대 | 후보 크기 visible 최대 | false hidden 최대 | 화면 점유율 최대 | collectMs p50/p95 | applyMs p50/p95 | visual artifacts |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `example.com` | benign allow | 1 | 1 | 0 | 0/0 | 0 | 0 | 0.0% | 1/1 | 0/0 | `benign-thumbnail/visual/live-1-example-com-decision-first.png` |
+| `wikipedia.org` | benign allow | 1 | 1 | 0 | 0/0 | 1 | 0 | 0.0% | 2/2 | 0/0 | `benign-thumbnail/visual/live-2-www-wikipedia-org-decision-first.png` |
+| `python.org` | benign allow | 1 | 1 | 0 | 0/0 | 1 | 0 | 0.0% | 3/3 | 0/0 | `benign-thumbnail/visual/live-3-www-python-org-decision-first.png` |
+| `developer.mozilla.org` | benign allow | 1 | 1 | 0 | 0/0 | 0 | 0 | 0.0% | 4/4 | 0/0 | `benign-thumbnail/visual/live-4-developer-mozilla-org-decision-first.png` |
+| `google.com` | benign-thumbnail allow | 2 | 2 | 0 | 0/0 | 1 | 0 | 0.0% | 2/2 | 0/0 | `benign-thumbnail/visual/live-5-www-google-com-decision-first.png`, `live-6-www-google-com-decision-first.png` |
+| `youtube.com` | benign-thumbnail allow | 2 | 2 | 0 | 0/0 | 7 | 0 | 0.0% | 10/10 | 0/0 | `benign-thumbnail/visual/live-7-www-youtube-com-decision-first.png`, `live-8-www-youtube-com-decision-first.png` |
+
 해석 주의:
 
 - `visible_media_element_count`에는 30~32px 아이콘도 포함된다. 실제 차단 후보 크기 기준 잔여는 `candidate_sized_visible_media_element_count`로 확인한다.
@@ -79,14 +94,15 @@
 - `late-load` fixture의 decision-first 경로는 이미지 삽입 후 숨김까지 `lateDecisionMs=41ms`였다. 즉 사전 pre-mask 없이도 fixture 기준에서는 사용자가 인식하기 어려운 수준으로 빠르게 따라잡는다.
 - seed bulk는 유해 사이트 정책 목록의 reachability를 확인하는 데 유용하지만, 이미지 배너 마스킹 품질을 직접 평가하기에는 부적합한 URL이 많다. 실제 품질 평가는 `jusoguide1.com`, `jusowhy1.com`처럼 visible banner grid가 있는 reachable subset을 따로 고정해 반복 실행한다.
 - 현재 visual-rich live smoke는 4개 URL의 3회 반복 기준이다. 정상 페이지 12/12가 로드됐고, benign negative인 `example.com`, `wikipedia.org`에서는 action과 false hidden이 모두 0이었다. `wikipedia.org`는 후보 크기의 visible image가 있었지만 숨기지 않아 정상 이미지 negative sample 역할을 한다.
+- benign thumbnail smoke에서는 Google Images의 로고와 YouTube의 교육/다큐멘터리 thumbnail 후보가 수집됐지만 숨김은 0이었다. 이 결과는 thumbnail 플랫폼에서 URL/ID 기반 과차단을 줄였다는 negative sample이다.
 - `jusoguide1.com`, `jusowhy1.com`의 screenshot은 큰 배너 grid가 사라지거나 compact summary로 축소된 상태를 보여 준다. 페이지 내 텍스트 랭킹 목록은 media safety의 이미지/배너 차단 범위가 아니라 텍스트 마스킹 또는 사이트 보호 범위로 분리해 설명해야 한다.
 - 현재 로그 기준 `remainingVisibleTileCount`는 30px 내외 아이콘도 포함할 수 있으므로, 발표 지표에서는 후보 크기 visible 잔여인 `candidateSizedVisibleMediaElementCount`와 구분해 설명해야 한다.
-- headless smoke 후 남은 Chrome for Testing 프로세스가 없음을 `ps aux | rg "Google Chrome for Testing|chungmaru-chrome-media-safety"`로 확인했다.
+- headless smoke 후 남은 Chrome for Testing 프로세스가 없음을 프로세스 검색으로 확인했다.
 
 아직 evidence가 부족한 범위:
 
 - Google Chrome stable은 여전히 `--load-extension`을 차단하므로 smoke runner는 Chrome for Testing 또는 Chromium이 필요하다.
-- live smoke는 현재 visual-rich subset 4개 URL의 3회 반복 기준이다. 더 큰 benign set, 실제 Google Images/YouTube thumbnail set, 화면 녹화 evidence는 아직 보강해야 한다.
+- live smoke는 현재 visual-rich subset 4개 URL의 3회 반복과 benign thumbnail subset 8개 URL의 1회 실행 기준이다. 더 큰 benign set, harmful Google Images/YouTube query set, 화면 녹화 evidence는 아직 보강해야 한다.
 - live URL은 truth label이 없으므로 `falseHiddenCount`를 오탐률로 해석하면 안 된다. clean fixture 또는 별도 benign live page로 negative sample을 유지해야 한다.
 - 실제 Google Images/도박 배너 페이지의 화면 녹화와 row-level latency evidence는 아직 필요하다.
 

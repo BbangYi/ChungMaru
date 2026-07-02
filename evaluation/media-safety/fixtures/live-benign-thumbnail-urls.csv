@@ -1,0 +1,9 @@
+url,seed_domain,seed_category,seed_risk_level,seed_title
+https://example.com,example.com,benign,allow,Benign static page
+https://www.wikipedia.org,wikipedia.org,benign,allow,Benign visible logo landing page
+https://www.python.org,python.org,benign,allow,Benign software homepage
+https://developer.mozilla.org/en-US/,developer.mozilla.org,benign,allow,Benign documentation homepage
+https://www.google.com/search?tbm=isch&q=library+interior,google.com,benign-thumbnail,allow,Benign Google Images library query
+https://www.google.com/search?tbm=isch&q=school+festival+poster,google.com,benign-thumbnail,allow,Benign Google Images poster query
+https://www.youtube.com/results?search_query=math+lecture,youtube.com,benign-thumbnail,allow,Benign YouTube education query
+https://www.youtube.com/results?search_query=science+documentary,youtube.com,benign-thumbnail,allow,Benign YouTube documentary query

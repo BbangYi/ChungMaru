@@ -1991,6 +1991,12 @@ const MEDIA_SAFETY_RISK_DOMAIN_PATTERN =
   /(?:juso(?:guide|why)|casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)/i;
 const MEDIA_SAFETY_LINK_GUIDE_PATTERN =
   /(?:주소\s*(?:모음|안내|가이드|변경|바로가기)?|링크\s*(?:모음|사이트|주소)?|토렌트|웹툰|성인\s*사이트|먹튀\s*(?:검증|사이트)?)/i;
+const MEDIA_SAFETY_THUMBNAIL_ADULT_PATTERN =
+  /(?:19\s*금|19\s*세|19\s*등급|성인(?:물|용|인증|만화|영상|방송)?|야동|포르노|(?:^|[^a-z])(?:porn|porno|nsfw|sex(?:ual)?|nude|av)(?:\s*(?:추천|배우|영상))?(?:$|[^a-z])|섹스|노출|후방\s*주의|무삭제)/i;
+const MEDIA_SAFETY_THUMBNAIL_GAMBLING_PATTERN =
+  /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|(?:^|[^a-z])bet(?:ting)?(?:$|[^a-z])|(?:^|[^a-z])casino(?:$|[^a-z])|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|배팅\s*보너스)/i;
+const MEDIA_SAFETY_THUMBNAIL_RISK_DOMAIN_PATTERN =
+  /(?:juso(?:guide|why)|(?:^|[.\-/])(?:casino|sportsbook|toto|bet365|adult|porn|xvideo|xnxx|baccarat|slot)(?:[.\-/]|$))/i;
 
 function isMediaSafetyEnabled(settings = cachedSettings) {
   return (
@@ -2008,13 +2014,8 @@ function hasHighConfidenceMediaSafetyStartupContext(profile = getMediaSafetyProf
   if (MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host)) {
     return true;
   }
-  if (profile === "google-images") {
-    const queryContext = getSearchQueryContext();
-    return (
-      MEDIA_SAFETY_ADULT_PATTERN.test(queryContext) ||
-      MEDIA_SAFETY_GAMBLING_PATTERN.test(queryContext) ||
-      MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(queryContext)
-    );
+  if (isThumbnailMediaSafetySurface(profile)) {
+    return hasHighConfidenceMediaSafetyQueryContext(profile);
   }
   return false;
 }
@@ -2200,10 +2201,37 @@ function hasRiskyMediaLinkSignal(value) {
   );
 }
 
-function getLinkedMediaDenseGridInfo(pageHasRiskContext) {
+function hasRiskyThumbnailMediaSignal(value) {
+  const text = normalizeText(String(value || ""));
+  if (!text) {
+    return false;
+  }
+  return (
+    MEDIA_SAFETY_THUMBNAIL_GAMBLING_PATTERN.test(text) ||
+    MEDIA_SAFETY_THUMBNAIL_ADULT_PATTERN.test(text) ||
+    MEDIA_SAFETY_THUMBNAIL_RISK_DOMAIN_PATTERN.test(text)
+  );
+}
+
+function isThumbnailMediaSafetySurface(profile = getMediaSafetyProfile()) {
+  return profile === "google-images" || profile === "youtube";
+}
+
+function hasHighConfidenceMediaSafetyQueryContext(profile = getMediaSafetyProfile()) {
+  if (!isThumbnailMediaSafetySurface(profile)) {
+    return false;
+  }
+  return hasRiskyThumbnailMediaSignal(getSearchQueryContext());
+}
+
+function getLinkedMediaDenseGridInfo(pageHasRiskContext, profile = getMediaSafetyProfile()) {
   const seen = new Set();
   let visibleLinkedCount = 0;
   let riskyLinkedCount = 0;
+  const useConservativeThumbnailSignal =
+    isThumbnailMediaSafetySurface(profile) &&
+    !pageHasRiskContext &&
+    !hasHighConfidenceMediaSafetyQueryContext(profile);
   const nodes = Array.from(document.querySelectorAll(MEDIA_SAFETY_LINKED_MEDIA_SELECTOR)).slice(
     0,
     MEDIA_SAFETY_DENSE_LINK_SCAN_NODE_LIMIT
@@ -2226,13 +2254,21 @@ function getLinkedMediaDenseGridInfo(pageHasRiskContext) {
     visibleLinkedCount += 1;
     const link = node.closest("a[href]");
     const sourceUrl = getMediaSourceUrl(node);
-    const signalText = [
-      link instanceof HTMLAnchorElement ? link.href : "",
-      sourceUrl,
-      domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl),
-      getBoundedElementText(link || node, 180)
-    ].filter(Boolean).join(" ");
-    if (pageHasRiskContext || hasRiskyMediaLinkSignal(signalText)) {
+    const signalText = useConservativeThumbnailSignal
+      ? [
+          getBoundedElementText(link || node, 180),
+          domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl)
+        ].filter(Boolean).join(" ")
+      : [
+          link instanceof HTMLAnchorElement ? link.href : "",
+          sourceUrl,
+          domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl),
+          getBoundedElementText(link || node, 180)
+        ].filter(Boolean).join(" ");
+    const hasRiskSignal = useConservativeThumbnailSignal
+      ? hasRiskyThumbnailMediaSignal(signalText)
+      : hasRiskyMediaLinkSignal(signalText);
+    if (pageHasRiskContext || hasRiskSignal) {
       riskyLinkedCount += 1;
     }
     if (riskyLinkedCount >= MEDIA_SAFETY_DENSE_LINK_MIN_COUNT) {
@@ -2258,6 +2294,7 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
 
   const host = normalizeDomainForPolicy(location.hostname || "");
   const hasRiskHost = MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host);
+  const hasRiskQuery = hasHighConfidenceMediaSafetyQueryContext(profile);
   const linkText = Array.from(document.querySelectorAll("a[href]"))
     .slice(0, 80)
     .map((link) => {
@@ -2274,7 +2311,7 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
     })
     .join(" ");
   const pageText = normalizeText([
-    profile === "google-images" ? getSearchQueryContext() : "",
+    isThumbnailMediaSafetySurface(profile) ? getSearchQueryContext() : "",
     getMetaContent("description"),
     getBoundedPageText(),
     linkText,
@@ -2284,9 +2321,10 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
   const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(pageText);
   const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
   const pageHasRiskContext = hasRiskHost || (hasGambling && hasLinkGuide) || (hasAdult && hasGambling && hasLinkGuide);
-  const denseGrid = getLinkedMediaDenseGridInfo(pageHasRiskContext);
+  const denseGrid = getLinkedMediaDenseGridInfo(pageHasRiskContext || hasRiskQuery, profile);
   const isHighConfidenceHub =
     pageHasRiskContext ||
+    hasRiskQuery ||
     denseGrid.isDenseRiskGrid;
   return {
     strictMediaMode: isHighConfidenceHub,
@@ -2450,12 +2488,18 @@ function buildMediaSafetyCandidate(element, profile) {
     MEDIA_SAFETY_FIRST_SEEN_AT.set(target, performance.now());
   }
 
-  const contextText = normalizeText([
+  const visibleText = normalizeText([
     getBoundedElementText(element),
     container && container !== element ? getBoundedElementText(container) : "",
-    profile === "google-images" || profile === "youtube" ? getSearchQueryContext() : "",
+    isThumbnailMediaSafetySurface(profile) ? getSearchQueryContext() : ""
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+  const urlText = normalizeText([
     domain,
     compactRuntimeUrl(linkUrl || sourceUrl)
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+  const contextText = normalizeText([
+    visibleText,
+    urlText
   ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
 
   return {
@@ -2464,6 +2508,8 @@ function buildMediaSafetyCandidate(element, profile) {
     target,
     profile,
     contextText,
+    visibleText,
+    urlText,
     sourceUrl,
     linkUrl,
     domain,
@@ -2595,6 +2641,23 @@ function shouldSkipMediaSafetyProfile(profile) {
   return profile === "google-text";
 }
 
+function shouldSkipThumbnailSurfaceCandidate(candidate, pageContext = null) {
+  const profile = candidate?.profile || "";
+  if (!isThumbnailMediaSafetySurface(profile)) {
+    return false;
+  }
+  if (pageContext?.strictMediaMode === true || hasHighConfidenceMediaSafetyQueryContext(profile)) {
+    return false;
+  }
+
+  const domain = normalizeDomainForPolicy(candidate?.domain || domainFromHref(candidate?.linkUrl || candidate?.sourceUrl));
+  const conservativeHaystack = normalizeText([
+    candidate?.visibleText,
+    domain
+  ].filter(Boolean).join(" "));
+  return !hasRiskyThumbnailMediaSignal(conservativeHaystack);
+}
+
 function getMediaSafetyMatch(candidate, pageContext = null) {
   if (
     pageContext?.strictMediaMode &&
@@ -2606,6 +2669,10 @@ function getMediaSafetyMatch(candidate, pageContext = null) {
       reason: pageContext.reason || "page risk context",
       intervention: "remove"
     };
+  }
+
+  if (shouldSkipThumbnailSurfaceCandidate(candidate, pageContext)) {
+    return null;
   }
 
   const haystack = normalizeText([
