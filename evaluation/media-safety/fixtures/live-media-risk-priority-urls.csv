@@ -1,0 +1,45 @@
+url,seed_domain,seed_category,seed_risk_level,seed_title,priority_group,source_note
+https://jusoguide1.com,jusoguide1.com,gambling,block,Address guide gambling banner grid,known-live-visual-rich,prepended from evaluation/media-safety/fixtures/live-visual-rich-urls.csv
+https://jusowhy1.com,jusowhy1.com,gambling,block,Address why gambling banner grid,known-live-visual-rich,prepended from evaluation/media-safety/fixtures/live-visual-rich-urls.csv
+https://example.com,example.com,benign,allow,Benign static page,known-live-visual-rich,prepended from evaluation/media-safety/fixtures/live-visual-rich-urls.csv
+https://www.wikipedia.org,wikipedia.org,benign,allow,Benign media-light landing page,known-live-visual-rich,prepended from evaluation/media-safety/fixtures/live-visual-rich-urls.csv
+https://match-betting-king.kr,match-betting-king.kr,gambling,block,매치 베팅킹,seed-score-148,gambling+kr+harmful+banner-keyword
+https://power-casino-choice.kr,power-casino-choice.kr,gambling,block,파워 카지노 초이스,seed-score-148,gambling+kr+harmful+banner-keyword
+https://safe-bet-korea.kr,safe-bet-korea.kr,gambling,block,세이프벳 코리아,seed-score-148,gambling+kr+harmful+banner-keyword
+https://score-premium-toto.kr,score-premium-toto.kr,gambling,block,스코어 프리미엄 토토,seed-score-148,gambling+kr+harmful+banner-keyword
+https://vip-toto-365.kr,vip-toto-365.kr,gambling,block,VIP 토토365,seed-score-148,gambling+kr+harmful+banner-keyword
+https://188bet.casino,188bet.casino,gambling,block,188BET,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://1win.bet,1win.bet,gambling,block,1win,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://bcgame.bet,bcgame.bet,gambling,block,BC.Game,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betano.casino,betano.casino,gambling,block,Betano,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betprime.bet,betprime.bet,gambling,block,Betprime,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betprime.casino,betprime.casino,gambling,block,Betprime,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betsson.casino,betsson.casino,gambling,block,Betsson,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://casinohub.bet,casinohub.bet,gambling,block,Casinohub,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://casinohub.casino,casinohub.casino,gambling,block,Casinohub,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://fun88.bet,fun88.bet,gambling,block,Fun88,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://goldcasino.bet,goldcasino.bet,gambling,block,Goldcasino,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://goldcasino.casino,goldcasino.casino,gambling,block,Goldcasino,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://jackpotnow.bet,jackpotnow.bet,gambling,block,Jackpotnow,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://jackpotnow.casino,jackpotnow.casino,gambling,block,Jackpotnow,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://luckybet.bet,luckybet.bet,gambling,block,Luckybet,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://19cam-live.kr,19cam-live.kr,adult,block,19캠 라이브,seed-score-122,adult+kr+harmful+adult-keyword
+https://adult-webtoon-plus.kr,adult-webtoon-plus.kr,adult,block,성인 웹툰 플러스,seed-score-122,adult+kr+harmful+adult-keyword
+https://night-party-cam.kr,night-party-cam.kr,adult,block,나이트 파티 캠,seed-score-122,adult+kr+harmful+adult-keyword
+https://private19-video.kr,private19-video.kr,adult,block,프라이빗19 비디오,seed-score-122,adult+kr+harmful+adult-keyword
+https://secret-room-adult.kr,secret-room-adult.kr,adult,block,시크릿 성인방,seed-score-122,adult+kr+harmful+adult-keyword
+https://adultcloud.cam,adultcloud.cam,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultcloud.live,adultcloud.live,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultcloud.video,adultcloud.video,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adulttime.live,adulttime.live,adult,block,AdultTime,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultzone.cam,adultzone.cam,adult,block,Adultzone,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultzone.live,adultzone.live,adult,block,Adultzone,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultzone.video,adultzone.video,adult,block,Adultzone,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://bongacams.live,bongacams.live,adult,block,BongaCams,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://camnight.cam,camnight.cam,adult,block,Camnight,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://camnight.live,camnight.live,adult,block,Camnight,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://camnight.video,camnight.video,adult,block,Camnight,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://dark18.cam,dark18.cam,adult,block,Dark18,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://dark18.live,dark18.live,adult,block,Dark18,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://dark18.video,dark18.video,adult,block,Dark18,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://deepadult.cam,deepadult.cam,adult,block,Deepadult,seed-score-095,adult+harmful+adult-keyword+risk-tld

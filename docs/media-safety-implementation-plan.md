@@ -38,13 +38,14 @@
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled`/`mediaSafetyStartupGateEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남기고, 이미지 삽입 후 숨김까지 걸린 시간은 `lateDecisionMs`로 남긴다.
 - smoke harness는 기본값을 headless 실행으로 바꿨다. 테스트 중 Chrome for Testing 창이 사용자의 화면 위로 올라오지 않으며, 사람이 직접 눈으로 확인할 때만 `--headed`를 명시한다.
 - live smoke는 최종 URL이 `chrome-error://chromewebdata` 또는 비 HTTP 페이지인 경우 scan/action을 건너뛰고 `invalid_page`로 기록한다. 정상 live page도 최종 URL과 매칭되는 탭에만 메시지를 보내므로, 이전 탭이나 active tab에 action log가 섞이지 않는다.
-- `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
+- `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. `evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv`는 known visual-rich 4개와 seed 기반 adult/gambling 우선순위 후보 40개를 합친 smoke 입력 파일이다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
 - `--capture-visual-evidence`를 켜면 headless 상태에서 현재 viewport screenshot을 `evaluation/media-safety/results/current/visual/`에 저장하고, `media-safety-visual-evidence.*` manifest로 live smoke row와 연결한다. 기본은 repeat 1개만 캡처해 artifact sprawl을 막는다.
 
 검증된 범위:
 
 - `node --check` 기준 service worker, content script, options, popup 문법 검증 통과
 - smoke harness `py_compile` 통과
+- seed candidate builder `py_compile` 통과
 - media safety 관련 diff whitespace check 통과
 - Chrome for Testing 150.0.7871.46 기준 fixture smoke 통과
 - `evaluation/media-safety/results/current/media-safety-smoke.csv`와 `.jsonl` 생성
@@ -53,6 +54,59 @@
 - `evaluation/media-safety/results/current/media-safety-visual-evidence.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
 - `evaluation/media-safety/results/current/benign-thumbnail/`에 Google Images/YouTube benign thumbnail negative smoke 결과와 headless screenshot 8개 생성
+
+현재 대량 seed 운영 방식:
+
+대량 데이터는 한 번에 전부 live smoke하지 않는다. seed 전체에는 unreachable, parked, login wall, 지역 차단, 단순 policy seed가 섞일 수 있어, 한 번의 대형 실행보다 작은 반복 가능한 배치가 더 유용하다.
+
+1. 우선순위 후보 파일을 생성한다.
+
+```bash
+python3 scripts/chungmaru_media_safety_seed_candidates.py
+```
+
+기본 출력은 `evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv`이다. 기본값은 known visual-rich fixture 4개를 앞에 붙이고, `gambling block` 20개와 `adult block` 20개를 seed score 순으로 뽑는다. 전체 후보를 파일로 보고 싶으면 다음처럼 쓴다.
+
+```bash
+python3 scripts/chungmaru_media_safety_seed_candidates.py \
+  --max-sites 0 \
+  --per-category 0 \
+  --no-prepend \
+  --output /tmp/chungmaru-media-risk-all-seed-urls.csv
+```
+
+2. 우선순위 후보만 headless smoke한다.
+
+```bash
+python3 scripts/chungmaru_chrome_media_safety_smoke.py \
+  --live-url-file evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv \
+  --live-repeat 1 \
+  --live-startup-mode decision-first \
+  --live-settle-seconds 3 \
+  --output-dir evaluation/media-safety/results/current/media-risk-priority
+```
+
+3. 결과를 줄인다.
+
+발표/보고서 후보는 `live_page_ok=true`, `error_code` 없음, `candidate_sized_visible_media_element_count > 0`, `action_count > 0`인 row부터 남긴다. `visible_media_element_count`만 높은 경우는 30px 아이콘이나 소셜 버튼일 수 있으므로 후보 크기 기준인 `candidate_sized_visible_media_element_count`를 우선 본다. screenshot은 이 필터를 통과한 소수 후보에만 `--capture-visual-evidence`로 다시 찍는다.
+
+4. seed 전체를 직접 돌릴 때도 batch 제한을 둔다.
+
+```bash
+python3 scripts/chungmaru_chrome_media_safety_smoke.py \
+  --live-seed-file \
+  --live-seed-category gambling \
+  --live-seed-risk-level block \
+  --live-max-sites 25 \
+  --live-repeat 1 \
+  --live-startup-mode decision-first \
+  --live-settle-seconds 3 \
+  --output-dir evaluation/media-safety/results/current/gambling-seed-batch
+```
+
+같은 방식으로 `--live-seed-category adult`를 별도 batch로 돌린다. 성인 사이트 직접 실행은 재현성, 안전성, 발표 적합성이 낮을 수 있으므로 기본 발표 evidence는 controlled fixture, Google Images/YouTube harmful query, 도박 배너 grid 중심으로 잡는다.
+
+유해사이트 차단 자체를 점검할 때는 같은 builder에 `--category phishing --category malware`를 추가해 별도 CSV를 만들 수 있다. 다만 phishing/malware는 이미지 차단 품질보다 site policy/reachability 검증에 가깝기 때문에 media safety evidence와 섞어 해석하지 않는다.
 
 현재 fixture smoke 결과:
 
@@ -93,6 +147,7 @@
 - fixture의 `pre_manual_harmful_hidden_count`는 수동 smoke scan 전 자동으로 숨겨진 유해 media 수다. `late-load` fixture는 240ms 뒤 삽입된 이미지가 수동 scan 전에 숨겨졌음을 확인한다.
 - `late-load` fixture의 decision-first 경로는 이미지 삽입 후 숨김까지 `lateDecisionMs=41ms`였다. 즉 사전 pre-mask 없이도 fixture 기준에서는 사용자가 인식하기 어려운 수준으로 빠르게 따라잡는다.
 - seed bulk는 유해 사이트 정책 목록의 reachability를 확인하는 데 유용하지만, 이미지 배너 마스킹 품질을 직접 평가하기에는 부적합한 URL이 많다. 실제 품질 평가는 `jusoguide1.com`, `jusowhy1.com`처럼 visible banner grid가 있는 reachable subset을 따로 고정해 반복 실행한다.
+- `live-media-risk-priority-urls.csv`는 reachable 품질 보증 파일이 아니라 후보 큐다. 이 파일에서 실제 evidence로 승격할 도메인은 smoke 결과의 `live_page_ok`, `candidate_sized_visible_media_element_count`, `action_count`, screenshot으로 다시 걸러야 한다.
 - 현재 visual-rich live smoke는 4개 URL의 3회 반복 기준이다. 정상 페이지 12/12가 로드됐고, benign negative인 `example.com`, `wikipedia.org`에서는 action과 false hidden이 모두 0이었다. `wikipedia.org`는 후보 크기의 visible image가 있었지만 숨기지 않아 정상 이미지 negative sample 역할을 한다.
 - benign thumbnail smoke에서는 Google Images의 로고와 YouTube의 교육/다큐멘터리 thumbnail 후보가 수집됐지만 숨김은 0이었다. 이 결과는 thumbnail 플랫폼에서 URL/ID 기반 과차단을 줄였다는 negative sample이다.
 - `jusoguide1.com`, `jusowhy1.com`의 screenshot은 큰 배너 grid가 사라지거나 compact summary로 축소된 상태를 보여 준다. 페이지 내 텍스트 랭킹 목록은 media safety의 이미지/배너 차단 범위가 아니라 텍스트 마스킹 또는 사이트 보호 범위로 분리해 설명해야 한다.
