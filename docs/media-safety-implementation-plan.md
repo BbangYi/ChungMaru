@@ -36,6 +36,7 @@
 - `media-safety-scan`, `media-safety-action`, `media-safety-error`는 aggregate event만 남기도록 설계했다.
 - Runtime log와 smoke CSV에 `removedCount`, `placeholderCount`, `mergedTargetCount`, `collapsedGroupCount`, `hiddenAreaPx`, `viewportCoveragePct`, `remainingVisibleTileCount`, `candidateSizedVisibleMediaElementCount`를 남겨 무엇을 얼마나 가렸고 무엇이 남았는지 설명할 수 있게 했다.
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled`/`mediaSafetyStartupGateEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남기고, 이미지 삽입 후 숨김까지 걸린 시간은 `lateDecisionMs`로 남긴다.
+- `scripts/chungmaru_media_safety_report.py`를 추가해 current smoke CSV를 보고서용 evidence로 줄인다. 이 스크립트는 raw row를 바꾸지 않고 `collect_ms`, `cheap_filter_ms`, `apply_ms`, `dom_added_to_action_ms`, `late_decision_ms`와 향후 `image_fetch_ms`, `bitmap_decode_ms`, `classifier_ms`, `ocr_ms` 계측 상태를 stage별 p50/p95/max로 정리한다.
 - smoke harness는 기본값을 headless 실행으로 바꿨다. 테스트 중 Chrome for Testing 창이 사용자의 화면 위로 올라오지 않으며, 사람이 직접 눈으로 확인할 때만 `--headed`를 명시한다.
 - live smoke는 최종 URL이 `chrome-error://chromewebdata` 또는 비 HTTP 페이지인 경우 scan/action을 건너뛰고 `invalid_page`로 기록한다. 정상 live page도 최종 URL과 매칭되는 탭에만 메시지를 보내므로, 이전 탭이나 active tab에 action log가 섞이지 않는다.
 - `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. `evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv`는 known visual-rich 4개와 seed 기반 adult/gambling 우선순위 후보 40개를 합친 smoke 입력 파일이다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
@@ -52,6 +53,10 @@
 - `evaluation/media-safety/results/current/media-safety-live-smoke.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-live-summary.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-visual-evidence.csv`와 `.jsonl` 생성
+- `evaluation/media-safety/results/current/media-safety-latency-summary.csv` 생성
+- `evaluation/media-safety/results/current/media-safety-stage-latency.csv` 생성
+- `evaluation/media-safety/results/current/media-safety-report.json` 생성
+- `evaluation/media-safety/results/current/media-safety-report.md` 생성
 - `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
 - `evaluation/media-safety/results/current/benign-thumbnail/`에 Google Images/YouTube benign thumbnail negative smoke 결과와 headless screenshot 8개 생성
 
@@ -89,6 +94,27 @@ python3 scripts/chungmaru_chrome_media_safety_smoke.py \
 3. 결과를 줄인다.
 
 발표/보고서 후보는 `live_page_ok=true`, `error_code` 없음, `candidate_sized_visible_media_element_count > 0`, `action_count > 0`인 row부터 남긴다. `visible_media_element_count`만 높은 경우는 30px 아이콘이나 소셜 버튼일 수 있으므로 후보 크기 기준인 `candidate_sized_visible_media_element_count`를 우선 본다. screenshot은 이 필터를 통과한 소수 후보에만 `--capture-visual-evidence`로 다시 찍는다.
+
+smoke를 실행한 뒤에는 current 결과를 보고서용으로 다시 요약한다.
+
+```bash
+python3 scripts/chungmaru_media_safety_report.py \
+  --results-dir evaluation/media-safety/results/current
+```
+
+이 단계는 새 테스트를 돌리지 않고 기존 raw CSV를 읽어 다음 파일만 갱신한다.
+
+- `media-safety-latency-summary.csv`: case/domain 단위 승격 가능 여부와 핵심 latency p50/p95/max
+- `media-safety-stage-latency.csv`: 처리 단계별 latency, p95 budget, `within_budget`/`over_budget`/`not_instrumented`
+- `media-safety-report.md`: 보고서에 붙일 수 있는 요약, 승격 row, 한계
+- `media-safety-report.json`: 자동 검증이나 Notion/보고서 변환에 쓰기 쉬운 구조화 요약
+
+`report_status`는 다음처럼 해석한다.
+
+- `strong_visual_block`: 유해 visual 후보가 실제로 hide/remove되어 발표 evidence로 승격 가능
+- `benign_negative`: 정상/인접 visual 후보를 수집했지만 숨김이 없어 오탐 억제 evidence로 사용 가능
+- `disabled_control`: 기능 off control로 차단 동작이 없어야 하는 기준 row
+- `missed_or_policy_gap`, `partial_visual_block`, `false_positive_review`, `invalid_or_unloaded`, `needs_review`: 보완 또는 한계 설명 row
 
 4. seed 전체를 직접 돌릴 때도 batch 제한을 둔다.
 

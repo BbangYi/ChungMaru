@@ -1,0 +1,124 @@
+{
+  "generatedAt": "2026-07-03T14:28:44+09:00",
+  "resultsDir": "evaluation/media-safety/results/current",
+  "inputFiles": [
+    "evaluation/media-safety/results/current/benign-thumbnail/media-safety-live-smoke.csv",
+    "evaluation/media-safety/results/current/media-safety-live-smoke.csv",
+    "evaluation/media-safety/results/current/media-safety-smoke.csv"
+  ],
+  "rawRowCount": 26,
+  "summaryGroupCount": 16,
+  "stageRowCount": 144,
+  "statusCounts": {
+    "benign_negative": 9,
+    "disabled_control": 1,
+    "strong_visual_block": 6
+  },
+  "stageBudgetSummary": [
+    {
+      "stage_id": "01_collect",
+      "stage_name": "DOM 후보 수집",
+      "field": "collect_ms",
+      "measured_run_count": 26,
+      "p50_ms": "2",
+      "p95_ms": "10",
+      "max_ms": "10",
+      "budget_p95_ms": 50,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "02_cheap_filter",
+      "stage_name": "cheap filter",
+      "field": "cheap_filter_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "0",
+      "max_ms": "0",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "03_apply",
+      "stage_name": "hide/remove 적용",
+      "field": "apply_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "6",
+      "max_ms": "7",
+      "budget_p95_ms": 80,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "04_dom_to_action",
+      "stage_name": "DOM 추가 후 action",
+      "field": "dom_added_to_action_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "5",
+      "max_ms": "5",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "05_late_load_decision",
+      "stage_name": "late-load decision",
+      "field": "late_decision_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "0",
+      "max_ms": "41",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "06_image_fetch_future",
+      "stage_name": "image fetch",
+      "field": "image_fetch_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 80,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "07_bitmap_decode_future",
+      "stage_name": "bitmap decode",
+      "field": "bitmap_decode_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 80,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "08_classifier_future",
+      "stage_name": "NSFW/banner classifier",
+      "field": "classifier_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 120,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "09_ocr_future",
+      "stage_name": "image OCR",
+      "field": "ocr_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 200,
+      "budget_status": "not_instrumented"
+    }
+  ],
+  "generatedFiles": {
+    "latency_summary_csv": "evaluation/media-safety/results/current/media-safety-latency-summary.csv",
+    "stage_latency_csv": "evaluation/media-safety/results/current/media-safety-stage-latency.csv",
+    "report_json": "evaluation/media-safety/results/current/media-safety-report.json",
+    "report_md": "evaluation/media-safety/results/current/media-safety-report.md"
+  }
+}
