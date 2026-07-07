@@ -1983,6 +1983,15 @@ const MEDIA_SAFETY_LINKED_MEDIA_SELECTOR = [
   "a[href][style*='background-image']",
   "a[href] [style*='background-image']"
 ].join(", ");
+const MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR = [
+  "a[href]",
+  "article",
+  "figure",
+  "li",
+  "[role='listitem']",
+  "div",
+  "section"
+].join(", ");
 const MEDIA_SAFETY_ADULT_PATTERN =
   /(?:19\s*금|19\s*세|19\s*등급|성인(?:물|용|인증|만화|영상|방송)?|야동|포르노|porn|porno|adult|nsfw|섹스|sex(?:y|ual)?|노출|가슴|비키니|란제리|속옷|은밀한|후방\s*주의|무삭제|AV\s*(?:추천|배우|영상)?)/i;
 const MEDIA_SAFETY_GAMBLING_PATTERN =
@@ -2119,13 +2128,38 @@ function getMediaSourceUrl(element) {
     );
   }
   if (element instanceof Element) {
-    const inline = String(element.getAttribute("style") || "");
-    const match = inline.match(/background-image\s*:\s*url\((['"]?)(.*?)\1\)/i);
-    if (match?.[2]) {
-      return match[2];
-    }
+    return getElementBackgroundImageUrl(element);
   }
   return "";
+}
+
+function extractBackgroundImageUrl(value) {
+  const raw = String(value || "");
+  if (!raw || raw === "none") {
+    return "";
+  }
+  const match = raw.match(/url\((['"]?)(.*?)\1\)/i);
+  return match?.[2] ? String(match[2]) : "";
+}
+
+function getElementBackgroundImageUrl(element) {
+  if (!(element instanceof Element) || ["HTML", "BODY"].includes(element.tagName)) {
+    return "";
+  }
+  const inline = String(element.getAttribute("style") || "");
+  const inlineUrl = extractBackgroundImageUrl(inline);
+  if (inlineUrl) {
+    return inlineUrl;
+  }
+  try {
+    return extractBackgroundImageUrl(window.getComputedStyle(element).backgroundImage || "");
+  } catch {
+    return "";
+  }
+}
+
+function hasMediaSafetyBackgroundImage(element) {
+  return Boolean(getElementBackgroundImageUrl(element));
 }
 
 function compactRuntimeUrl(value) {
@@ -2196,8 +2230,7 @@ function hasRiskyMediaLinkSignal(value) {
   }
   return (
     MEDIA_SAFETY_GAMBLING_PATTERN.test(text) ||
-    MEDIA_SAFETY_ADULT_PATTERN.test(text) ||
-    MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(text)
+    MEDIA_SAFETY_ADULT_PATTERN.test(text)
   );
 }
 
@@ -2211,6 +2244,20 @@ function hasRiskyThumbnailMediaSignal(value) {
     MEDIA_SAFETY_THUMBNAIL_ADULT_PATTERN.test(text) ||
     MEDIA_SAFETY_THUMBNAIL_RISK_DOMAIN_PATTERN.test(text)
   );
+}
+
+function hasMediaSafetyRiskDomainSignal(...values) {
+  for (const value of values) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      continue;
+    }
+    const domain = normalizeDomainForPolicy(domainFromHref(raw) || raw);
+    if (domain && MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(domain)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isThumbnailMediaSafetySurface(profile = getMediaSafetyProfile()) {
@@ -2254,20 +2301,22 @@ function getLinkedMediaDenseGridInfo(pageHasRiskContext, profile = getMediaSafet
     visibleLinkedCount += 1;
     const link = node.closest("a[href]");
     const sourceUrl = getMediaSourceUrl(node);
+    const linkHref = link instanceof HTMLAnchorElement ? link.href : "";
+    const domainSignal = hasMediaSafetyRiskDomainSignal(linkHref, sourceUrl);
     const signalText = useConservativeThumbnailSignal
       ? [
           getBoundedElementText(link || node, 180),
-          domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl)
+          domainFromHref(linkHref || sourceUrl)
         ].filter(Boolean).join(" ")
       : [
-          link instanceof HTMLAnchorElement ? link.href : "",
+          linkHref,
           sourceUrl,
-          domainFromHref((link instanceof HTMLAnchorElement ? link.href : "") || sourceUrl),
+          domainFromHref(linkHref || sourceUrl),
           getBoundedElementText(link || node, 180)
         ].filter(Boolean).join(" ");
     const hasRiskSignal = useConservativeThumbnailSignal
       ? hasRiskyThumbnailMediaSignal(signalText)
-      : hasRiskyMediaLinkSignal(signalText);
+      : hasRiskyMediaLinkSignal(signalText) || domainSignal;
     if (pageHasRiskContext || hasRiskSignal) {
       riskyLinkedCount += 1;
     }
@@ -2310,6 +2359,12 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
       ].filter(Boolean).join(" ");
     })
     .join(" ");
+  const hasRiskLinkDomain = Array.from(document.querySelectorAll("a[href]"))
+    .slice(0, 80)
+    .some((link) => (
+      link instanceof HTMLAnchorElement &&
+      hasMediaSafetyRiskDomainSignal(link.href)
+    ));
   const pageText = normalizeText([
     isThumbnailMediaSafetySurface(profile) ? getSearchQueryContext() : "",
     getMetaContent("description"),
@@ -2318,7 +2373,7 @@ function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
     location.hostname || ""
   ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT);
   const hasAdult = MEDIA_SAFETY_ADULT_PATTERN.test(pageText);
-  const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(pageText);
+  const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || hasRiskHost || hasRiskLinkDomain;
   const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
   const pageHasRiskContext = hasRiskHost || (hasGambling && hasLinkGuide) || (hasAdult && hasGambling && hasLinkGuide);
   const denseGrid = getLinkedMediaDenseGridInfo(pageHasRiskContext || hasRiskQuery, profile);
@@ -2548,6 +2603,11 @@ function pushMediaSafetyNodesFromElement(nodes, seen, element, descendantLimit =
     pushMediaSafetyNode(nodes, seen, element);
   }
 
+  const backgroundElement = getClosestMediaSafetyBackgroundElement(element);
+  if (backgroundElement instanceof Element) {
+    pushMediaSafetyNode(nodes, seen, backgroundElement);
+  }
+
   const closestMedia = element.closest(MEDIA_SAFETY_CANDIDATE_SELECTOR);
   if (closestMedia instanceof Element) {
     pushMediaSafetyNode(nodes, seen, closestMedia);
@@ -2560,6 +2620,9 @@ function pushMediaSafetyNodesFromElement(nodes, seen, element, descendantLimit =
   if (container.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
     pushMediaSafetyNode(nodes, seen, container);
   }
+  if (hasMediaSafetyBackgroundImage(container)) {
+    pushMediaSafetyNode(nodes, seen, container);
+  }
 
   for (const child of Array.from(container.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(
     0,
@@ -2567,6 +2630,33 @@ function pushMediaSafetyNodesFromElement(nodes, seen, element, descendantLimit =
   )) {
     pushMediaSafetyNode(nodes, seen, child);
   }
+  for (const child of Array.from(container.querySelectorAll(MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR)).slice(
+    0,
+    descendantLimit
+  )) {
+    if (hasMediaSafetyBackgroundImage(child)) {
+      pushMediaSafetyNode(nodes, seen, child);
+    }
+  }
+}
+
+function getClosestMediaSafetyBackgroundElement(element, maxDepth = 4) {
+  let current = element instanceof Element ? element : null;
+  let depth = 0;
+  while (current && depth <= maxDepth) {
+    if (["HTML", "BODY"].includes(current.tagName)) {
+      return null;
+    }
+    if (
+      hasMediaSafetyBackgroundImage(current) &&
+      isMediaRectVisible(current.getBoundingClientRect())
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return null;
 }
 
 function collectViewportMediaSeedNodes(nodes, seen) {
@@ -2599,6 +2689,14 @@ function getMediaSafetyCandidateNodes(pageContext = null) {
       MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT
     )) {
       pushMediaSafetyNode(nodes, seen, node);
+    }
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR)).slice(
+      0,
+      MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT
+    )) {
+      if (hasMediaSafetyBackgroundImage(node)) {
+        pushMediaSafetyNode(nodes, seen, node);
+      }
     }
   }
 
@@ -2681,11 +2779,16 @@ function getMediaSafetyMatch(candidate, pageContext = null) {
     candidate?.linkUrl,
     candidate?.sourceUrl
   ].filter(Boolean).join(" "));
+  const hasRiskDomain = hasMediaSafetyRiskDomainSignal(
+    candidate?.domain,
+    candidate?.linkUrl,
+    candidate?.sourceUrl
+  );
   if (!haystack) {
     return null;
   }
 
-  if (MEDIA_SAFETY_GAMBLING_PATTERN.test(haystack) || MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(haystack)) {
+  if (MEDIA_SAFETY_GAMBLING_PATTERN.test(haystack) || hasRiskDomain) {
     return {
       category: "gambling",
       reason: "gambling keyword/domain",
@@ -3046,6 +3149,14 @@ function nodeHasPotentialMediaSafetyCandidate(node) {
   }
   if (node.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
     return true;
+  }
+  if (hasMediaSafetyBackgroundImage(node)) {
+    return true;
+  }
+  for (const child of Array.from(node.querySelectorAll?.(MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR) || []).slice(0, 8)) {
+    if (hasMediaSafetyBackgroundImage(child)) {
+      return true;
+    }
   }
   return Boolean(node.querySelector?.(MEDIA_SAFETY_CANDIDATE_SELECTOR));
 }

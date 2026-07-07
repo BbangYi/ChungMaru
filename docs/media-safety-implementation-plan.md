@@ -38,6 +38,7 @@
 - fixture 기반 Chrome smoke harness를 추가해 `mediaSafetyEnabled`/`developerRuntimeLogEnabled`/`mediaSafetyStartupGateEnabled` 조합별 동작과 latency 지표를 CSV/JSONL로 남길 수 있게 했다. `late-load` fixture는 수동 smoke scan 전 자동 처리 여부를 `preManual*` 지표로 남기고, 이미지 삽입 후 숨김까지 걸린 시간은 `lateDecisionMs`로 남긴다.
 - `scripts/chungmaru_media_safety_report.py`를 추가해 current smoke CSV를 보고서용 evidence로 줄인다. 이 스크립트는 raw row를 바꾸지 않고 `collect_ms`, `cheap_filter_ms`, `apply_ms`, `dom_added_to_action_ms`, `late_decision_ms`와 향후 `image_fetch_ms`, `bitmap_decode_ms`, `classifier_ms`, `ocr_ms` 계측 상태를 stage별 p50/p95/max로 정리한다.
 - smoke harness는 기본값을 headless 실행으로 바꿨다. 테스트 중 Chrome for Testing 창이 사용자의 화면 위로 올라오지 않으며, 사람이 직접 눈으로 확인할 때만 `--headed`를 명시한다.
+- v1 후보 수집은 `img`/`video`뿐 아니라 CSS `background-image` 기반 배너도 viewport sampling과 strict page scan에서 후보로 올린다. 배너를 이미지 태그가 아니라 링크/카드 배경으로 넣는 사이트를 놓치지 않기 위한 보완이다.
 - live smoke는 최종 URL이 `chrome-error://chromewebdata` 또는 비 HTTP 페이지인 경우 scan/action을 건너뛰고 `invalid_page`로 기록한다. 정상 live page도 최종 URL과 매칭되는 탭에만 메시지를 보내므로, 이전 탭이나 active tab에 action log가 섞이지 않는다.
 - `backend/data/site_intel_seed_massive.json`에서 adult/gambling/block seed를 선택해 bulk live smoke를 돌릴 수 있다. 별도로 `evaluation/media-safety/fixtures/live-visual-rich-urls.csv`에는 visible banner grid가 있는 주소가이드 계열 2개와 benign negative 2개를 고정했다. `evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv`는 known visual-rich 4개와 seed 기반 adult/gambling 우선순위 후보 40개를 합친 smoke 입력 파일이다. 결과는 `media-safety-live-smoke.*`와 `media-safety-live-summary.*`의 current 파일만 갱신한다.
 - `--capture-visual-evidence`를 켜면 headless 상태에서 현재 viewport screenshot을 `evaluation/media-safety/results/current/visual/`에 저장하고, `media-safety-visual-evidence.*` manifest로 live smoke row와 연결한다. 기본은 repeat 1개만 캡처해 artifact sprawl을 막는다.
@@ -60,6 +61,8 @@
 - `evaluation/media-safety/results/current/media-safety-report.md` 생성
 - `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
 - `evaluation/media-safety/results/current/benign-thumbnail/`에 Google Images/YouTube benign thumbnail negative smoke 결과와 headless screenshot 8개 생성
+
+이번 세션에서 `background-banner` fixture를 추가했지만, 현재 로컬 기본 Google Chrome은 `--load-extension`을 차단해 fixture smoke 재실행이 막혔다. 이 fixture는 Chrome for Testing 또는 Chromium runner에서 다음 검증 때 `log_on_background_banner`로 통과 여부를 확인해야 한다.
 
 현재 대량 seed 운영 방식:
 

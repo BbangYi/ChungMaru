@@ -191,6 +191,17 @@ def build_media_page(scenario: str) -> str:
         }, 240);
       </script>
     """
+    background_cards = """
+      <a class="css-banner css-risk-banner css-risk-banner-one" href="https://slot-casino.example/banner/777" data-chungmaru-media-harmful="true">
+        <span>카지노 슬롯 가입코드 배너</span>
+      </a>
+      <a class="css-banner css-risk-banner css-risk-banner-two" href="https://toto-sportsbook.example/promo" data-chungmaru-media-harmful="true">
+        <span>토토 스포츠북 페이백 배너</span>
+      </a>
+      <a class="css-banner css-safe-banner" href="https://school.example/festival" data-chungmaru-media-safe="true">
+        <span>학교 축제 안내 배너</span>
+      </a>
+    """
     cards = clean_cards if scenario == "clean" else harmful_cards
     if scenario == "address-guide-video":
       cards = f"""<section class="jbanner-large-section">
@@ -198,6 +209,8 @@ def build_media_page(scenario: str) -> str:
     </section>"""
     elif scenario == "late-load":
       cards = late_load_cards
+    elif scenario == "background-banner":
+      cards = background_cards
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -260,6 +273,29 @@ def build_media_page(scenario: str) -> str:
       object-fit: cover;
       background: linear-gradient(90deg, #111827, #7f1d1d 48%, #facc15);
     }}
+    .css-banner {{
+      display: flex;
+      align-items: center;
+      min-height: 118px;
+      padding: 18px 22px;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 24px;
+      font-weight: 800;
+      text-decoration: none;
+      background-size: cover;
+      background-position: center;
+      box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+    }}
+    .css-risk-banner-one {{
+      background-image: url("/media.svg?tone=gambling&label=CSS%20CASINO%20BANNER");
+    }}
+    .css-risk-banner-two {{
+      background-image: url("/media.svg?tone=gambling&label=CSS%20TOTO%20BANNER");
+    }}
+    .css-safe-banner {{
+      background-image: url("/media.svg?tone=clean&label=SAFE%20SCHOOL%20BANNER");
+    }}
   </style>
 </head>
 <body data-scenario="{html.escape(scenario)}">
@@ -287,7 +323,7 @@ class MediaFixtureHandler(http.server.BaseHTTPRequestHandler):
             return
 
         scenario = params.get("scenario", ["harmful"])[0]
-        if scenario not in {"clean", "harmful", "address-guide-video", "late-load"}:
+        if scenario not in {"clean", "harmful", "address-guide-video", "late-load", "background-banner"}:
           scenario = "harmful"
         body = build_media_page(scenario).encode("utf-8")
         self.send_response(200)
@@ -1405,6 +1441,7 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
     clean = by_case["log_on_clean"]
     address_guide = by_case.get("log_on_address_guide_video")
     late_load = by_case.get("log_on_late_load")
+    background_banner = by_case.get("log_on_background_banner")
 
     failures = []
     if media_off["hidden_count"] != 0 or media_off["action_count"] != 0:
@@ -1429,6 +1466,10 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_late_load should not hide safe delayed fixture media")
     if late_load and late_load["late_decision_ms"] <= 0:
       failures.append("log_on_late_load should record delayed media decision latency")
+    if background_banner and background_banner["harmful_hidden_count"] < 2:
+      failures.append("log_on_background_banner should hide CSS background-image harmful banners")
+    if background_banner and background_banner["safe_hidden_count"] != 0:
+      failures.append("log_on_background_banner should not hide safe CSS background-image banner")
     if failures:
       raise RuntimeError("; ".join(failures))
 
@@ -1550,6 +1591,14 @@ def main() -> int:
           {
               "case_id": "log_on_late_load",
               "scenario": "late-load",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_background_banner",
+              "scenario": "background-banner",
               "media_safety_enabled": True,
               "developer_log_enabled": True,
               "media_intervention_mode": args.media_intervention_mode,
