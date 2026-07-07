@@ -1,0 +1,6 @@
+scope,category,seed_block_domain_count,live_smoke_domain_count,live_harmful_visual_evidence_domain_count,controlled_harmful_regression_count,live_benign_negative_domain_count,coverage_ratio_pct,readiness_status,report_note
+harmful_visual_total,adult+gambling,217,2,2,0,6,0.9,mechanism_proof_only,"현재 유해 visual live evidence 2개, benign negative 6개다. 최소 목표는 유해 25개 이상, benign 30개 이상이다."
+category,adult,117,0,0,0,,0.0,no_live_visual_evidence,해당 카테고리 live screenshot evidence가 아직 없다. 완성도 주장 금지.
+category,gambling,100,2,2,0,,2.0,mechanism_proof_only,동작 예시는 있으나 10개 도메인 미만이라 coverage proof가 아니다.
+category,malware,80,0,0,0,,0.0,not_media_safety_scope,이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다.
+category,phishing,270,0,0,0,,0.0,not_media_safety_scope,이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다.

@@ -14,8 +14,10 @@ from urllib.parse import urlparse
 
 
 DEFAULT_RESULTS_DIR = Path("evaluation/media-safety/results/current")
+DEFAULT_SITE_SEED_FILE = Path("backend/data/site_intel_seed_massive.json")
 LATENCY_SUMMARY_NAME = "media-safety-latency-summary.csv"
 STAGE_LATENCY_NAME = "media-safety-stage-latency.csv"
+COVERAGE_AUDIT_NAME = "media-safety-coverage-audit.csv"
 REPORT_JSON_NAME = "media-safety-report.json"
 REPORT_MD_NAME = "media-safety-report.md"
 
@@ -174,6 +176,24 @@ STAGE_FIELDNAMES = [
     "report_status",
 ]
 
+COVERAGE_FIELDNAMES = [
+    "scope",
+    "category",
+    "seed_block_domain_count",
+    "live_smoke_domain_count",
+    "live_harmful_visual_evidence_domain_count",
+    "controlled_harmful_regression_count",
+    "live_benign_negative_domain_count",
+    "coverage_ratio_pct",
+    "readiness_status",
+    "report_note",
+]
+
+HARMFUL_VISUAL_CATEGORIES = {"adult", "gambling"}
+BROAD_SMOKE_MIN_HARMFUL_DOMAINS_PER_CATEGORY = 10
+BROAD_SMOKE_MIN_TOTAL_HARMFUL_DOMAINS = 25
+BROAD_SMOKE_MIN_BENIGN_DOMAINS = 30
+
 
 def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -313,6 +333,18 @@ def read_input_rows(results_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def read_seed_rows(seed_file: Path) -> list[dict[str, Any]]:
+    if not seed_file.exists():
+        return []
+    try:
+        payload = json.loads(seed_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def group_key(row: dict[str, Any]) -> tuple[str, ...]:
     scenario = clean_cell(row.get("scenario"), 80) or "unknown"
     case_group = host_from_row(row) if scenario == "live" else clean_cell(row.get("case_id"), 120)
@@ -432,6 +464,142 @@ def classify_evidence_tier(summary: dict[str, Any]) -> tuple[str, str]:
     return "review_or_gap", "not enough visual/report evidence for promotion"
 
 
+def unique_live_domains(
+    rows: list[dict[str, Any]],
+    *,
+    category: str | None = None,
+    tier: str | None = None,
+) -> set[str]:
+    domains: set[str] = set()
+    for row in rows:
+        if str(row.get("scenario") or "") != "live":
+            continue
+        if category is not None and str(row.get("seed_category") or "") != category:
+            continue
+        if tier is not None and str(row.get("evidence_tier") or "") != tier:
+            continue
+        domain = str(row.get("seed_domain") or row.get("case_group") or "").strip().lower()
+        if domain:
+            domains.add(domain)
+    return domains
+
+
+def seed_block_domain_count(seed_rows: list[dict[str, Any]], category: str) -> int:
+    domains = {
+        str(row.get("domain") or "").strip().lower()
+        for row in seed_rows
+        if str(row.get("category") or "").strip().lower() == category
+        and str(row.get("risk_level") or "").strip().lower() == "block"
+        and str(row.get("domain") or "").strip()
+    }
+    return len(domains)
+
+
+def coverage_status_for_category(category: str, evidence_count: int, seed_count: int) -> tuple[str, str]:
+    if category not in HARMFUL_VISUAL_CATEGORIES:
+        return (
+            "not_media_safety_scope",
+            "이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다.",
+        )
+    if evidence_count == 0:
+        return (
+            "no_live_visual_evidence",
+            "해당 카테고리 live screenshot evidence가 아직 없다. 완성도 주장 금지.",
+        )
+    if evidence_count < BROAD_SMOKE_MIN_HARMFUL_DOMAINS_PER_CATEGORY:
+        return (
+            "mechanism_proof_only",
+            f"동작 예시는 있으나 {BROAD_SMOKE_MIN_HARMFUL_DOMAINS_PER_CATEGORY}개 도메인 미만이라 coverage proof가 아니다.",
+        )
+    ratio = (evidence_count / seed_count * 100.0) if seed_count else 0.0
+    return (
+        "limited_broad_smoke",
+        f"카테고리별 최소 도메인 수는 넘었지만 seed 대비 coverage는 {ratio:.1f}%라 추가 확장이 필요하다.",
+    )
+
+
+def build_coverage_audit_rows(
+    summary_rows: list[dict[str, Any]],
+    seed_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    seed_categories = {
+        str(row.get("category") or "").strip().lower()
+        for row in seed_rows
+        if str(row.get("risk_level") or "").strip().lower() == "block"
+    }
+    categories = sorted(HARMFUL_VISUAL_CATEGORIES | {"phishing", "malware"} | seed_categories)
+    live_benign_domains = unique_live_domains(summary_rows, tier="live_benign_negative_evidence")
+    rows: list[dict[str, Any]] = []
+    total_seed = 0
+    total_live_smoke = 0
+    total_visual_evidence = 0
+    total_controlled = 0
+
+    for category in categories:
+        seed_count = seed_block_domain_count(seed_rows, category)
+        live_domains = unique_live_domains(summary_rows, category=category)
+        evidence_domains = unique_live_domains(
+            summary_rows,
+            category=category,
+            tier="live_harmful_visual_evidence",
+        )
+        controlled_count = sum(
+            1 for row in summary_rows
+            if str(row.get("seed_category") or "") == category
+            and str(row.get("evidence_tier") or "") == "controlled_harmful_regression"
+        )
+        status, note = coverage_status_for_category(category, len(evidence_domains), seed_count)
+        ratio = (len(evidence_domains) / seed_count * 100.0) if seed_count else 0.0
+        rows.append({
+            "scope": "category",
+            "category": category,
+            "seed_block_domain_count": seed_count,
+            "live_smoke_domain_count": len(live_domains),
+            "live_harmful_visual_evidence_domain_count": len(evidence_domains),
+            "controlled_harmful_regression_count": controlled_count,
+            "live_benign_negative_domain_count": "",
+            "coverage_ratio_pct": f"{ratio:.1f}",
+            "readiness_status": status,
+            "report_note": note,
+        })
+        if category in HARMFUL_VISUAL_CATEGORIES:
+            total_seed += seed_count
+            total_live_smoke += len(live_domains)
+            total_visual_evidence += len(evidence_domains)
+            total_controlled += controlled_count
+
+    total_ratio = (total_visual_evidence / total_seed * 100.0) if total_seed else 0.0
+    if total_visual_evidence == 0:
+        total_status = "no_live_visual_evidence"
+        total_note = "adult/gambling live visual evidence가 없다."
+    elif (
+        total_visual_evidence < BROAD_SMOKE_MIN_TOTAL_HARMFUL_DOMAINS
+        or len(live_benign_domains) < BROAD_SMOKE_MIN_BENIGN_DOMAINS
+    ):
+        total_status = "mechanism_proof_only"
+        total_note = (
+            f"현재 유해 visual live evidence {total_visual_evidence}개, benign negative {len(live_benign_domains)}개다. "
+            f"최소 목표는 유해 {BROAD_SMOKE_MIN_TOTAL_HARMFUL_DOMAINS}개 이상, benign {BROAD_SMOKE_MIN_BENIGN_DOMAINS}개 이상이다."
+        )
+    else:
+        total_status = "broad_smoke_candidate"
+        total_note = "최소 broad smoke 수량은 충족했지만 화면 녹화와 미탐/오탐 검토가 추가로 필요하다."
+
+    rows.insert(0, {
+        "scope": "harmful_visual_total",
+        "category": "adult+gambling",
+        "seed_block_domain_count": total_seed,
+        "live_smoke_domain_count": total_live_smoke,
+        "live_harmful_visual_evidence_domain_count": total_visual_evidence,
+        "controlled_harmful_regression_count": total_controlled,
+        "live_benign_negative_domain_count": len(live_benign_domains),
+        "coverage_ratio_pct": f"{total_ratio:.1f}",
+        "readiness_status": total_status,
+        "report_note": total_note,
+    })
+    return rows
+
+
 def build_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -474,6 +642,8 @@ def build_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 1 for row in group_rows
                 if read_int(row.get("candidate_sized_visible_media_element_count")) > 0
                 or read_int(row.get("visible_tile_count")) > 0
+                or read_int(row.get("candidate_count")) > 0
+                or read_int(row.get("action_count")) > 0
             ),
             "action_run_count": sum(1 for value in action_values if value > 0),
             "action_count_sum": sum(action_values),
@@ -620,6 +790,13 @@ def global_stage_summary(input_rows: list[dict[str, Any]]) -> list[dict[str, Any
     return rows
 
 
+def overall_coverage_verdict(coverage_rows: list[dict[str, Any]]) -> str:
+    for row in coverage_rows:
+        if row.get("scope") == "harmful_visual_total":
+            return str(row.get("readiness_status") or "unknown")
+    return "unknown"
+
+
 def markdown_table(rows: list[dict[str, Any]], columns: list[tuple[str, str]], *, empty: str = "_없음_") -> list[str]:
     if not rows:
         return [empty]
@@ -640,6 +817,7 @@ def build_markdown_report(
     input_rows: list[dict[str, Any]],
     summary_rows: list[dict[str, Any]],
     stage_rows: list[dict[str, Any]],
+    coverage_rows: list[dict[str, Any]],
     output_paths: dict[str, Path],
     max_rows: int,
 ) -> str:
@@ -663,6 +841,7 @@ def build_markdown_report(
         or row["evidence_tier"] == "review_or_gap"
     ][:max_rows]
     generated_at = now_iso()
+    coverage_verdict = overall_coverage_verdict(coverage_rows)
 
     lines: list[str] = [
         "# Chungmaru Media Safety Report",
@@ -677,6 +856,9 @@ def build_markdown_report(
         "",
         "이 파일은 smoke raw CSV를 보고서 작성용으로 줄인 산출물이다. 발표에는 screenshot이 있는 `live_harmful_visual_evidence`와 `live_benign_negative_evidence`를 우선 쓰고, controlled fixture는 regression evidence로 분리한다.",
         "",
+        f"- coverage_verdict: `{coverage_verdict}`",
+        "- 현재 수치는 기능 메커니즘과 속도 검증용이다. 다양한 실제 유해 사이트를 넓게 커버했다는 주장에는 아직 부족하다.",
+        "",
     ]
     lines.extend(markdown_table(
         [
@@ -684,6 +866,27 @@ def build_markdown_report(
             for status, count in sorted(status_counts.items())
         ],
         [("status", "status"), ("count", "count")],
+    ))
+    lines.extend([
+        "",
+        "## Coverage Audit",
+        "",
+        "seed 목록 대비 실제 live screenshot evidence가 얼마나 있는지 보는 표다. 이 표의 목적은 과장 방지다.",
+        "",
+    ])
+    lines.extend(markdown_table(
+        coverage_rows,
+        [
+            ("scope", "scope"),
+            ("category", "category"),
+            ("seed_block_domain_count", "seed block domains"),
+            ("live_smoke_domain_count", "live smoke domains"),
+            ("live_harmful_visual_evidence_domain_count", "live harmful evidence"),
+            ("live_benign_negative_domain_count", "benign negatives"),
+            ("coverage_ratio_pct", "coverage %"),
+            ("readiness_status", "status"),
+            ("report_note", "note"),
+        ],
     ))
     lines.extend([
         "",
@@ -799,6 +1002,7 @@ def build_markdown_report(
         "## Known Gaps",
         "",
         "- v1은 YOLO/NSFW classifier/OCR을 붙이지 않았다. 따라서 classifier/OCR 속도는 아직 `not_instrumented`로 보고한다.",
+        "- live harmful visual evidence는 현재 주소가이드 계열 2개 도메인에 머문다. Chrome 이미지 차단을 성숙하다고 말하기에는 부족하다.",
         "- live URL seed는 reachable 여부와 visual banner 존재 여부가 섞여 있으므로, `live_page_ok`, visible candidate, screenshot을 통과한 row만 evidence로 승격한다.",
         "- Google Images/YouTube harmful query와 화면 녹화 evidence는 다음 반복에서 추가해야 한다.",
         "",
@@ -827,6 +1031,7 @@ def write_json_report(
     input_rows: list[dict[str, Any]],
     summary_rows: list[dict[str, Any]],
     stage_rows: list[dict[str, Any]],
+    coverage_rows: list[dict[str, Any]],
     output_paths: dict[str, Path],
 ) -> None:
     status_counts = Counter(str(row["report_status"]) for row in summary_rows)
@@ -839,6 +1044,8 @@ def write_json_report(
         "stageRowCount": len(stage_rows),
         "statusCounts": dict(sorted(status_counts.items())),
         "evidenceTierCounts": dict(sorted(Counter(str(row["evidence_tier"]) for row in summary_rows).items())),
+        "coverageVerdict": overall_coverage_verdict(coverage_rows),
+        "coverageAudit": coverage_rows,
         "stageBudgetSummary": global_stage_summary(input_rows),
         "generatedFiles": {label: str(path) for label, path in output_paths.items()},
     }
@@ -850,6 +1057,7 @@ def parse_args() -> argparse.Namespace:
         description="Build report-ready media safety latency/evidence artifacts from current smoke CSVs.",
     )
     parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    parser.add_argument("--seed-file", type=Path, default=DEFAULT_SITE_SEED_FILE)
     parser.add_argument("--max-md-rows", type=int, default=20)
     return parser.parse_args()
 
@@ -864,15 +1072,19 @@ def main() -> int:
 
     summary_rows = build_summary_rows(input_rows)
     stage_rows = build_stage_rows(input_rows, summary_rows)
+    seed_rows = read_seed_rows(args.seed_file)
+    coverage_rows = build_coverage_audit_rows(summary_rows, seed_rows)
     output_paths = {
         "latency_summary_csv": results_dir / LATENCY_SUMMARY_NAME,
         "stage_latency_csv": results_dir / STAGE_LATENCY_NAME,
+        "coverage_audit_csv": results_dir / COVERAGE_AUDIT_NAME,
         "report_json": results_dir / REPORT_JSON_NAME,
         "report_md": results_dir / REPORT_MD_NAME,
     }
 
     write_csv(output_paths["latency_summary_csv"], summary_rows, SUMMARY_FIELDNAMES)
     write_csv(output_paths["stage_latency_csv"], stage_rows, STAGE_FIELDNAMES)
+    write_csv(output_paths["coverage_audit_csv"], coverage_rows, COVERAGE_FIELDNAMES)
     write_json_report(
         output_paths["report_json"],
         results_dir=results_dir,
@@ -880,6 +1092,7 @@ def main() -> int:
         input_rows=input_rows,
         summary_rows=summary_rows,
         stage_rows=stage_rows,
+        coverage_rows=coverage_rows,
         output_paths=output_paths,
     )
     output_paths["report_md"].write_text(
@@ -889,6 +1102,7 @@ def main() -> int:
             input_rows=input_rows,
             summary_rows=summary_rows,
             stage_rows=stage_rows,
+            coverage_rows=coverage_rows,
             output_paths=output_paths,
             max_rows=max(1, int(args.max_md_rows)),
         ),
@@ -901,6 +1115,8 @@ def main() -> int:
         "rawRowCount": len(input_rows),
         "summaryGroupCount": len(summary_rows),
         "stageRowCount": len(stage_rows),
+        "coverageRowCount": len(coverage_rows),
+        "coverageVerdict": overall_coverage_verdict(coverage_rows),
         "outputs": {label: str(path) for label, path in output_paths.items()},
     }, ensure_ascii=False, sort_keys=True))
     return 0

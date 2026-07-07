@@ -55,6 +55,7 @@
 - `evaluation/media-safety/results/current/media-safety-visual-evidence.csv`와 `.jsonl` 생성
 - `evaluation/media-safety/results/current/media-safety-latency-summary.csv` 생성
 - `evaluation/media-safety/results/current/media-safety-stage-latency.csv` 생성
+- `evaluation/media-safety/results/current/media-safety-coverage-audit.csv` 생성. 현재 verdict는 `mechanism_proof_only`이며, broad coverage 주장 금지
 - `evaluation/media-safety/results/current/media-safety-report.json` 생성
 - `evaluation/media-safety/results/current/media-safety-report.md` 생성
 - `evaluation/media-safety/results/current/visual/*.png` headless screenshot 4개 생성
@@ -106,10 +107,13 @@ python3 scripts/chungmaru_media_safety_report.py \
 
 - `media-safety-latency-summary.csv`: case/domain 단위 승격 가능 여부와 핵심 latency p50/p95/max
 - `media-safety-stage-latency.csv`: 처리 단계별 latency, p95 budget, `within_budget`/`over_budget`/`not_instrumented`
+- `media-safety-coverage-audit.csv`: seed 목록 대비 live screenshot evidence coverage와 `mechanism_proof_only` 같은 readiness 판정
 - `media-safety-report.md`: 보고서에 붙일 수 있는 요약, 승격 row, 한계
 - `media-safety-report.json`: 자동 검증이나 Notion/보고서 변환에 쓰기 쉬운 구조화 요약
 
 `media-safety-report.md`는 실제 live screenshot evidence와 controlled regression evidence를 분리한다. 실제 발표 화면에는 `live_harmful_visual_evidence`, `live_benign_negative_evidence`를 우선 쓰고, fixture 기반 `controlled_harmful_regression`, `controlled_negative_or_control`, `control_row`는 기능 회귀 검증으로 따로 설명한다.
+
+현재 coverage verdict가 `mechanism_proof_only`라면 “Chrome 유해 이미지 차단이 성숙했다”고 표현하지 않는다. 이 상태는 “빠른 DOM 기반 차단 메커니즘은 검증됐지만, 다양한 실제 사이트 coverage는 부족하다”로 설명한다. 최소한 유해 visual live evidence 25개 이상, benign negative 30개 이상, adult/gambling 각각 10개 이상 도메인이 쌓이기 전까지는 broad coverage로 해석하지 않는다.
 
 `report_status`와 `evidence_tier`는 다음처럼 해석한다.
 

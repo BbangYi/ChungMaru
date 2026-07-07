@@ -1,6 +1,6 @@
 # Chungmaru Media Safety Report
 
-- generated_at: `2026-07-07T11:25:33+09:00`
+- generated_at: `2026-07-07T12:02:44+09:00`
 - results_dir: `evaluation/media-safety/results/current`
 - input_files: `3`
 - raw_rows: `26`
@@ -10,11 +10,26 @@
 
 이 파일은 smoke raw CSV를 보고서 작성용으로 줄인 산출물이다. 발표에는 screenshot이 있는 `live_harmful_visual_evidence`와 `live_benign_negative_evidence`를 우선 쓰고, controlled fixture는 regression evidence로 분리한다.
 
+- coverage_verdict: `mechanism_proof_only`
+- 현재 수치는 기능 메커니즘과 속도 검증용이다. 다양한 실제 유해 사이트를 넓게 커버했다는 주장에는 아직 부족하다.
+
 | status | count |
 | --- | --- |
 | benign_negative | 9 |
 | disabled_control | 1 |
 | strong_visual_block | 6 |
+
+## Coverage Audit
+
+seed 목록 대비 실제 live screenshot evidence가 얼마나 있는지 보는 표다. 이 표의 목적은 과장 방지다.
+
+| scope | category | seed block domains | live smoke domains | live harmful evidence | benign negatives | coverage % | status | note |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| harmful_visual_total | adult+gambling | 217 | 2 | 2 | 6 | 0.9 | mechanism_proof_only | 현재 유해 visual live evidence 2개, benign negative 6개다. 최소 목표는 유해 25개 이상, benign 30개 이상이다. |
+| category | adult | 117 | 0 | 0 |  | 0.0 | no_live_visual_evidence | 해당 카테고리 live screenshot evidence가 아직 없다. 완성도 주장 금지. |
+| category | gambling | 100 | 2 | 2 |  | 2.0 | mechanism_proof_only | 동작 예시는 있으나 10개 도메인 미만이라 coverage proof가 아니다. |
+| category | malware | 80 | 0 | 0 |  | 0.0 | not_media_safety_scope | 이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다. |
+| category | phishing | 270 | 0 | 0 |  | 0.0 | not_media_safety_scope | 이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다. |
 
 ## Latency Budget Table
 
@@ -79,6 +94,7 @@ _없음_
 ## Known Gaps
 
 - v1은 YOLO/NSFW classifier/OCR을 붙이지 않았다. 따라서 classifier/OCR 속도는 아직 `not_instrumented`로 보고한다.
+- live harmful visual evidence는 현재 주소가이드 계열 2개 도메인에 머문다. Chrome 이미지 차단을 성숙하다고 말하기에는 부족하다.
 - live URL seed는 reachable 여부와 visual banner 존재 여부가 섞여 있으므로, `live_page_ok`, visible candidate, screenshot을 통과한 row만 evidence로 승격한다.
 - Google Images/YouTube harmful query와 화면 녹화 evidence는 다음 반복에서 추가해야 한다.
 
@@ -86,6 +102,7 @@ _없음_
 
 - latency_summary_csv: `evaluation/media-safety/results/current/media-safety-latency-summary.csv`
 - stage_latency_csv: `evaluation/media-safety/results/current/media-safety-stage-latency.csv`
+- coverage_audit_csv: `evaluation/media-safety/results/current/media-safety-coverage-audit.csv`
 - report_json: `evaluation/media-safety/results/current/media-safety-report.json`
 - report_md: `evaluation/media-safety/results/current/media-safety-report.md`
 
