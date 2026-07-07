@@ -84,6 +84,15 @@ python3 scripts/chungmaru_media_safety_seed_candidates.py \
   --output /tmp/chungmaru-media-risk-all-seed-urls.csv
 ```
 
+유해 사이트 목록 전체에서 더 다양한 live smoke 배치를 만들 때는 balanced preset을 쓴다.
+
+```bash
+python3 scripts/chungmaru_media_safety_seed_candidates.py \
+  --preset harmful-diverse
+```
+
+이 명령은 `evaluation/media-safety/fixtures/live-harmful-diverse-urls.csv`를 갱신한다. 기본 구성은 `gambling`, `adult`, `phishing`, `malware`의 `block` seed를 각 10개씩 뽑는 40개 배치다. `adult/gambling`은 media-safety visual evidence 후보로 보고, `phishing/malware`는 이미지 차단 품질이 아니라 유해사이트 차단/reachability/policy 검증 후보로 분리해서 해석한다.
+
 2. 우선순위 후보만 headless smoke한다.
 
 ```bash
@@ -93,6 +102,17 @@ python3 scripts/chungmaru_chrome_media_safety_smoke.py \
   --live-startup-mode decision-first \
   --live-settle-seconds 3 \
   --output-dir evaluation/media-safety/results/current/media-risk-priority
+```
+
+다양한 유해 seed 배치를 돌릴 때는 입력 파일만 바꾼다.
+
+```bash
+python3 scripts/chungmaru_chrome_media_safety_smoke.py \
+  --live-url-file evaluation/media-safety/fixtures/live-harmful-diverse-urls.csv \
+  --live-repeat 1 \
+  --live-startup-mode decision-first \
+  --live-settle-seconds 3 \
+  --output-dir evaluation/media-safety/results/current/harmful-diverse
 ```
 
 3. 결과를 줄인다.

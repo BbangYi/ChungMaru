@@ -11,9 +11,28 @@ from typing import Any
 
 DEFAULT_SEED_FILE = Path("backend/data/site_intel_seed_massive.json")
 DEFAULT_OUTPUT_FILE = Path("evaluation/media-safety/fixtures/live-media-risk-priority-urls.csv")
+DEFAULT_HARMFUL_DIVERSE_OUTPUT_FILE = Path("evaluation/media-safety/fixtures/live-harmful-diverse-urls.csv")
 DEFAULT_PREPEND_FILE = Path("evaluation/media-safety/fixtures/live-visual-rich-urls.csv")
 DEFAULT_CATEGORIES = ["gambling", "adult"]
 DEFAULT_RISK_LEVELS = ["block"]
+PRESETS = {
+    "visual-risk-priority": {
+        "categories": ["gambling", "adult"],
+        "risk_levels": ["block"],
+        "max_sites": 48,
+        "per_category": 20,
+        "output": DEFAULT_OUTPUT_FILE,
+        "prepend": True,
+    },
+    "harmful-diverse": {
+        "categories": ["gambling", "adult", "phishing", "malware"],
+        "risk_levels": ["block"],
+        "max_sites": 40,
+        "per_category": 10,
+        "output": DEFAULT_HARMFUL_DIVERSE_OUTPUT_FILE,
+        "prepend": False,
+    },
+}
 CSV_FIELDS = [
     "url",
     "seed_domain",
@@ -227,11 +246,17 @@ def parse_args() -> argparse.Namespace:
         description="Build prioritized Chungmaru media safety live-smoke candidate CSVs from site intel seed data."
     )
     parser.add_argument("--seed-file", type=Path, default=DEFAULT_SEED_FILE)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_FILE)
+    parser.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        default="visual-risk-priority",
+        help="Candidate batch preset. Use harmful-diverse for a balanced block-category batch.",
+    )
+    parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--category", action="append", default=[])
     parser.add_argument("--risk-level", action="append", default=[])
-    parser.add_argument("--max-sites", type=int, default=48)
-    parser.add_argument("--per-category", type=int, default=20)
+    parser.add_argument("--max-sites", type=int, default=None)
+    parser.add_argument("--per-category", type=int, default=None)
     parser.add_argument("--prepend-url-file", type=Path, action="append", default=[DEFAULT_PREPEND_FILE])
     parser.add_argument("--no-prepend", action="store_true")
     return parser.parse_args()
@@ -239,8 +264,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    categories = args.category or DEFAULT_CATEGORIES
-    risk_levels = args.risk_level or DEFAULT_RISK_LEVELS
+    preset = PRESETS.get(args.preset, PRESETS["visual-risk-priority"])
+    categories = args.category or list(preset.get("categories") or DEFAULT_CATEGORIES)
+    risk_levels = args.risk_level or list(preset.get("risk_levels") or DEFAULT_RISK_LEVELS)
+    max_sites = int(args.max_sites if args.max_sites is not None else preset.get("max_sites", 48))
+    per_category = int(args.per_category if args.per_category is not None else preset.get("per_category", 20))
+    output_path = args.output or Path(preset.get("output") or DEFAULT_OUTPUT_FILE)
 
     entries = filter_seed_entries(
         load_seed_entries(args.seed_file),
@@ -249,23 +278,32 @@ def main() -> int:
     )
     rows = [seed_row(entry) for entry in entries]
     rows.sort(key=lambda row: (-int(row["priority_group"].rsplit("-", 1)[-1]), row["seed_category"], row["seed_domain"]))
-    selected = select_rows(rows, categories=categories, max_sites=args.max_sites, per_category=args.per_category)
+    selected = select_rows(rows, categories=categories, max_sites=max_sites, per_category=per_category)
 
     prepended: list[dict[str, str]] = []
-    if not args.no_prepend:
+    should_prepend = bool(preset.get("prepend", True)) and not args.no_prepend
+    if should_prepend:
         for path in args.prepend_url_file:
             prepended.extend(read_prepend_file(path))
 
     output_rows = dedupe_rows(prepended + selected)
-    write_csv(args.output, output_rows)
+    write_csv(output_path, output_rows)
+    category_counts: dict[str, int] = {}
+    for row in output_rows:
+        category = row.get("seed_category") or "unknown"
+        category_counts[category] = category_counts.get(category, 0) + 1
     print(json.dumps({
         "ok": True,
-        "output": str(args.output),
+        "preset": args.preset,
+        "output": str(output_path),
         "rows": len(output_rows),
         "seedRows": len(selected),
         "prependedRows": len(prepended),
         "categories": categories,
         "riskLevels": risk_levels,
+        "maxSites": max_sites,
+        "perCategory": per_category,
+        "categoryCounts": dict(sorted(category_counts.items())),
     }, ensure_ascii=False, indent=2))
     return 0
 
