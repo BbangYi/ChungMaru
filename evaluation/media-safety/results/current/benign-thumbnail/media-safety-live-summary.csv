@@ -1,7 +1,7 @@
-timestamp,url_origin,startup_gate_enabled,seed_domain,seed_category,seed_risk_level,run_count,ok_count,error_count,invalid_page_count,visual_candidate_run_count,action_run_count,action_count_median,action_count_max,remaining_visible_tile_count_max,false_hidden_count_max,viewport_coverage_pct_max,collect_ms_p50,collect_ms_p95,apply_ms_p50,apply_ms_p95,dom_added_to_action_ms_p50,dom_added_to_action_ms_p95,error_codes
-2026-07-02T17:27:04+09:00,https://example.com,False,example.com,benign,allow,1,1,0,0,0,0,0,0,0,0,0.0,1,1,0,0,0,0,
-2026-07-02T17:27:04+09:00,https://www.wikipedia.org,False,wikipedia.org,benign,allow,1,1,0,0,1,0,0,0,0,0,0.0,2,2,0,0,0,0,
-2026-07-02T17:27:04+09:00,https://www.python.org,False,python.org,benign,allow,1,1,0,0,1,0,0,0,0,0,0.0,3,3,0,0,0,0,
-2026-07-02T17:27:04+09:00,https://developer.mozilla.org,False,developer.mozilla.org,benign,allow,1,1,0,0,0,0,0,0,0,0,0.0,4,4,0,0,0,0,
-2026-07-02T17:27:04+09:00,https://www.google.com,False,google.com,benign-thumbnail,allow,2,2,0,0,2,0,0,0,0,0,0.0,2,2,0,0,0,0,
-2026-07-02T17:27:04+09:00,https://www.youtube.com,False,youtube.com,benign-thumbnail,allow,2,2,0,0,2,0,0,0,0,0,0.0,10,10,0,0,0,0,
+timestamp,url_origin,startup_gate_enabled,seed_domain,seed_category,seed_risk_level,run_count,ok_count,error_count,invalid_page_count,visual_candidate_run_count,action_run_count,action_count_median,action_count_max,candidate_count_max,visible_tile_count_max,candidate_sized_visible_media_element_count_max,remaining_visible_tile_count_max,missed_visible_tile_count_max,false_hidden_count_max,hidden_count_max,compact_summary_count_max,viewport_coverage_pct_max,collect_ms_p50,collect_ms_p95,apply_ms_p50,apply_ms_p95,dom_added_to_action_ms_p50,dom_added_to_action_ms_p95,error_codes
+2026-07-07T11:25:33+09:00,https://example.com,False,example.com,benign,allow,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.0,1,1,0,0,0,0,
+2026-07-07T11:25:33+09:00,https://www.wikipedia.org,False,wikipedia.org,benign,allow,1,1,0,0,1,0,0,0,1,1,1,0,0,0,0,0,0.0,2,2,0,0,0,0,
+2026-07-07T11:25:33+09:00,https://www.python.org,False,python.org,benign,allow,1,1,0,0,1,0,0,0,1,1,1,0,0,0,0,0,0.0,3,3,0,0,0,0,
+2026-07-07T11:25:33+09:00,https://developer.mozilla.org,False,developer.mozilla.org,benign,allow,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.0,4,4,0,0,0,0,
+2026-07-07T11:25:33+09:00,https://www.google.com,False,google.com,benign-thumbnail,allow,2,2,0,0,2,0,0,0,1,1,1,0,0,0,0,0,0.0,2,2,0,0,0,0,
+2026-07-07T11:25:33+09:00,https://www.youtube.com,False,youtube.com,benign-thumbnail,allow,2,2,0,0,2,0,0,0,7,7,7,0,0,0,0,0,0.0,10,10,0,0,0,0,

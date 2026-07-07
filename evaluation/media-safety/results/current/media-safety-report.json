@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-03T14:28:44+09:00",
+  "generatedAt": "2026-07-07T11:25:33+09:00",
   "resultsDir": "evaluation/media-safety/results/current",
   "inputFiles": [
     "evaluation/media-safety/results/current/benign-thumbnail/media-safety-live-smoke.csv",
@@ -13,6 +13,13 @@
     "benign_negative": 9,
     "disabled_control": 1,
     "strong_visual_block": 6
+  },
+  "evidenceTierCounts": {
+    "control_row": 1,
+    "controlled_harmful_regression": 4,
+    "controlled_negative_or_control": 1,
+    "live_benign_negative_evidence": 8,
+    "live_harmful_visual_evidence": 2
   },
   "stageBudgetSummary": [
     {

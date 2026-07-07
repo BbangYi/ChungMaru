@@ -641,6 +641,21 @@ def float_metric(value: Any) -> float:
       return 0.0
 
 
+def bool_metric(value: Any, *, default: bool = False) -> bool:
+    if isinstance(value, bool):
+      return value
+    if value is None:
+      return default
+    normalized = str(value).strip().lower()
+    if not normalized:
+      return default
+    if normalized in {"1", "true", "yes", "y", "on"}:
+      return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+      return False
+    return default
+
+
 def max_log_metric(logs: list[dict[str, Any]], key: str) -> int:
     return max((int_metric(item.get(key)) for item in logs), default=0)
 
@@ -1224,7 +1239,10 @@ def percentile(values: list[int], pct: float) -> int:
 def metric_values(rows: list[dict[str, Any]], key: str, *, successful_only: bool = True) -> list[int]:
     values: list[int] = []
     for row in rows:
-      if successful_only and (not bool(row.get("scan_ok")) or not bool(row.get("live_page_ok", True))):
+      if successful_only and (
+          not bool_metric(row.get("scan_ok"))
+          or not bool_metric(row.get("live_page_ok"), default=True)
+      ):
         continue
       values.append(int_metric(row.get(key)))
     return values
@@ -1233,7 +1251,10 @@ def metric_values(rows: list[dict[str, Any]], key: str, *, successful_only: bool
 def float_metric_values(rows: list[dict[str, Any]], key: str, *, successful_only: bool = True) -> list[float]:
     values: list[float] = []
     for row in rows:
-      if successful_only and (not bool(row.get("scan_ok")) or not bool(row.get("live_page_ok", True))):
+      if successful_only and (
+          not bool_metric(row.get("scan_ok"))
+          or not bool_metric(row.get("live_page_ok"), default=True)
+      ):
         continue
       values.append(float_metric(row.get(key)))
     return values
@@ -1246,7 +1267,7 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         continue
       key = (
           str(row.get("url_origin") or row.get("final_url_origin") or ""),
-          bool(row.get("startup_gate_enabled")),
+          bool_metric(row.get("startup_gate_enabled")),
           str(row.get("seed_domain") or ""),
           str(row.get("seed_category") or ""),
           str(row.get("seed_risk_level") or ""),
@@ -1255,18 +1276,40 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     summary_rows: list[dict[str, Any]] = []
     for (url_origin, startup_gate_enabled, seed_domain, seed_category, seed_risk_level), group_rows in groups.items():
-      ok_rows = [row for row in group_rows if bool(row.get("scan_ok")) and bool(row.get("live_page_ok"))]
-      error_rows = [row for row in group_rows if not bool(row.get("scan_ok"))]
-      invalid_page_rows = [row for row in group_rows if not bool(row.get("live_page_ok"))]
+      ok_rows = [
+          row for row in group_rows
+          if bool_metric(row.get("scan_ok"))
+          and bool_metric(row.get("live_page_ok"), default=True)
+      ]
+      error_rows = [row for row in group_rows if not bool_metric(row.get("scan_ok"))]
+      invalid_page_rows = [
+          row for row in group_rows
+          if not bool_metric(row.get("live_page_ok"), default=True)
+      ]
+      # Use both pre-action scan metrics and post-action DOM metrics. A successful
+      # remove/compact pass can leave zero visible candidates after action.
       visual_candidate_rows = [
           row for row in ok_rows
           if int_metric(row.get("candidate_sized_visible_media_element_count")) > 0
+          or int_metric(row.get("visible_tile_count")) > 0
+          or int_metric(row.get("candidate_count")) > 0
+          or int_metric(row.get("action_count")) > 0
       ]
       action_rows = [row for row in ok_rows if int_metric(row.get("action_count")) > 0]
       dom_values = metric_values(group_rows, "dom_added_to_action_ms")
       apply_values = metric_values(group_rows, "apply_ms")
       collect_values = metric_values(group_rows, "collect_ms")
       action_values = metric_values(group_rows, "action_count")
+      candidate_values = metric_values(group_rows, "candidate_count")
+      visible_tile_values = metric_values(group_rows, "visible_tile_count")
+      candidate_sized_values = metric_values(
+          group_rows,
+          "candidate_sized_visible_media_element_count",
+          successful_only=False,
+      )
+      missed_values = metric_values(group_rows, "missed_visible_tile_count", successful_only=False)
+      hidden_values = metric_values(group_rows, "hidden_count", successful_only=False)
+      compact_values = metric_values(group_rows, "compact_summary_count", successful_only=False)
       remaining_values = metric_values(group_rows, "remaining_visible_tile_count", successful_only=False)
       false_hidden_values = metric_values(group_rows, "false_hidden_count", successful_only=False)
       coverage_values = float_metric_values(group_rows, "viewport_coverage_pct", successful_only=False)
@@ -1285,8 +1328,14 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
           "action_run_count": len(action_rows),
           "action_count_median": percentile(action_values, 50),
           "action_count_max": max(action_values, default=0),
+          "candidate_count_max": max(candidate_values, default=0),
+          "visible_tile_count_max": max(visible_tile_values, default=0),
+          "candidate_sized_visible_media_element_count_max": max(candidate_sized_values, default=0),
           "remaining_visible_tile_count_max": max(remaining_values, default=0),
+          "missed_visible_tile_count_max": max(missed_values, default=0),
           "false_hidden_count_max": max(false_hidden_values, default=0),
+          "hidden_count_max": max(hidden_values, default=0),
+          "compact_summary_count_max": max(compact_values, default=0),
           "viewport_coverage_pct_max": round(max(coverage_values, default=0.0), 1),
           "collect_ms_p50": percentile(collect_values, 50),
           "collect_ms_p95": percentile(collect_values, 95),

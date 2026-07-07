@@ -143,6 +143,8 @@ SUMMARY_FIELDNAMES = [
     "late_decision_ms_max",
     "measured_stage_count",
     "report_status",
+    "evidence_tier",
+    "coverage_warning",
     "report_note",
 ]
 
@@ -406,6 +408,30 @@ def classify_summary(summary: dict[str, Any]) -> tuple[str, str]:
     return "needs_review", "risk label이 불명확해 수동 해석 필요"
 
 
+def classify_evidence_tier(summary: dict[str, Any]) -> tuple[str, str]:
+    status = str(summary.get("report_status") or "")
+    scenario = str(summary.get("scenario") or "")
+    source_file = str(summary.get("source_file") or "")
+    visual_artifact_count = int(summary.get("visual_artifact_count") or 0)
+    action_count_max = int(summary.get("action_count_max") or 0)
+
+    if status == "disabled_control":
+        return "control_row", ""
+    if scenario == "live" and status == "strong_visual_block" and visual_artifact_count > 0:
+        return "live_harmful_visual_evidence", ""
+    if scenario == "live" and status == "benign_negative" and visual_artifact_count > 0:
+        return "live_benign_negative_evidence", ""
+    if scenario == "live" and status == "strong_visual_block":
+        return "live_harmful_without_screenshot", "live harmful row has action but no screenshot artifact"
+    if scenario == "live" and status == "benign_negative":
+        return "live_benign_without_screenshot", "live benign row has no screenshot artifact"
+    if source_file.endswith("media-safety-smoke.csv"):
+        if action_count_max > 0:
+            return "controlled_harmful_regression", ""
+        return "controlled_negative_or_control", ""
+    return "review_or_gap", "not enough visual/report evidence for promotion"
+
+
 def build_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -483,6 +509,9 @@ def build_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         summary["measured_stage_count"] = measured_stage_count
         report_status, report_note = classify_summary(summary)
         summary["report_status"] = report_status
+        evidence_tier, coverage_warning = classify_evidence_tier(summary)
+        summary["evidence_tier"] = evidence_tier
+        summary["coverage_warning"] = coverage_warning
         summary["report_note"] = report_note
         summaries.append({field: summary.get(field, "") for field in SUMMARY_FIELDNAMES})
     return summaries
@@ -616,13 +645,22 @@ def build_markdown_report(
 ) -> str:
     status_counts = Counter(str(row["report_status"]) for row in summary_rows)
     stage_summary = global_stage_summary(input_rows)
-    promote = [
+    live_evidence = [
         row for row in summary_rows
-        if row["report_status"] in {"strong_visual_block", "benign_negative", "disabled_control"}
+        if row["evidence_tier"] in {"live_harmful_visual_evidence", "live_benign_negative_evidence"}
+    ][:max_rows]
+    controlled = [
+        row for row in summary_rows
+        if row["evidence_tier"] in {"controlled_harmful_regression", "controlled_negative_or_control", "control_row"}
+    ][:max_rows]
+    warning_rows = [
+        row for row in summary_rows
+        if row.get("coverage_warning")
     ][:max_rows]
     review = [
         row for row in summary_rows
         if row["report_status"] not in {"strong_visual_block", "benign_negative", "disabled_control"}
+        or row["evidence_tier"] == "review_or_gap"
     ][:max_rows]
     generated_at = now_iso()
 
@@ -637,7 +675,7 @@ def build_markdown_report(
         "",
         "## Report-Ready Summary",
         "",
-        "이 파일은 smoke raw CSV를 보고서 작성용으로 줄인 산출물이다. 발표에는 `strong_visual_block`, `benign_negative`, `disabled_control` row를 우선 쓰고, `needs_review`, `missed_or_policy_gap`, `invalid_or_unloaded`는 보완/한계로 분리한다.",
+        "이 파일은 smoke raw CSV를 보고서 작성용으로 줄인 산출물이다. 발표에는 screenshot이 있는 `live_harmful_visual_evidence`와 `live_benign_negative_evidence`를 우선 쓰고, controlled fixture는 regression evidence로 분리한다.",
         "",
     ]
     lines.extend(markdown_table(
@@ -669,12 +707,13 @@ def build_markdown_report(
     ))
     lines.extend([
         "",
-        "## Rows To Promote",
+        "## Live Screenshot Evidence",
         "",
     ])
     lines.extend(markdown_table(
-        promote,
+        live_evidence,
         [
+            ("evidence_tier", "tier"),
             ("report_status", "status"),
             ("case_group", "case/domain"),
             ("seed_category", "category"),
@@ -688,6 +727,43 @@ def build_markdown_report(
             ("apply_ms_p95", "apply p95"),
             ("dom_added_to_action_ms_p95", "dom->action p95"),
             ("visual_artifact_count", "screens"),
+        ],
+    ))
+    lines.extend([
+        "",
+        "## Controlled Regression Evidence",
+        "",
+        "controlled fixture는 실제 사이트 screenshot evidence가 아니라 기능 토글, 로그 on/off, late-load, clean negative 회귀 검증으로 해석한다.",
+        "",
+    ])
+    lines.extend(markdown_table(
+        controlled,
+        [
+            ("evidence_tier", "tier"),
+            ("report_status", "status"),
+            ("case_group", "case"),
+            ("seed_category", "category"),
+            ("seed_risk_level", "risk"),
+            ("run_count", "runs"),
+            ("action_run_count", "action runs"),
+            ("action_count_max", "action max"),
+            ("false_hidden_count_max", "false hidden max"),
+            ("late_decision_ms_max", "late max"),
+        ],
+    ))
+    lines.extend([
+        "",
+        "## Coverage Warnings",
+        "",
+    ])
+    lines.extend(markdown_table(
+        warning_rows,
+        [
+            ("evidence_tier", "tier"),
+            ("case_group", "case/domain"),
+            ("report_status", "status"),
+            ("visual_artifact_count", "screens"),
+            ("coverage_warning", "warning"),
         ],
     ))
     lines.extend([
@@ -762,6 +838,7 @@ def write_json_report(
         "summaryGroupCount": len(summary_rows),
         "stageRowCount": len(stage_rows),
         "statusCounts": dict(sorted(status_counts.items())),
+        "evidenceTierCounts": dict(sorted(Counter(str(row["evidence_tier"]) for row in summary_rows).items())),
         "stageBudgetSummary": global_stage_summary(input_rows),
         "generatedFiles": {label: str(path) for label, path in output_paths.items()},
     }

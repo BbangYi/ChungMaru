@@ -109,12 +109,20 @@ python3 scripts/chungmaru_media_safety_report.py \
 - `media-safety-report.md`: 보고서에 붙일 수 있는 요약, 승격 row, 한계
 - `media-safety-report.json`: 자동 검증이나 Notion/보고서 변환에 쓰기 쉬운 구조화 요약
 
-`report_status`는 다음처럼 해석한다.
+`media-safety-report.md`는 실제 live screenshot evidence와 controlled regression evidence를 분리한다. 실제 발표 화면에는 `live_harmful_visual_evidence`, `live_benign_negative_evidence`를 우선 쓰고, fixture 기반 `controlled_harmful_regression`, `controlled_negative_or_control`, `control_row`는 기능 회귀 검증으로 따로 설명한다.
+
+`report_status`와 `evidence_tier`는 다음처럼 해석한다.
 
 - `strong_visual_block`: 유해 visual 후보가 실제로 hide/remove되어 발표 evidence로 승격 가능
 - `benign_negative`: 정상/인접 visual 후보를 수집했지만 숨김이 없어 오탐 억제 evidence로 사용 가능
 - `disabled_control`: 기능 off control로 차단 동작이 없어야 하는 기준 row
+- `live_harmful_visual_evidence`: 실제 live 위험 사이트 screenshot이 있고 유해 visual action이 있었던 row
+- `live_benign_negative_evidence`: 실제 live 정상/인접 사이트 screenshot이 있고 숨김이 없었던 row
+- `controlled_harmful_regression`: fixture 기반 유해 visual 회귀 검증 row
+- `controlled_negative_or_control`: fixture 기반 clean negative 또는 기능 off control row
 - `missed_or_policy_gap`, `partial_visual_block`, `false_positive_review`, `invalid_or_unloaded`, `needs_review`: 보완 또는 한계 설명 row
+
+live summary의 `visual_candidate_run_count`는 action 후 DOM에 남은 이미지 수만 보지 않는다. hide/remove/compact가 성공하면 잔여 visible 후보가 0이 될 수 있으므로, `candidate_count`, `visible_tile_count`, `action_count`도 함께 보고 “후보가 있었고 처리됐는지”를 판정한다.
 
 4. seed 전체를 직접 돌릴 때도 batch 제한을 둔다.
 
