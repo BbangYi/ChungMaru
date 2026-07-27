@@ -1107,6 +1107,15 @@ def origin_and_path_prefix(url: str) -> tuple[str, str]:
     return origin, path
 
 
+def classifier_execution_mode(case: dict[str, Any]) -> str:
+    override = str(case.get("nsfw_classifier_test_override") or "normal").strip().lower()
+    if override in {"normal", "cpu"}:
+      return "real-model"
+    if override == "fixture":
+      return "controlled-override"
+    return "disabled"
+
+
 def build_result_row(
     *,
     case: dict[str, Any],
@@ -1125,7 +1134,11 @@ def build_result_row(
       summary = {}
     log_summary = summarize_media_logs(media_logs)
     classifier_summary = summarize_classifier_logs(logs)
-    has_real_classifier_backend = bool(str(classifier_summary.get("classifier_backend") or "").strip())
+    classifier_mode = classifier_execution_mode(case)
+    has_real_classifier_backend = (
+        classifier_mode == "real-model" and
+        bool(str(classifier_summary.get("classifier_backend") or "").strip())
+    )
     perf_summary = summarize_perf_logs(logs)
     media_enabled = bool(case["media_safety_enabled"])
     hidden_count = int_metric(dom.get("hiddenCount"))
@@ -1274,6 +1287,7 @@ def build_result_row(
         "layout_shift_entry_count": int_metric(dom.get("layoutShiftEntryCount")),
         "layout_shift_max_value": round(float_metric(dom.get("layoutShiftMaxValue")), 4),
         "layout_shift_supported": bool_metric(dom.get("layoutShiftSupported")),
+        "classifier_execution_mode": classifier_mode,
         "classifier_real_fetch_ms": (
             classifier_summary["classifier_fetch_ms_max"] if has_real_classifier_backend else ""
         ),
@@ -1840,6 +1854,12 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
 
     summary_rows: list[dict[str, Any]] = []
     for profile, group in sorted(groups.items()):
+      real_inference_values = [
+          int_metric(row.get("classifier_real_inference_ms"))
+          for row in group
+          if row.get("classifier_execution_mode") == "real-model"
+          and str(row.get("classifier_real_inference_ms") or "").strip() != ""
+      ]
       summary_rows.append({
           "protection_profile": profile,
           "run_count": len(group),
@@ -1850,7 +1870,8 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
           "apply_ms_p95": percentile((int_metric(row.get("apply_ms")) for row in group), 95),
           "dom_added_to_action_ms_p95": percentile((int_metric(row.get("dom_added_to_action_ms")) for row in group), 95),
           "classifier_queue_wait_ms_p95": percentile((int_metric(row.get("classifier_queue_wait_ms_max")) for row in group), 95),
-          "classifier_inference_ms_p95": percentile((int_metric(row.get("classifier_real_inference_ms") or row.get("classifier_inference_ms_max")) for row in group), 95),
+          "classifier_real_run_count": len(real_inference_values),
+          "classifier_inference_ms_p95": percentile(real_inference_values, 95) if real_inference_values else "",
           "cache_hit_count": sum(int_metric(row.get("classifier_cache_hit_count")) for row in group),
           "long_task_count": sum(int_metric(row.get("perf_long_task_count")) for row in group),
           "long_task_max_ms": max((int_metric(row.get("perf_long_task_max_ms")) for row in group), default=0),
@@ -1871,15 +1892,15 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
         "",
         "## Profile Summary",
         "",
-        "| Profile | Runs | OK | Actions max | False hides max | collect p95 | apply p95 | domAdded p95 | classifier queue p95 | classifier inference p95 | long tasks | event-loop lag max |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Profile | Runs | OK | Actions max | False hides max | collect p95 | apply p95 | domAdded p95 | classifier queue p95 | real classifier runs | classifier inference p95 | long tasks | event-loop lag max |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in summary_rows:
       report_lines.append(
           "| {protection_profile} | {run_count} | {scan_ok_count} | {action_count_max} | "
           "{false_hidden_count_max} | {collect_ms_p95} | {apply_ms_p95} | "
           "{dom_added_to_action_ms_p95} | {classifier_queue_wait_ms_p95} | "
-          "{classifier_inference_ms_p95} | {long_task_count} | {event_loop_lag_max_ms} |".format(**row)
+          "{classifier_real_run_count} | {classifier_inference_ms_p95} | {long_task_count} | {event_loop_lag_max_ms} |".format(**row)
       )
     report_lines.extend([
         "",
