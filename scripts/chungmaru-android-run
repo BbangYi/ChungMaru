@@ -410,7 +410,9 @@ def write_chrome_media_status(
         payload["durationMs"] = duration_ms
     if local_work_root is not None:
         payload["localWorkRoot"] = str(local_work_root)
-        payload["localArtifactRoot"] = str(managed_artifact_root(local_work_root, "chrome-media"))
+        payload["localArtifactRoot"] = str(
+            managed_artifact_root(local_work_root, "chrome-media", run_key_value)
+        )
     if log_path is not None:
         payload["launcherLog"] = str(log_path)
     output = chrome_media_status_path(runner_home)
@@ -843,8 +845,14 @@ def mode_command(mode: str) -> list[str]:
     raise ValueError(f"unsupported mode: {mode}")
 
 
-def managed_artifact_root(local_work_root: Path, mode: str) -> Path:
-    return local_work_root / "artifacts" / mode
+def safe_run_key_segment(value: str) -> str:
+    return "".join(char if char.isalnum() or char in ".-_" else "_" for char in value)
+
+
+def managed_artifact_root(local_work_root: Path, mode: str, run_key_value: str = "") -> Path:
+    suffix = safe_run_key_segment(run_key_value)
+    directory_name = mode if not suffix else f"{mode}-{suffix}"
+    return local_work_root / "artifacts" / directory_name
 
 
 def reset_managed_dir(path: Path) -> None:
@@ -887,13 +895,19 @@ def run_streamed_command(
         raise subprocess.CalledProcessError(return_code, command)
 
 
-def run_local_mode(mode: str, runner_home: Path, local_work_root: Path) -> None:
+def run_local_mode(
+    mode: str,
+    runner_home: Path,
+    local_work_root: Path,
+    *,
+    run_key_value: str = "",
+) -> None:
     env = os.environ.copy()
     env.setdefault("CHUNGMARU_RUNNER_HOME", str(runner_home))
     env.setdefault("CHUNGMARU_LOCAL_WORK_ROOT", str(local_work_root))
     if mode != "chrome-media":
         env.setdefault("ADB", default_adb_path())
-    local_artifacts = managed_artifact_root(local_work_root, mode)
+    local_artifacts = managed_artifact_root(local_work_root, mode, run_key_value)
     reset_managed_dir(local_artifacts)
     if mode == "demo":
         artifact_root = local_artifacts / "android-real-e2e-demo"
@@ -918,7 +932,7 @@ def run_local_mode(mode: str, runner_home: Path, local_work_root: Path) -> None:
                 str(REPO_ROOT / "scripts" / "chungmaru_chrome_media_safety_smoke.py"),
                 "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
                 "--chrome-path", chrome_path,
-                "--profile-dir", str(local_work_root / "profiles" / "chrome-media-smoke"),
+                "--profile-dir", str(local_work_root / "profiles" / f"chrome-media-smoke-{safe_run_key_segment(run_key_value)}"),
                 "--chrome-log", str(local_artifacts / "chrome-media-smoke.chrome.log"),
                 "--output-dir", str(behavior_output),
                 "--headless",
@@ -936,7 +950,7 @@ def run_local_mode(mode: str, runner_home: Path, local_work_root: Path) -> None:
                 str(REPO_ROOT / "scripts" / "chungmaru_chrome_nsfw_classifier_benchmark.py"),
                 "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
                 "--chrome-path", chrome_path,
-                "--profile-root", str(local_work_root / "profiles" / "chrome-media-classifier"),
+                "--profile-root", str(local_work_root / "profiles" / f"chrome-media-classifier-{safe_run_key_segment(run_key_value)}"),
                 "--corpus-dir", str(local_work_root / "corpus" / "nsfw-wikimedia"),
                 "--output-dir", str(classifier_output),
                 "--cold-runs", "3",
@@ -1778,6 +1792,7 @@ def collect_known_artifacts(
     *,
     mode: str | None = None,
     local_work_root: Path | None = None,
+    run_key_value: str = "",
 ) -> int:
     current = runner_home / "current"
     current.mkdir(parents=True, exist_ok=True)
@@ -1788,13 +1803,16 @@ def collect_known_artifacts(
     clear_known_artifacts(current)
     copied = 0
 
-    local_artifacts = (local_work_root or default_local_work_root()) / "artifacts"
-    quick_root = local_artifacts / "quick" / "android-mask-check"
-    benchmark_report = local_artifacts / "benchmark" / "android-pipeline-benchmark" / "report"
-    benchmark_batch = local_artifacts / "benchmark" / "android-pipeline-benchmark" / "batch"
-    demo_run = local_artifacts / "demo" / "android-real-e2e-demo" / "runs" / "latest"
-    demo_root = local_artifacts / "demo" / "android-real-e2e-demo"
-    chrome_media_root = local_artifacts / "chrome-media"
+    work_root = local_work_root or default_local_work_root()
+    quick_artifacts = managed_artifact_root(work_root, "quick", run_key_value)
+    benchmark_artifacts = managed_artifact_root(work_root, "benchmark", run_key_value)
+    demo_artifacts = managed_artifact_root(work_root, "demo", run_key_value)
+    chrome_media_root = managed_artifact_root(work_root, "chrome-media", run_key_value)
+    quick_root = quick_artifacts / "android-mask-check"
+    benchmark_report = benchmark_artifacts / "android-pipeline-benchmark" / "report"
+    benchmark_batch = benchmark_artifacts / "android-pipeline-benchmark" / "batch"
+    demo_run = demo_artifacts / "android-real-e2e-demo" / "runs" / "latest"
+    demo_root = demo_artifacts / "android-real-e2e-demo"
     classifier_root = chrome_media_root / "nsfw-classifier"
     chrome_behavior_root = chrome_media_root / "behavior"
 
@@ -1802,7 +1820,7 @@ def collect_known_artifacts(
     if mode in (None, "quick"):
         candidates.extend(
             [
-                (local_artifacts / "quick" / "quick.log", current / "quick" / "quick.log"),
+                (quick_artifacts / "quick.log", current / "quick" / "quick.log"),
                 (quick_root / "screen.png", current / "quick" / "screen.png"),
                 (quick_root / "mask-logcat.txt", current / "quick" / "mask-logcat.txt"),
                 (
@@ -1823,7 +1841,7 @@ def collect_known_artifacts(
         candidates.extend(
             [
                 (
-                    local_artifacts / "benchmark" / "benchmark.log",
+                    benchmark_artifacts / "benchmark.log",
                     current / "benchmark" / "benchmark.log",
                 ),
                 (benchmark_report / "raw_runs.csv", current / "benchmark" / "raw_runs.csv"),
@@ -1849,7 +1867,7 @@ def collect_known_artifacts(
     if mode in (None, "demo"):
         candidates.extend(
             [
-                (local_artifacts / "demo" / "demo.log", current / "demo" / "demo.log"),
+                (demo_artifacts / "demo.log", current / "demo" / "demo.log"),
                 (demo_run / "demo.mp4", current / "demo" / "demo.mp4"),
                 (demo_run / "contact-sheet.jpg", current / "demo" / "contact-sheet.jpg"),
                 (demo_run / "screen.png", current / "demo" / "screen.png"),
@@ -1942,7 +1960,11 @@ def collect_known_artifacts(
             "updatedAt": now_iso(),
             "mode": mode or "",
             "copiedArtifacts": copied,
-            "localArtifactRoot": str(local_artifacts),
+            "localArtifactRoot": str(
+                managed_artifact_root(work_root, mode, run_key_value)
+                if mode
+                else work_root / "artifacts"
+            ),
         },
     )
     mirror_current_to_latest(runner_home)
@@ -2126,12 +2148,13 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
         if args.executor == "desktop":
             run_desktop_mode(args, mode, runner_home, source_archive=source_dir)
         else:
-            run_local_mode(mode, runner_home, args.local_work_root)
+            run_local_mode(mode, runner_home, args.local_work_root, run_key_value=key)
         if args.collect_after and args.executor != "desktop":
             copied = collect_known_artifacts(
                 runner_home,
                 mode=mode,
                 local_work_root=args.local_work_root,
+                run_key_value=key,
             )
             add_metric(conn, run_id, "collected_artifacts", copied)
         duration_ms = int((time.monotonic() - started) * 1000)
@@ -2174,6 +2197,7 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
                     runner_home,
                     mode=mode,
                     local_work_root=args.local_work_root,
+                    run_key_value=key,
                 )
                 add_metric(conn, run_id, "collected_artifacts_on_failure", copied)
             except Exception as collect_exc:
@@ -2247,7 +2271,10 @@ def chrome_media_start_command(args: argparse.Namespace) -> int:
         print_kv("pid", existing_pid)
         print_kv("status_file", chrome_media_status_path(args.runner_home))
         return 0
-    launcher_log = managed_artifact_root(args.local_work_root, "chrome-media") / "chrome-media-launcher.log"
+    launcher_log = (
+        managed_artifact_root(args.local_work_root, "chrome-media", key)
+        / "chrome-media-launcher.log"
+    )
     launcher_log.parent.mkdir(parents=True, exist_ok=True)
     command = [
         sys.executable,
@@ -2344,6 +2371,7 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
             args.runner_home,
             mode="chrome-media",
             local_work_root=args.local_work_root,
+            run_key_value=str(status.get("runKey") or ""),
         )
     reconciled_run_key = ""
     conn = connect_db(args.runner_home)
@@ -2456,7 +2484,11 @@ def collect_command(args: argparse.Namespace) -> int:
         artifact_root=args.runner_home / "current",
     )
     started = time.monotonic()
-    copied = collect_known_artifacts(args.runner_home, local_work_root=args.local_work_root)
+    copied = collect_known_artifacts(
+        args.runner_home,
+        local_work_root=args.local_work_root,
+        run_key_value=key,
+    )
     add_metric(conn, run_id, "collected_artifacts", copied)
     duration_ms = int((time.monotonic() - started) * 1000)
     update_run(
