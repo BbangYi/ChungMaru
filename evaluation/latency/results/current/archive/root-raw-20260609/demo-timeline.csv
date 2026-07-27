@@ -1,0 +1,79 @@
+﻿run_id,label,first_frame,last_frame,start_seconds,end_seconds,duration_seconds
+chrome-google-demo-20260609T104101,settings: open options,1,240,0.0,8.0,8.0
+chrome-google-demo-20260609T104101,settings: open developer tools,241,300,8.0,10.0,2.0
+chrome-google-demo-20260609T104101,settings: enable backend,301,360,10.0,12.0,2.0
+chrome-google-demo-20260609T104101,settings: check backend connection,361,420,12.0,14.0,2.0
+chrome-google-demo-20260609T104101,settings: run site policy,421,480,14.0,16.0,2.0
+chrome-google-demo-20260609T104101,settings: apply wellbeing override,481,540,16.0,18.0,2.0
+chrome-google-demo-20260609T104101,settings: clear wellbeing override,541,600,18.0,20.0,2.0
+chrome-google-demo-20260609T104101,Google home,601,720,20.0,24.0,4.0
+chrome-google-demo-20260609T104101,mode showcase: protection off raw screen,721,780,24.0,26.0,2.0
+chrome-google-demo-20260609T104101,mode showcase: apply mask,781,801,26.0,26.7,0.7
+chrome-google-demo-20260609T104101,mode showcase: result mask,802,873,26.7,29.1,2.4
+chrome-google-demo-20260609T104101,mode showcase: hover mask,874,909,29.1,30.3,1.2
+chrome-google-demo-20260609T104101,mode showcase: apply blur,910,930,30.3,31.0,0.7
+chrome-google-demo-20260609T104101,mode showcase: result blur,931,1002,31.0,33.4,2.4
+chrome-google-demo-20260609T104101,mode showcase: apply hide,1003,1023,33.4,34.1,0.7
+chrome-google-demo-20260609T104101,mode showcase: result hide,1024,1095,34.1,36.5,2.4
+chrome-google-demo-20260609T104101,mode showcase: apply remove,1096,1116,36.5,37.2,0.7
+chrome-google-demo-20260609T104101,mode showcase: result remove,1117,1188,37.2,39.6,2.4
+chrome-google-demo-20260609T104101,search 1: type 병,1189,1189,39.6,39.633,0.033
+chrome-google-demo-20260609T104101,search 1: type 병신,1190,1190,39.633,39.667,0.033
+chrome-google-demo-20260609T104101,search 1: type 병신아,1191,1191,39.667,39.7,0.033
+chrome-google-demo-20260609T104101,search 1: type 병신아 ,1192,1192,39.7,39.733,0.033
+chrome-google-demo-20260609T104101,search 1: type 병신아 꺼,1193,1193,39.733,39.767,0.033
+chrome-google-demo-20260609T104101,search 1: type 병신아 꺼져,1194,1194,39.767,39.8,0.033
+chrome-google-demo-20260609T104101,search 1: typed query: 병신아 꺼져,1195,1269,39.8,42.3,2.5
+chrome-google-demo-20260609T104101,search 1: result loaded: 병신아 꺼져,1270,1329,42.3,44.3,2.0
+chrome-google-demo-20260609T104101,search 1: analysis request: 병신아 꺼져,1330,1365,44.3,45.5,1.2
+chrome-google-demo-20260609T104101,search 1: masked results: 병신아 꺼져,1366,1575,45.5,52.5,7.0
+chrome-google-demo-20260609T104101,search 1: hover mask evidence: 병신아 꺼져,1576,1650,52.5,55.0,2.5
+chrome-google-demo-20260609T104101,search 1: scroll-down,1651,1664,55.0,55.467,0.467
+chrome-google-demo-20260609T104101,search 1: after scroll: 병신아 꺼져,1665,1724,55.467,57.467,2.0
+chrome-google-demo-20260609T104101,search 2: type 한,1725,1725,57.467,57.5,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남,1726,1726,57.5,57.533,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충,1727,1727,57.533,57.567,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은,1728,1728,57.567,57.6,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 ,1729,1729,57.6,57.633,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 답,1730,1730,57.633,57.667,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 답이,1731,1731,57.667,57.7,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 답이 ,1732,1732,57.7,57.733,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 답이 없,1733,1733,57.733,57.767,0.033
+chrome-google-demo-20260609T104101,search 2: type 한남충은 답이 없다,1734,1734,57.767,57.8,0.033
+chrome-google-demo-20260609T104101,search 2: typed query: 한남충은 답이 없다,1735,1809,57.8,60.3,2.5
+chrome-google-demo-20260609T104101,search 2: result loaded: 한남충은 답이 없다,1810,1869,60.3,62.3,2.0
+chrome-google-demo-20260609T104101,search 2: analysis request: 한남충은 답이 없다,1870,1905,62.3,63.5,1.2
+chrome-google-demo-20260609T104101,search 2: masked results: 한남충은 답이 없다,1906,2115,63.5,70.5,7.0
+chrome-google-demo-20260609T104101,search 2: scroll-down,2116,2129,70.5,70.967,0.467
+chrome-google-demo-20260609T104101,search 2: after scroll: 한남충은 답이 없다,2130,2189,70.967,72.967,2.0
+chrome-google-demo-20260609T104101,search 3: type 너,2190,2190,72.967,73.0,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 ,2191,2191,73.0,73.033,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한,2192,2192,73.033,73.067,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번,2193,2193,73.067,73.1,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만,2194,2194,73.1,73.133,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 ,2195,2195,73.133,73.167,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더,2196,2196,73.167,73.2,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 ,2197,2197,73.2,73.233,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그,2198,2198,73.233,73.267,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러,2199,2199,73.267,73.3,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면,2200,2200,73.3,73.333,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 ,2201,2201,73.333,73.367,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 죽,2202,2202,73.367,73.4,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 죽여,2203,2203,73.4,73.433,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 죽여버,2204,2204,73.433,73.467,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 죽여버린,2205,2205,73.467,73.5,0.033
+chrome-google-demo-20260609T104101,search 3: type 너 한번만 더 그러면 죽여버린다,2206,2206,73.5,73.533,0.033
+chrome-google-demo-20260609T104101,search 3: typed query: 너 한번만 더 그러면 죽여버린다,2207,2281,73.533,76.033,2.5
+chrome-google-demo-20260609T104101,search 3: result loaded: 너 한번만 더 그러면 죽여버린다,2282,2341,76.033,78.033,2.0
+chrome-google-demo-20260609T104101,search 3: analysis request: 너 한번만 더 그러면 죽여버린다,2342,2377,78.033,79.233,1.2
+chrome-google-demo-20260609T104101,search 3: masked results: 너 한번만 더 그러면 죽여버린다,2378,2587,79.233,86.233,7.0
+chrome-google-demo-20260609T104101,search 3: scroll-down,2588,2601,86.233,86.7,0.467
+chrome-google-demo-20260609T104101,search 3: after scroll: 너 한번만 더 그러면 죽여버린다,2602,2661,86.7,88.7,2.0
+chrome-google-demo-20260609T104101,youtube: search results: 시발 또 다시 보여줘야해?,2662,2721,88.7,90.7,2.0
+chrome-google-demo-20260609T104101,youtube: watch page loaded,2722,2736,90.7,91.2,0.5
+chrome-google-demo-20260609T104101,youtube: scroll-to-comments,2737,2752,91.2,91.733,0.533
+chrome-google-demo-20260609T104101,youtube: comments visible,2753,2812,91.733,93.733,2.0
+chrome-google-demo-20260609T104101,youtube: analysis request,2813,2848,93.733,94.933,1.2
+chrome-google-demo-20260609T104101,youtube: masked comments,2849,2998,94.933,99.933,5.0
+chrome-google-demo-20260609T104101,site warning: before navigation,2999,3058,99.933,101.933,2.0
+chrome-google-demo-20260609T104101,site warning,3059,3148,101.933,104.933,3.0

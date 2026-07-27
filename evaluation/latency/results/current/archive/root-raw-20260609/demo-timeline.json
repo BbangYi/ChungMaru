@@ -1,0 +1,704 @@
+[
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: open options",
+    "first_frame": 1,
+    "last_frame": 240,
+    "start_seconds": 0.0,
+    "end_seconds": 8.0,
+    "duration_seconds": 8.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: open developer tools",
+    "first_frame": 241,
+    "last_frame": 300,
+    "start_seconds": 8.0,
+    "end_seconds": 10.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: enable backend",
+    "first_frame": 301,
+    "last_frame": 360,
+    "start_seconds": 10.0,
+    "end_seconds": 12.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: check backend connection",
+    "first_frame": 361,
+    "last_frame": 420,
+    "start_seconds": 12.0,
+    "end_seconds": 14.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: run site policy",
+    "first_frame": 421,
+    "last_frame": 480,
+    "start_seconds": 14.0,
+    "end_seconds": 16.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: apply wellbeing override",
+    "first_frame": 481,
+    "last_frame": 540,
+    "start_seconds": 16.0,
+    "end_seconds": 18.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "settings: clear wellbeing override",
+    "first_frame": 541,
+    "last_frame": 600,
+    "start_seconds": 18.0,
+    "end_seconds": 20.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "Google home",
+    "first_frame": 601,
+    "last_frame": 720,
+    "start_seconds": 20.0,
+    "end_seconds": 24.0,
+    "duration_seconds": 4.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: protection off raw screen",
+    "first_frame": 721,
+    "last_frame": 780,
+    "start_seconds": 24.0,
+    "end_seconds": 26.0,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: apply mask",
+    "first_frame": 781,
+    "last_frame": 801,
+    "start_seconds": 26.0,
+    "end_seconds": 26.7,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: result mask",
+    "first_frame": 802,
+    "last_frame": 873,
+    "start_seconds": 26.7,
+    "end_seconds": 29.1,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: hover mask",
+    "first_frame": 874,
+    "last_frame": 909,
+    "start_seconds": 29.1,
+    "end_seconds": 30.3,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: apply blur",
+    "first_frame": 910,
+    "last_frame": 930,
+    "start_seconds": 30.3,
+    "end_seconds": 31.0,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: result blur",
+    "first_frame": 931,
+    "last_frame": 1002,
+    "start_seconds": 31.0,
+    "end_seconds": 33.4,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: apply hide",
+    "first_frame": 1003,
+    "last_frame": 1023,
+    "start_seconds": 33.4,
+    "end_seconds": 34.1,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: result hide",
+    "first_frame": 1024,
+    "last_frame": 1095,
+    "start_seconds": 34.1,
+    "end_seconds": 36.5,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: apply remove",
+    "first_frame": 1096,
+    "last_frame": 1116,
+    "start_seconds": 36.5,
+    "end_seconds": 37.2,
+    "duration_seconds": 0.7
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "mode showcase: result remove",
+    "first_frame": 1117,
+    "last_frame": 1188,
+    "start_seconds": 37.2,
+    "end_seconds": 39.6,
+    "duration_seconds": 2.4
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병",
+    "first_frame": 1189,
+    "last_frame": 1189,
+    "start_seconds": 39.6,
+    "end_seconds": 39.633,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병신",
+    "first_frame": 1190,
+    "last_frame": 1190,
+    "start_seconds": 39.633,
+    "end_seconds": 39.667,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병신아",
+    "first_frame": 1191,
+    "last_frame": 1191,
+    "start_seconds": 39.667,
+    "end_seconds": 39.7,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병신아 ",
+    "first_frame": 1192,
+    "last_frame": 1192,
+    "start_seconds": 39.7,
+    "end_seconds": 39.733,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병신아 꺼",
+    "first_frame": 1193,
+    "last_frame": 1193,
+    "start_seconds": 39.733,
+    "end_seconds": 39.767,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: type 병신아 꺼져",
+    "first_frame": 1194,
+    "last_frame": 1194,
+    "start_seconds": 39.767,
+    "end_seconds": 39.8,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: typed query: 병신아 꺼져",
+    "first_frame": 1195,
+    "last_frame": 1269,
+    "start_seconds": 39.8,
+    "end_seconds": 42.3,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: result loaded: 병신아 꺼져",
+    "first_frame": 1270,
+    "last_frame": 1329,
+    "start_seconds": 42.3,
+    "end_seconds": 44.3,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: analysis request: 병신아 꺼져",
+    "first_frame": 1330,
+    "last_frame": 1365,
+    "start_seconds": 44.3,
+    "end_seconds": 45.5,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: masked results: 병신아 꺼져",
+    "first_frame": 1366,
+    "last_frame": 1575,
+    "start_seconds": 45.5,
+    "end_seconds": 52.5,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: hover mask evidence: 병신아 꺼져",
+    "first_frame": 1576,
+    "last_frame": 1650,
+    "start_seconds": 52.5,
+    "end_seconds": 55.0,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: scroll-down",
+    "first_frame": 1651,
+    "last_frame": 1664,
+    "start_seconds": 55.0,
+    "end_seconds": 55.467,
+    "duration_seconds": 0.467
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 1: after scroll: 병신아 꺼져",
+    "first_frame": 1665,
+    "last_frame": 1724,
+    "start_seconds": 55.467,
+    "end_seconds": 57.467,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한",
+    "first_frame": 1725,
+    "last_frame": 1725,
+    "start_seconds": 57.467,
+    "end_seconds": 57.5,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남",
+    "first_frame": 1726,
+    "last_frame": 1726,
+    "start_seconds": 57.5,
+    "end_seconds": 57.533,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충",
+    "first_frame": 1727,
+    "last_frame": 1727,
+    "start_seconds": 57.533,
+    "end_seconds": 57.567,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은",
+    "first_frame": 1728,
+    "last_frame": 1728,
+    "start_seconds": 57.567,
+    "end_seconds": 57.6,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 ",
+    "first_frame": 1729,
+    "last_frame": 1729,
+    "start_seconds": 57.6,
+    "end_seconds": 57.633,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 답",
+    "first_frame": 1730,
+    "last_frame": 1730,
+    "start_seconds": 57.633,
+    "end_seconds": 57.667,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 답이",
+    "first_frame": 1731,
+    "last_frame": 1731,
+    "start_seconds": 57.667,
+    "end_seconds": 57.7,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 답이 ",
+    "first_frame": 1732,
+    "last_frame": 1732,
+    "start_seconds": 57.7,
+    "end_seconds": 57.733,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 답이 없",
+    "first_frame": 1733,
+    "last_frame": 1733,
+    "start_seconds": 57.733,
+    "end_seconds": 57.767,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: type 한남충은 답이 없다",
+    "first_frame": 1734,
+    "last_frame": 1734,
+    "start_seconds": 57.767,
+    "end_seconds": 57.8,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: typed query: 한남충은 답이 없다",
+    "first_frame": 1735,
+    "last_frame": 1809,
+    "start_seconds": 57.8,
+    "end_seconds": 60.3,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: result loaded: 한남충은 답이 없다",
+    "first_frame": 1810,
+    "last_frame": 1869,
+    "start_seconds": 60.3,
+    "end_seconds": 62.3,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: analysis request: 한남충은 답이 없다",
+    "first_frame": 1870,
+    "last_frame": 1905,
+    "start_seconds": 62.3,
+    "end_seconds": 63.5,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: masked results: 한남충은 답이 없다",
+    "first_frame": 1906,
+    "last_frame": 2115,
+    "start_seconds": 63.5,
+    "end_seconds": 70.5,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: scroll-down",
+    "first_frame": 2116,
+    "last_frame": 2129,
+    "start_seconds": 70.5,
+    "end_seconds": 70.967,
+    "duration_seconds": 0.467
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 2: after scroll: 한남충은 답이 없다",
+    "first_frame": 2130,
+    "last_frame": 2189,
+    "start_seconds": 70.967,
+    "end_seconds": 72.967,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너",
+    "first_frame": 2190,
+    "last_frame": 2190,
+    "start_seconds": 72.967,
+    "end_seconds": 73.0,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 ",
+    "first_frame": 2191,
+    "last_frame": 2191,
+    "start_seconds": 73.0,
+    "end_seconds": 73.033,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한",
+    "first_frame": 2192,
+    "last_frame": 2192,
+    "start_seconds": 73.033,
+    "end_seconds": 73.067,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번",
+    "first_frame": 2193,
+    "last_frame": 2193,
+    "start_seconds": 73.067,
+    "end_seconds": 73.1,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만",
+    "first_frame": 2194,
+    "last_frame": 2194,
+    "start_seconds": 73.1,
+    "end_seconds": 73.133,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 ",
+    "first_frame": 2195,
+    "last_frame": 2195,
+    "start_seconds": 73.133,
+    "end_seconds": 73.167,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더",
+    "first_frame": 2196,
+    "last_frame": 2196,
+    "start_seconds": 73.167,
+    "end_seconds": 73.2,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 ",
+    "first_frame": 2197,
+    "last_frame": 2197,
+    "start_seconds": 73.2,
+    "end_seconds": 73.233,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그",
+    "first_frame": 2198,
+    "last_frame": 2198,
+    "start_seconds": 73.233,
+    "end_seconds": 73.267,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러",
+    "first_frame": 2199,
+    "last_frame": 2199,
+    "start_seconds": 73.267,
+    "end_seconds": 73.3,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면",
+    "first_frame": 2200,
+    "last_frame": 2200,
+    "start_seconds": 73.3,
+    "end_seconds": 73.333,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 ",
+    "first_frame": 2201,
+    "last_frame": 2201,
+    "start_seconds": 73.333,
+    "end_seconds": 73.367,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 죽",
+    "first_frame": 2202,
+    "last_frame": 2202,
+    "start_seconds": 73.367,
+    "end_seconds": 73.4,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 죽여",
+    "first_frame": 2203,
+    "last_frame": 2203,
+    "start_seconds": 73.4,
+    "end_seconds": 73.433,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 죽여버",
+    "first_frame": 2204,
+    "last_frame": 2204,
+    "start_seconds": 73.433,
+    "end_seconds": 73.467,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 죽여버린",
+    "first_frame": 2205,
+    "last_frame": 2205,
+    "start_seconds": 73.467,
+    "end_seconds": 73.5,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: type 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2206,
+    "last_frame": 2206,
+    "start_seconds": 73.5,
+    "end_seconds": 73.533,
+    "duration_seconds": 0.033
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: typed query: 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2207,
+    "last_frame": 2281,
+    "start_seconds": 73.533,
+    "end_seconds": 76.033,
+    "duration_seconds": 2.5
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: result loaded: 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2282,
+    "last_frame": 2341,
+    "start_seconds": 76.033,
+    "end_seconds": 78.033,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: analysis request: 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2342,
+    "last_frame": 2377,
+    "start_seconds": 78.033,
+    "end_seconds": 79.233,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: masked results: 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2378,
+    "last_frame": 2587,
+    "start_seconds": 79.233,
+    "end_seconds": 86.233,
+    "duration_seconds": 7.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: scroll-down",
+    "first_frame": 2588,
+    "last_frame": 2601,
+    "start_seconds": 86.233,
+    "end_seconds": 86.7,
+    "duration_seconds": 0.467
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "search 3: after scroll: 너 한번만 더 그러면 죽여버린다",
+    "first_frame": 2602,
+    "last_frame": 2661,
+    "start_seconds": 86.7,
+    "end_seconds": 88.7,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: search results: 시발 또 다시 보여줘야해?",
+    "first_frame": 2662,
+    "last_frame": 2721,
+    "start_seconds": 88.7,
+    "end_seconds": 90.7,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: watch page loaded",
+    "first_frame": 2722,
+    "last_frame": 2736,
+    "start_seconds": 90.7,
+    "end_seconds": 91.2,
+    "duration_seconds": 0.5
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: scroll-to-comments",
+    "first_frame": 2737,
+    "last_frame": 2752,
+    "start_seconds": 91.2,
+    "end_seconds": 91.733,
+    "duration_seconds": 0.533
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: comments visible",
+    "first_frame": 2753,
+    "last_frame": 2812,
+    "start_seconds": 91.733,
+    "end_seconds": 93.733,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: analysis request",
+    "first_frame": 2813,
+    "last_frame": 2848,
+    "start_seconds": 93.733,
+    "end_seconds": 94.933,
+    "duration_seconds": 1.2
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "youtube: masked comments",
+    "first_frame": 2849,
+    "last_frame": 2998,
+    "start_seconds": 94.933,
+    "end_seconds": 99.933,
+    "duration_seconds": 5.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "site warning: before navigation",
+    "first_frame": 2999,
+    "last_frame": 3058,
+    "start_seconds": 99.933,
+    "end_seconds": 101.933,
+    "duration_seconds": 2.0
+  },
+  {
+    "run_id": "chrome-google-demo-20260609T104101",
+    "label": "site warning",
+    "first_frame": 3059,
+    "last_frame": 3148,
+    "start_seconds": 101.933,
+    "end_seconds": 104.933,
+    "duration_seconds": 3.0
+  }
+]

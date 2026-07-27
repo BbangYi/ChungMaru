@@ -1,0 +1,317 @@
+--------- beginning of main
+06-09 19:43:15.467 D/YTParserService( 6135): service connected
+06-09 19:43:15.510 D/YTParserService( 6135): visual text capture supported=true sdk=36 reason=ready
+06-09 19:44:23.131 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=804 candidateExtractionMs=535 nodeCollectionMs=472 visualRoiPlanningMs=18 screenCandidateExtractionMs=61 candidatePostProcessingMs=0 candidateParallelWaitMs=63 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:23.181 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:23.195 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:23.199 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:23.199 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:23.200 D/MaskOverlayController( 6135): render skipped candidates=3 unstable=3 suppressed=0
+06-09 19:44:24.171 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:24.197 D/MaskOverlayController( 6135): render maskCount=2 signature=564,807,48,32,***,false|839,996,72,32,***,false sources=[event-source-fast:com.android.chrome:3:6 span=ㅅㅂ rect=110,769,971,913 text=접근성 후보 욕설 A: ㅅㅂ 같은 표현이 포함된 댓글입니다., event-source-fast:com.android.chrome:3:7 span=ㅈ같 rect=110,958,971,1102 text=접근성 후보 욕설 B: 진짜 ㅈ같네 라는 공격적 표현입니다.]
+06-09 19:44:24.204 D/YTParserService( 6135): fast provisional mask results=2 elapsedMs=1878 eventAgeMs=1525 buildMs=327 overlayMs=26 receiveToMaskMs=353 eventType=2048
+06-09 19:44:24.204 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.205 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.206 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.206 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:24.576 D/AndroidAnalysisClient( 6135): analysis ok url=http://127.0.0.1:8000/analyze_android comments=14 pending=14 requested=14 cacheHits=0 actionableOffensive=2 latencyMs=1324
+06-09 19:44:24.596 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:24.635 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:24.795 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:24.795 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=3 current=5
+06-09 19:44:24.875 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:24.876 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:24.877 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:24.917 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:24.960 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:25.376 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=40 candidateExtractionMs=375 nodeCollectionMs=352 visualRoiPlanningMs=3 screenCandidateExtractionMs=19 candidatePostProcessingMs=0 candidateParallelWaitMs=22 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:25.382 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:25.384 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:25.403 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:25.408 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:25.408 D/MaskOverlayController( 6135): render maskCount=3 signature=500,772,104,67,***,false|597,961,102,67,***,false|519,1549,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅅㅂ span=ㅅㅂ rect=500,772,604,839 text=ㅅㅂ, android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,961,699,1028 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1549,620,1619 text=개같]
+06-09 19:44:25.413 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:25.414 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:25.415 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:25.421 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:25.472 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:25.472 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=14 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:25.615 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=126 nodeCollectionMs=114 visualRoiPlanningMs=2 screenCandidateExtractionMs=11 candidatePostProcessingMs=0 candidateParallelWaitMs=12 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:25.623 D/YTParserService( 6135): refresh duplicate snapshot masks results=3 visualCached=false
+06-09 19:44:25.629 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:25.631 D/YTParserService( 6135): start visual OCR rois=1 semanticFallback=0 signature=browser-visual-region:104,2104,982,2345
+06-09 19:44:25.913 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:25.979 D/YTParserService( 6135): invalidate visual OCR reason=eventType=2048 sceneRevision=25
+06-09 19:44:26.072 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.108 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1324 analysisError=
+06-09 19:44:26.181 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.269 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.371 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.666 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=393 candidateExtractionMs=294 nodeCollectionMs=269 visualRoiPlanningMs=2 screenCandidateExtractionMs=11 candidatePostProcessingMs=1 candidateParallelWaitMs=24 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:26.667 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:26.670 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:26.671 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:26.671 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:26.676 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:26.791 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.800 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.802 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.804 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.830 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.869 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.869 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=14 current=20
+06-09 19:44:26.923 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:26.928 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.929 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:26.939 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:27.183 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=13 screenCandidates=13 lookaheadCandidates=0 charLocationNodes=3 charRangeCandidates=2 visualRoiCandidates=2 visualRois=2 parseDelayMs=40 candidateExtractionMs=192 nodeCollectionMs=147 visualRoiPlanningMs=2 screenCandidateExtractionMs=41 candidatePostProcessingMs=0 candidateParallelWaitMs=45 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=2
+06-09 19:44:27.184 D/YTParserService( 6135): render provisional accessibility masks count=2
+06-09 19:44:27.184 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:27.184 D/MaskOverlayController( 6135): render maskCount=2 signature=597,961,102,67,***,false|519,1549,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,961,699,1028 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1549,620,1619 text=개같]
+06-09 19:44:27.226 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:27.230 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:27.230 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=13 offensive=1 filtered=0 analysisLatencyMs=35 analysisError=
+06-09 19:44:27.348 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:27.489 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=23 current=24
+06-09 19:44:27.532 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:27.534 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:27.534 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:27.575 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:27.913 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=18 candidateExtractionMs=316 nodeCollectionMs=209 visualRoiPlanningMs=42 screenCandidateExtractionMs=102 candidatePostProcessingMs=0 candidateParallelWaitMs=107 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:27.935 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:27.936 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:27.937 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:27.938 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:27.938 D/MaskOverlayController( 6135): render maskCount=3 signature=500,772,104,67,***,false|597,961,102,67,***,false|519,1549,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅅㅂ span=ㅅㅂ rect=500,772,604,839 text=ㅅㅂ, android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,961,699,1028 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1549,620,1619 text=개같]
+06-09 19:44:27.948 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:27.962 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:27.975 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:27.985 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:28.006 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=14 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:28.048 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:28.190 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:28.218 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=13 screenCandidates=13 lookaheadCandidates=0 charLocationNodes=3 charRangeCandidates=2 visualRoiCandidates=2 visualRois=2 parseDelayMs=44 candidateExtractionMs=126 nodeCollectionMs=67 visualRoiPlanningMs=1 screenCandidateExtractionMs=56 candidatePostProcessingMs=0 candidateParallelWaitMs=59 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=2
+06-09 19:44:28.219 D/YTParserService( 6135): render provisional accessibility masks count=2
+06-09 19:44:28.219 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:28.220 D/MaskOverlayController( 6135): render maskCount=2 signature=597,961,102,67,***,false|519,1549,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,961,699,1028 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1549,620,1619 text=개같]
+06-09 19:44:28.227 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:28.228 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:28.251 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:28.251 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=13 offensive=1 filtered=0 analysisLatencyMs=2 analysisError=
+06-09 19:44:28.289 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=13 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:28.410 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:28.421 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:28.425 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:28.651 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=49 candidateExtractionMs=173 nodeCollectionMs=141 visualRoiPlanningMs=1 screenCandidateExtractionMs=25 candidatePostProcessingMs=0 candidateParallelWaitMs=31 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:28.665 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:28.665 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:28.667 D/MaskOverlayController( 6135): render maskCount=3 signature=500,772,104,67,***,false|597,961,102,67,***,false|519,1549,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅅㅂ span=ㅅㅂ rect=500,772,604,839 text=ㅅㅂ, android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,961,699,1028 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1549,620,1619 text=개같]
+06-09 19:44:28.670 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:28.702 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:28.704 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:28.714 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 OCR 후보
+06-09 19:44:28.714 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:28.754 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=14 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:28.793 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:28.802 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:28.847 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:29.026 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=24 candidateExtractionMs=155 nodeCollectionMs=68 visualRoiPlanningMs=1 screenCandidateExtractionMs=70 candidatePostProcessingMs=0 candidateParallelWaitMs=87 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:29.032 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:29.044 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:29.044 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:29.045 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:29.047 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:29.094 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.095 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=32 current=33
+06-09 19:44:29.103 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.144 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:29.266 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=106 nodeCollectionMs=77 visualRoiPlanningMs=0 screenCandidateExtractionMs=18 candidatePostProcessingMs=0 candidateParallelWaitMs=29 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:29.268 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:29.270 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:29.272 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:29.272 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:29.278 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.280 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:29.314 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.317 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=34 current=36
+06-09 19:44:29.334 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:29.474 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=8 analysisError=
+06-09 19:44:29.604 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=40 candidateExtractionMs=226 nodeCollectionMs=113 visualRoiPlanningMs=1 screenCandidateExtractionMs=112 candidatePostProcessingMs=0 candidateParallelWaitMs=113 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:29.610 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:29.610 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:29.651 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:29.651 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:29.681 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.685 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.686 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=36 current=38
+06-09 19:44:29.705 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.779 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:29.956 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=43 candidateExtractionMs=131 nodeCollectionMs=71 visualRoiPlanningMs=33 screenCandidateExtractionMs=50 candidatePostProcessingMs=4 candidateParallelWaitMs=56 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:29.969 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:29.992 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:30.006 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.012 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.016 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=40 current=42
+06-09 19:44:30.031 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:30.031 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:30.051 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:30.094 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.094 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:30.134 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:30.325 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=175 nodeCollectionMs=138 visualRoiPlanningMs=26 screenCandidateExtractionMs=11 candidatePostProcessingMs=0 candidateParallelWaitMs=37 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:30.327 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:30.330 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:30.334 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:30.334 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:30.337 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:30.393 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.451 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.451 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=43 current=45
+06-09 19:44:30.451 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:30.541 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.553 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:30.633 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=91 candidateExtractionMs=91 nodeCollectionMs=79 visualRoiPlanningMs=1 screenCandidateExtractionMs=9 candidatePostProcessingMs=0 candidateParallelWaitMs=12 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:30.634 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:30.634 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:30.684 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.715 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:30.728 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=76 analysisError=
+06-09 19:44:30.786 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.787 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=46 current=48
+06-09 19:44:30.797 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.837 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:30.988 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=135 nodeCollectionMs=112 visualRoiPlanningMs=14 screenCandidateExtractionMs=22 candidatePostProcessingMs=0 candidateParallelWaitMs=22 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:30.994 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:30.994 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:30.996 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:30.996 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:30.999 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:30.999 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=49 current=50
+06-09 19:44:31.018 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:31.068 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:31.290 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=40 candidateExtractionMs=181 nodeCollectionMs=58 visualRoiPlanningMs=1 screenCandidateExtractionMs=123 candidatePostProcessingMs=0 candidateParallelWaitMs=123 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:31.296 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:31.296 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:31.299 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:31.300 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=1 analysisError=
+06-09 19:44:31.357 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:31.437 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:31.445 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=51 current=53
+06-09 19:44:31.448 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:31.459 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:31.496 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=oļD|ī| ElAE 0CR
+06-09 19:44:31.499 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:31.543 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=27 nodeCollectionMs=10 visualRoiPlanningMs=1 screenCandidateExtractionMs=12 candidatePostProcessingMs=0 candidateParallelWaitMs=17 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:31.544 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:31.545 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:31.545 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:31.545 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:31.547 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=14 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:31.548 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:31.590 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=14 screenCandidates=14 lookaheadCandidates=0 charLocationNodes=4 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=26 nodeCollectionMs=12 visualRoiPlanningMs=1 screenCandidateExtractionMs=12 candidatePostProcessingMs=0 candidateParallelWaitMs=14 routes=browser_result/analysis_only/analysis_only=11;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:31.590 D/YTParserService( 6135): refresh duplicate snapshot masks results=3 visualCached=false
+06-09 19:44:31.590 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:31.591 D/YTParserService( 6135): start visual OCR rois=1 semanticFallback=0 signature=browser-visual-region:104,2104,982,2345
+06-09 19:44:31.655 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=oļ0|ī| ElAE 0CR 4
+06-09 19:44:31.663 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 OCR 후보
+06-09 19:44:31.669 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:31.680 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:31.694 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=oļD|ī| ElAE 0CR
+06-09 19:44:31.706 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=oļ0|ī| ElAE 0CR 4
+06-09 19:44:31.707 D/YTParserService( 6135): visual OCR candidates selected=0 raw=0 semanticFallback=0 base=3
+06-09 19:44:31.839 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=2 analysisError=
+06-09 19:44:33.056 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=14 offensive=2 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:41.848 D/YTParserService( 6135): preserve mask overlay until content recapture
+06-09 19:44:41.941 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=13 screenCandidates=13 lookaheadCandidates=0 charLocationNodes=3 charRangeCandidates=3 visualRoiCandidates=1 visualRois=1 parseDelayMs=16 candidateExtractionMs=77 nodeCollectionMs=69 visualRoiPlanningMs=0 screenCandidateExtractionMs=7 candidatePostProcessingMs=0 candidateParallelWaitMs=8 routes=browser_result/analysis_only/analysis_only=10;browser_result/accessibility_exact/direct_overlay=3
+06-09 19:44:41.953 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:41.955 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:41.955 D/YTParserService( 6135): render provisional accessibility masks count=3
+06-09 19:44:41.955 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=3 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:41.957 D/MaskOverlayController( 6135): render maskCount=3 signature=500,627,104,67,***,false|597,816,102,67,***,false|519,1328,101,70,***,false sources=[android-accessibility-char-range:browser:title:ㅅㅂ span=ㅅㅂ rect=500,627,604,694 text=ㅅㅂ, android-accessibility-char-range:browser:title:ㅈ같 span=ㅈ같 rect=597,816,699,883 text=ㅈ같, android-accessibility-char-range:browser:title:개같 span=개같 rect=519,1328,620,1398 text=개같]
+06-09 19:44:41.958 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:41.958 D/YTParserService( 6135): ignore overlay self content change
+06-09 19:44:41.958 D/YTParserService( 6135): hide browser mask overlay during scroll; waiting for stable recapture
+06-09 19:44:42.007 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:42.046 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:42.047 D/MaskOverlayController( 6135): render maskCount=2 signature=564,363,48,32,***,false|839,552,72,32,***,false sources=[event-source-fast:com.android.chrome:3:6 span=ㅅㅂ rect=110,325,971,469 text=접근성 후보 욕설 A: ㅅㅂ 같은 표현이 포함된 댓글입니다., event-source-fast:com.android.chrome:3:7 span=ㅈ같 rect=110,514,971,658 text=접근성 후보 욕설 B: 진짜 ㅈ같네 라는 공격적 표현입니다.]
+06-09 19:44:42.047 D/YTParserService( 6135): fast provisional mask results=2 elapsedMs=124 eventAgeMs=35 buildMs=88 overlayMs=1 receiveToMaskMs=89 eventType=2048
+06-09 19:44:42.047 D/YTParserService( 6135): hide browser mask overlay during scroll; waiting for stable recapture
+06-09 19:44:42.080 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=56 current=58
+06-09 19:44:42.233 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:42.552 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=5 screenCandidates=5 lookaheadCandidates=0 charLocationNodes=1 charRangeCandidates=1 visualRoiCandidates=1 visualRois=1 parseDelayMs=250 candidateExtractionMs=69 nodeCollectionMs=39 visualRoiPlanningMs=1 screenCandidateExtractionMs=10 candidatePostProcessingMs=0 candidateParallelWaitMs=30 routes=browser_result/analysis_only/analysis_only=4;browser_result/accessibility_exact/direct_overlay=1
+06-09 19:44:42.552 D/YTParserService( 6135): render provisional accessibility masks count=1
+06-09 19:44:42.552 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=1 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:42.552 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:42.560 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:42.560 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=5 offensive=0 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:42.713 D/YTParserService( 6135): skip mask overlay: stale overlay revision snapshot=60 current=64
+06-09 19:44:42.713 D/YTParserService( 6135): skip visual OCR start: stale base scene snapshot=83 current=96
+06-09 19:44:42.760 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:42.857 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:42.881 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:42.907 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=5 screenCandidates=5 lookaheadCandidates=0 charLocationNodes=1 charRangeCandidates=1 visualRoiCandidates=1 visualRois=1 parseDelayMs=18 candidateExtractionMs=7 nodeCollectionMs=4 visualRoiPlanningMs=1 screenCandidateExtractionMs=2 candidatePostProcessingMs=1 candidateParallelWaitMs=2 routes=browser_result/analysis_only/analysis_only=4;browser_result/accessibility_exact/direct_overlay=1
+06-09 19:44:42.909 D/YTParserService( 6135): render provisional accessibility masks count=1
+06-09 19:44:42.910 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=1 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:42.911 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:42.913 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:42.913 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=true analysisOk=true comments=5 offensive=0 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:42.926 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=5 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:42.926 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:42.926 D/YTParserService( 6135): start visual OCR rois=1 semanticFallback=0 signature=browser-visual-region:104,684,982,1176
+06-09 19:44:42.975 D/YTParserService( 6135): invalidate visual OCR reason=clear-overlay sceneRevision=103
+06-09 19:44:43.008 D/YTParserService( 6135): defer analysis: scroll stabilization active
+06-09 19:44:43.062 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=5 screenCandidates=5 lookaheadCandidates=0 charLocationNodes=1 charRangeCandidates=1 visualRoiCandidates=1 visualRois=1 parseDelayMs=47 candidateExtractionMs=7 nodeCollectionMs=3 visualRoiPlanningMs=1 screenCandidateExtractionMs=2 candidatePostProcessingMs=0 candidateParallelWaitMs=4 routes=browser_result/analysis_only/analysis_only=4;browser_result/accessibility_exact/direct_overlay=1
+06-09 19:44:43.062 D/JsonFileStore( 6135): appended snapshot jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/parse_results/comments.jsonl
+06-09 19:44:43.063 D/JsonFileStore( 6135): saved latest upload file = /storage/emulated/0/Android/data/com.capstone.design/files/upload_cache/comments_latest.json
+06-09 19:44:43.063 D/YTParserService( 6135): render provisional accessibility masks count=1
+06-09 19:44:43.063 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=1 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:43.063 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:43.065 D/JsonFileStore( 6135): appended analysis jsonl = /storage/emulated/0/Android/data/com.capstone.design/files/analysis_results/analysis.jsonl
+06-09 19:44:43.082 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=5 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:43.082 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:43.082 D/YTParserService( 6135): defer visual OCR screenshot: throttleDelayMs=224
+06-09 19:44:43.105 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.105 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스안 욕설 테스트: 시비 너무 화남
+06-09 19:44:43.106 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.332 D/YTParserService( 6135): package=com.android.chrome parsed analysis target count=5 screenCandidates=5 lookaheadCandidates=0 charLocationNodes=1 charRangeCandidates=1 visualRoiCandidates=1 visualRois=1 parseDelayMs=227 candidateExtractionMs=22 nodeCollectionMs=17 visualRoiPlanningMs=2 screenCandidateExtractionMs=4 candidatePostProcessingMs=0 candidateParallelWaitMs=5 routes=browser_result/analysis_only/analysis_only=4;browser_result/accessibility_exact/direct_overlay=1
+06-09 19:44:43.332 D/YTParserService( 6135): refresh duplicate snapshot masks results=1 visualCached=false
+06-09 19:44:43.333 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=1 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=true
+06-09 19:44:43.333 D/MaskOverlayController( 6135): render skipped candidates=1 unstable=1 suppressed=0
+06-09 19:44:43.333 D/YTParserService( 6135): start visual OCR rois=1 semanticFallback=0 signature=browser-visual-region:104,684,982,1176
+06-09 19:44:43.513 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=13 offensive=2 filtered=0 analysisLatencyMs=0 analysisError=
+06-09 19:44:43.513 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.514 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스 안 욕설 테스트: A비 너무화남
+06-09 19:44:43.519 D/VisualTextOcrProcessor( 6135): OCR line candidate text=캔버스 안 욕설 테스트: A비 너무화남 bounds=BoundsRect(left=526, top=906, right=610, bottom=974) ranges=[CandidateRange(analysisText=ㅅㅂ, visualText=A비, start=14, end=16)]
+06-09 19:44:43.519 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.608 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.609 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스 안 욕설 테스트: 시비 너무 화남
+06-09 19:44:43.609 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.645 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=o|D| ElAE 0CR 4
+06-09 19:44:43.701 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.702 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스안 욕설 테스트: 시비 너무 화남
+06-09 19:44:43.702 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.713 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.713 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스 안 욕설 테스트: A비 너무화남
+06-09 19:44:43.714 D/VisualTextOcrProcessor( 6135): OCR line candidate text=캔버스 안 욕설 테스트: A비 너무화남 bounds=BoundsRect(left=526, top=906, right=610, bottom=974) ranges=[CandidateRange(analysisText=ㅅㅂ, visualText=A비, start=14, end=16)]
+06-09 19:44:43.714 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.734 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=이미지 텍스트 0CR 후보
+06-09 19:44:43.735 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=캔버스 안 욕설 테스트: 시비 너무 화남
+06-09 19:44:43.735 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=정상 이미지 문장도 함께 배치
+06-09 19:44:43.750 D/VisualTextOcrProcessor( 6135): OCR line source=browser-visual-region text=o|D| ElAE 0CR 4
+06-09 19:44:43.765 D/YTParserService( 6135): visual OCR candidates selected=1 raw=1 semanticFallback=0
+06-09 19:44:43.765 D/YTParserService( 6135): render provisional visual OCR masks count=1
+06-09 19:44:43.765 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=true provisionalAccessibility=false
+06-09 19:44:43.766 D/MaskOverlayController( 6135): render maskCount=1 signature=526,912,84,56,***,false sources=[ocr:browser-visual-region:104,684,982,1176:A비 span=ㅅㅂ rect=526,906,610,974 text=ㅅㅂ]
+06-09 19:44:43.777 D/YTParserService( 6135): render mask overlay package=com.android.chrome results=2 preserveExistingIfEmpty=false provisionalVisual=false provisionalAccessibility=false
+06-09 19:44:44.568 D/YTParserService( 6135): snapshot processed package=com.android.chrome uploadOk=false uploadSkipped=false analysisOk=true comments=5 offensive=0 filtered=0 analysisLatencyMs=0 analysisError=
