@@ -1,0 +1,41 @@
+url,seed_domain,seed_category,seed_risk_level,seed_title,priority_group,source_note
+https://match-betting-king.kr,match-betting-king.kr,gambling,block,매치 베팅킹,seed-score-148,gambling+kr+harmful+banner-keyword
+https://power-casino-choice.kr,power-casino-choice.kr,gambling,block,파워 카지노 초이스,seed-score-148,gambling+kr+harmful+banner-keyword
+https://safe-bet-korea.kr,safe-bet-korea.kr,gambling,block,세이프벳 코리아,seed-score-148,gambling+kr+harmful+banner-keyword
+https://score-premium-toto.kr,score-premium-toto.kr,gambling,block,스코어 프리미엄 토토,seed-score-148,gambling+kr+harmful+banner-keyword
+https://vip-toto-365.kr,vip-toto-365.kr,gambling,block,VIP 토토365,seed-score-148,gambling+kr+harmful+banner-keyword
+https://188bet.casino,188bet.casino,gambling,block,188BET,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://1win.bet,1win.bet,gambling,block,1win,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://bcgame.bet,bcgame.bet,gambling,block,BC.Game,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betano.casino,betano.casino,gambling,block,Betano,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://betprime.bet,betprime.bet,gambling,block,Betprime,seed-score-121,gambling+harmful+banner-keyword+risk-tld
+https://19cam-live.kr,19cam-live.kr,adult,block,19캠 라이브,seed-score-122,adult+kr+harmful+adult-keyword
+https://adult-webtoon-plus.kr,adult-webtoon-plus.kr,adult,block,성인 웹툰 플러스,seed-score-122,adult+kr+harmful+adult-keyword
+https://night-party-cam.kr,night-party-cam.kr,adult,block,나이트 파티 캠,seed-score-122,adult+kr+harmful+adult-keyword
+https://private19-video.kr,private19-video.kr,adult,block,프라이빗19 비디오,seed-score-122,adult+kr+harmful+adult-keyword
+https://secret-room-adult.kr,secret-room-adult.kr,adult,block,시크릿 성인방,seed-score-122,adult+kr+harmful+adult-keyword
+https://adultcloud.cam,adultcloud.cam,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultcloud.live,adultcloud.live,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultcloud.video,adultcloud.video,adult,block,Adultcloud,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adulttime.live,adulttime.live,adult,block,AdultTime,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://adultzone.cam,adultzone.cam,adult,block,Adultzone,seed-score-095,adult+harmful+adult-keyword+risk-tld
+https://coupang-account-verify.co.kr,coupang-account-verify.co.kr,phishing,block,쿠팡 Account Verify,seed-score-035,kr
+https://coupang-account-verify.kr,coupang-account-verify.kr,phishing,block,쿠팡 Account Verify,seed-score-035,kr
+https://coupang-billing-check.co.kr,coupang-billing-check.co.kr,phishing,block,쿠팡 Billing Check,seed-score-035,kr
+https://coupang-billing-check.kr,coupang-billing-check.kr,phishing,block,쿠팡 Billing Check,seed-score-035,kr
+https://coupang-gift-reward.co.kr,coupang-gift-reward.co.kr,phishing,block,쿠팡 Gift Reward,seed-score-035,kr
+https://coupang-gift-reward.kr,coupang-gift-reward.kr,phishing,block,쿠팡 Gift Reward,seed-score-035,kr
+https://coupang-password-reset.co.kr,coupang-password-reset.co.kr,phishing,block,쿠팡 Password Reset,seed-score-035,kr
+https://coupang-password-reset.kr,coupang-password-reset.kr,phishing,block,쿠팡 Password Reset,seed-score-035,kr
+https://coupang-secure-login.co.kr,coupang-secure-login.co.kr,phishing,block,쿠팡 Secure Login,seed-score-035,kr
+https://coupang-secure-login.kr,coupang-secure-login.kr,phishing,block,쿠팡 Secure Login,seed-score-035,kr
+https://driver-update-korea.kr,driver-update-korea.kr,malware,block,드라이버업데이트,seed-score-035,kr
+https://hangul-keygen.kr,hangul-keygen.kr,malware,block,한글키젠,seed-score-035,kr
+https://license-activator-kr.co.kr,license-activator-kr.co.kr,malware,block,정품인증도구,seed-score-035,kr
+https://mod-apk-download.kr,mod-apk-download.kr,malware,block,모드apk다운,seed-score-035,kr
+https://office-free-patch.kr,office-free-patch.kr,malware,block,무료오피스패치,seed-score-035,kr
+https://adobe-keygen.com,adobe-keygen.com,malware,block,Adobe Keygen,seed-score-000,seed
+https://adobe-keygen.download,adobe-keygen.download,malware,block,Adobe Keygen,seed-score-000,seed
+https://adobe-keygen.net,adobe-keygen.net,malware,block,Adobe Keygen,seed-score-000,seed
+https://adobe-keygen.org,adobe-keygen.org,malware,block,Adobe Keygen,seed-score-000,seed
+https://adobe-keygen.tools,adobe-keygen.tools,malware,block,Adobe Keygen,seed-score-000,seed

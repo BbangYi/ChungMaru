@@ -411,6 +411,89 @@
   color: #4d4d4d;
 }
 
+.shieldtext-media-safety-hidden {
+  position: relative !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  border-radius: 8px !important;
+  background: #161616 !important;
+  outline: 1px solid rgba(183, 31, 31, 0.34) !important;
+  outline-offset: 0 !important;
+  transition: none !important;
+}
+
+.shieldtext-media-safety-removed {
+  display: none !important;
+}
+
+html[data-chungmaru-media-startup-gate="true"] img,
+html[data-chungmaru-media-startup-gate="true"] picture,
+html[data-chungmaru-media-startup-gate="true"] video,
+html[data-chungmaru-media-startup-gate="true"] [role="img"][aria-label],
+html[data-chungmaru-media-startup-gate="true"] [style*="background-image"] {
+  visibility: hidden !important;
+}
+
+.shieldtext-media-safety-group-summary {
+  grid-column: 1 / -1 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 38px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px 12px !important;
+  margin: 0 !important;
+  background: #161616 !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  text-align: center !important;
+}
+
+.shieldtext-media-safety-group {
+  align-content: start !important;
+}
+
+.shieldtext-media-safety-group > .shieldtext-media-safety-group-summary {
+  flex: 1 0 100% !important;
+}
+
+.shieldtext-media-safety-hidden > :not(.shieldtext-media-safety-notice) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.shieldtext-media-safety-hidden::after {
+  content: "청마루 이미지 보호";
+  position: absolute;
+  inset: 0;
+  z-index: 2147483646;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  background: #161616;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  pointer-events: none;
+}
+
+img.shieldtext-media-safety-hidden,
+video.shieldtext-media-safety-hidden {
+  opacity: 1 !important;
+  background: #161616 !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
 .shieldtext-wellbeing-widget {
   --shieldtext-face-size: 62px;
   position: fixed;

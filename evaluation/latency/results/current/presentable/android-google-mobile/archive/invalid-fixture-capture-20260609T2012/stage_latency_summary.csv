@@ -1,0 +1,5 @@
+mode,stages,stage_id,stage_name,component,latency_metric,runs,measured_runs,avg_latency_ms,min_latency_ms,max_latency_ms
+opt_base_fullscreen_ocr,1+2+3,00b,fast_provisional,Accessibility event source,fast_provisional_mask_ms,1,1,264.0,264.0,264.0
+opt_base_fullscreen_ocr,1+2+3,01,collect,Accessibility Service,collect_ms,1,1,243.0,243.0,243.0
+opt_base_fullscreen_ocr,1+2+3,02,analyze,Android Analysis API,backend_api_ms,1,1,591.0,591.0,591.0
+opt_base_fullscreen_ocr,1+2+3,03,ocr_roi,OCR ROI,ocr_ms,1,0,,,

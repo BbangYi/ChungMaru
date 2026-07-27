@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<fcpxml version="1.10">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p30" frameDuration="1/30s" width="1920" height="1080" colorSpace="1-1-1 (Rec. 709)"/>
+    <effect id="r2" name="Responsive Subtitle Bar 01" uid="~/Titles.localized/Chungmaru.localized/Responsive Subtitle Bar 01.localized/Responsive Subtitle Bar 01.moti" src="file:///Users/giminu0930/Library/Containers/com.apple.FinalCut/Data/Movies/Motion%20Templates.localized/Titles.localized/Chungmaru.localized/Responsive%20Subtitle%20Bar%2001.localized/Responsive%20Subtitle%20Bar%2001.moti"/>
+  </resources>
+  <library>
+    <event name="Chungmaru Resolve Titles">
+      <project name="Chungmaru Resolve Titles">
+        <sequence format="r1" duration="2698/30s" tcStart="0s" tcFormat="NDF">
+          <spine>
+            <title name="Subtitle 001" ref="r2" offset="180/30s" duration="480/30s" start="3600s">
+              <text>
+                <text-style ref="ts1_default">상세 설정 확인
+백엔드 · 사이트 정책 · 위젯</text-style>
+              </text>
+              <text-style-def id="ts1_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts1_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 002" ref="r2" offset="660/30s" duration="96/30s" start="3600s">
+              <text>
+                <text-style ref="ts2_default">Google 검색 준비
+설정 전후 비교</text-style>
+              </text>
+              <text-style-def id="ts2_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts2_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 003" ref="r2" offset="756/30s" duration="48/30s" start="3600s">
+              <text>
+                <text-style ref="ts3_default">보호 OFF
+원문 노출 상태</text-style>
+              </text>
+              <text-style-def id="ts3_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts3_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 004" ref="r2" offset="804/30s" duration="103/30s" start="3600s">
+              <text>
+                <text-style ref="ts4_default">가리기 모드
+유해 구간 마스킹</text-style>
+              </text>
+              <text-style-def id="ts4_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts4_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 005" ref="r2" offset="907/30s" duration="74/30s" start="3600s">
+              <text>
+                <text-style ref="ts5_default">흐리기 모드
+문맥 유지 · 표현 흐림</text-style>
+              </text>
+              <text-style-def id="ts5_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts5_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 006" ref="r2" offset="982/30s" duration="74/30s" start="3600s">
+              <text>
+                <text-style ref="ts6_default">숨기기 모드
+위험 표현 숨김</text-style>
+              </text>
+              <text-style-def id="ts6_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts6_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 007" ref="r2" offset="1056/30s" duration="74/30s" start="3600s">
+              <text>
+                <text-style ref="ts7_default">삭제 모드
+위험 표현 제거</text-style>
+              </text>
+              <text-style-def id="ts7_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts7_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 008" ref="r2" offset="1130/30s" duration="429/30s" start="3600s">
+              <text>
+                <text-style ref="ts8_default">Google 검색 보호
+욕설 표현 마스킹</text-style>
+              </text>
+              <text-style-def id="ts8_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts8_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 009" ref="r2" offset="1559/30s" duration="372/30s" start="3600s">
+              <text>
+                <text-style ref="ts9_default">Google 검색 보호
+혐오 표현 마스킹</text-style>
+              </text>
+              <text-style-def id="ts9_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts9_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 010" ref="r2" offset="1931/30s" duration="378/30s" start="3600s">
+              <text>
+                <text-style ref="ts10_default">Google 검색 보호
+공격적 발화 마스킹</text-style>
+              </text>
+              <text-style-def id="ts10_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts10_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 011" ref="r2" offset="2309/30s" duration="270/30s" start="3600s">
+              <text>
+                <text-style ref="ts11_default">YouTube 댓글 보호
+댓글 영역 마스킹</text-style>
+              </text>
+              <text-style-def id="ts11_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts11_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 012" ref="r2" offset="2578/30s" duration="48/30s" start="3600s">
+              <text>
+                <text-style ref="ts12_default">위험 사이트 이동
+접속 전 정책 확인</text-style>
+              </text>
+              <text-style-def id="ts12_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts12_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+            <title name="Subtitle 013" ref="r2" offset="2626/30s" duration="72/30s" start="3600s">
+              <text>
+                <text-style ref="ts13_default">위험 사이트 차단
+돌아가기만 활성화</text-style>
+              </text>
+              <text-style-def id="ts13_default">
+                <text-style font="Helvetica" fontSize="36" fontColor="0 0 0 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+              <text-style-def id="ts13_highlight">
+                <text-style font="Helvetica" fontSize="36" fontColor="0.839216 0.435294 0.227451 1" alignment="center" fontFace="Regular" kerning="-3.6">
+                  <param name="MotionSimpleValues" key="MotionTextStyle:SimpleValues">
+                    <param name="motionTextTracking" key="tracking" value="-3.6"/>
+                  </param>
+                </text-style>
+              </text-style-def>
+            </title>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>

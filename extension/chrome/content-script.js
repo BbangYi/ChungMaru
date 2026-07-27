@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
     spam: true
   },
   interventionMode: "mask",
+  textMaskingEnabled: true,
   customBlockWords: "",
   customAllowWords: "",
   blockedDomains: "",
@@ -16,6 +17,9 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
+  mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -114,11 +118,11 @@ const GOOGLE_SEARCH_ALLOWED_PIPELINE_REASONS = new Set([
   "manual-request",
   "manual-request-after-inject"
 ]);
-const MAX_DOMAIN_PRIORITY_CANDIDATES = 10;
-const MAX_GOOGLE_CANDIDATES_PER_CONTAINER = 16;
-const GOOGLE_SEARCH_LIGHT_CANDIDATE_LIMIT = 6;
-const GOOGLE_SEARCH_LIGHT_PROTECTION_MIN_INTERVAL_MS = 80;
-const GOOGLE_VISIBLE_HIGH_SIGNAL_SCAN_NODE_LIMIT = 240;
+const MAX_DOMAIN_PRIORITY_CANDIDATES = 8;
+const MAX_GOOGLE_CANDIDATES_PER_CONTAINER = 12;
+const GOOGLE_SEARCH_LIGHT_CANDIDATE_LIMIT = 5;
+const GOOGLE_SEARCH_LIGHT_PROTECTION_MIN_INTERVAL_MS = 160;
+const GOOGLE_VISIBLE_HIGH_SIGNAL_SCAN_NODE_LIMIT = 160;
 const GOOGLE_INITIAL_PRECONCEAL_TTL_MS = 2200;
 const GOOGLE_INITIAL_PRECONCEAL_LIMIT = 16;
 const SEARCH_RESULT_BACKEND_CHECK_LIMIT = 8;
@@ -128,6 +132,49 @@ const SEARCH_RESULT_POLICY_CACHE_TTL_MS = 10 * 60 * 1000;
 const SEARCH_RESULT_POLICY_ERROR_CACHE_TTL_MS = 30 * 1000;
 const SEARCH_RESULT_POLICY_PREEMPTED_CACHE_TTL_MS = 2500;
 const SEARCH_RESULT_SNIPPET_LIMIT = 280;
+const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
+const RUNTIME_PERF_FLUSH_INTERVAL_MS = 5000;
+const RUNTIME_PERF_EVENT_LOOP_SAMPLE_MS = 250;
+const RUNTIME_PERF_EVENT_LOOP_LAG_THRESHOLD_MS = 80;
+const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 140;
+const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 180;
+const MEDIA_SAFETY_CANDIDATE_LIMIT = 24;
+const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 32;
+const MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT = 140;
+const MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT = 180;
+const MEDIA_SAFETY_DENSE_LINK_SCAN_NODE_LIMIT = 180;
+const MEDIA_SAFETY_DENSE_LINK_MIN_COUNT = 4;
+const MEDIA_SAFETY_FAST_MUTATION_NODE_LIMIT = 24;
+const MEDIA_SAFETY_FAST_MUTATION_CANDIDATE_LIMIT = 14;
+const MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS = 360;
+const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 650;
+const MEDIA_SAFETY_SETTLE_RESCAN_INTERVAL_MS = 1250;
+const MEDIA_SAFETY_SETTLE_SCAN_DELAY_MS = 420;
+const MEDIA_SAFETY_PIPELINE_CONTENTION_DELAY_MS = 180;
+const MEDIA_SAFETY_STARTUP_GATE_TTL_MS = 1200;
+const MEDIA_SAFETY_PAGE_CONTEXT_CACHE_TTL_MS = 1400;
+const MEDIA_SAFETY_CONTEXT_TEXT_LIMIT = 720;
+const MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT = 6000;
+const MEDIA_SAFETY_PAGE_TEXT_NODE_LIMIT = 160;
+const MEDIA_SAFETY_MIN_DIMENSION_PX = 56;
+const MEDIA_SAFETY_MIN_AREA_PX = 3600;
+const MEDIA_SAFETY_VIEWPORT_BUFFER_PX = 96;
+const MEDIA_SAFETY_VIEWPORT_SAMPLE_COLUMNS = 4;
+const MEDIA_SAFETY_VIEWPORT_SAMPLE_ROWS = 5;
+const MEDIA_SAFETY_SIDEBAR_ROOT_LIMIT = 3;
+const MEDIA_SAFETY_SIDEBAR_BACKGROUND_NODE_LIMIT = 24;
+const MEDIA_SAFETY_OVERLAY_Z_INDEX = 10;
+const MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO = 0.65;
+const MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT = 2;
+const MEDIA_SAFETY_COMPACT_GROUP_MAX_DEPTH = 5;
+const MEDIA_SAFETY_COMPACT_GROUP_MAX_VIEWPORT_AREA_RATIO = 2.5;
+const NSFW_CLASSIFIER_BATCH_LIMIT = 4;
+const NSFW_CLASSIFIER_QUEUE_LIMIT = 12;
+const NSFW_CLASSIFIER_LOW_CORE_BATCH_LIMIT = 1;
+const NSFW_CLASSIFIER_LOW_CORE_QUEUE_LIMIT = 3;
+const NSFW_CLASSIFIER_LOW_CORE_THRESHOLD = 4;
+const NSFW_CLASSIFIER_RETRY_BACKOFF_MS = 30 * 1000;
+const NSFW_CLASSIFIER_MAX_DATA_URL_CHARS = 1024 * 1024;
 const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
 const MAX_SELF_TEST_HISTORY = 20;
@@ -178,6 +225,16 @@ const SEARCH_RESULT_CURATED_FALLBACK_POLICIES = Object.freeze([
     domain: "adult-webtoon-plus.kr",
     verdict: "block",
     matchedRule: "adult smoke seed"
+  },
+  {
+    domain: "jusoguide1.com",
+    verdict: "block",
+    matchedRule: "adult gambling link guide"
+  },
+  {
+    domain: "jusowhy1.com",
+    verdict: "block",
+    matchedRule: "adult gambling link guide"
   },
   {
     domain: "dcinside.com",
@@ -486,8 +543,43 @@ let initialPageAnalysisStarted = false;
 let navigationListenersInitialized = false;
 let routeRefreshFrameId = null;
 let searchResultProtectionFrameId = null;
+let searchResultProtectionPendingSettings = null;
 let googleSearchLocalPreflightFrameId = null;
 let googleSearchLocalPreflightTimerId = null;
+let googleSearchLocalPreflightPendingSettings = null;
+let googleSearchLocalPreflightPendingOptions = null;
+let googleSearchLocalPreflightScheduledHref = "";
+let mediaSafetyFrameId = null;
+let mediaSafetyTimerId = null;
+let mediaSafetyRunId = 0;
+let mediaSafetyGroupId = 0;
+let mediaSafetyLastScanAt = 0;
+let mediaSafetyPageContextGeneration = 1;
+let mediaSafetyPageContextCache = null;
+let mediaSafetyLoadListenersInitialized = false;
+let mediaSafetyStartupGateTimerId = null;
+let mediaSafetyHasProtectedElements = false;
+let mediaSafetyFastPathFrameId = null;
+let nsfwClassifierContextGeneration = 1;
+let nsfwClassifierRequestSequence = 0;
+let nsfwClassifierBatchInFlight = false;
+let nsfwClassifierWarmupRequested = false;
+let nsfwClassifierElementState = new WeakMap();
+const NSFW_CLASSIFIER_PENDING_BY_SOURCE = new Map();
+const MEDIA_SAFETY_FAST_PATH_NODES = new Set();
+const MEDIA_SAFETY_SCHEDULER_STATS = {
+  scanRequestCount: 0,
+  coalescedScanRequestCount: 0,
+  mediaLoadEventCount: 0,
+  mutationBatchCount: 0,
+  mutationAddedNodeCount: 0,
+  potentialMutationBatchCount: 0,
+  fastPathSeedCount: 0,
+  fastPathRequestCount: 0,
+  fastPathRunCount: 0,
+  fastPathCandidateCount: 0,
+  fastPathActionCount: 0
+};
 let searchResultProtectionClickGuardInitialized = false;
 let searchResultProtectionRunId = 0;
 let lastGoogleSearchLocalPreflightAt = 0;
@@ -498,6 +590,7 @@ const ROUTE_REFRESH_TIMEOUT_IDS = new Set();
 const STARTUP_FOLLOWUP_TIMEOUT_IDS = new Set();
 const SEARCH_RESULT_POLICY_CACHE = new Map();
 const SEARCH_RESULT_POLICY_IN_FLIGHT = new Map();
+const MEDIA_SAFETY_FIRST_SEEN_AT = new WeakMap();
 const ATTRIBUTE_MASK_NAMES = ["aria-label", "title", "alt"];
 const ATTRIBUTE_VALUE_ID_MAP = new WeakMap();
 const ATTRIBUTE_VALUE_STATE_BY_ID = new Map();
@@ -519,6 +612,44 @@ let lastAppliedSettingsSnapshotKey = "";
 let lastAppliedSettingsSnapshotAt = 0;
 let performanceGuardUntil = 0;
 let performanceGuardReason = "";
+let developerRuntimeLogEnabled = false;
+let developerRuntimeLogLoaded = false;
+let developerRuntimeLogLoadPromise = null;
+let runtimePerfTelemetryStarted = false;
+let runtimePerfLongTaskObserver = null;
+let runtimePerfFlushTimerId = null;
+let runtimePerfLagTimerId = null;
+let runtimePerfLagLastAt = 0;
+let runtimePerfStatsStartedAt = 0;
+const RUNTIME_BACKEND_MESSAGE_TYPES = new Set([
+  "ANALYZE_TEXT_BATCH",
+  "GET_SITE_POLICY_FOR_URL",
+  "WARMUP_BACKEND_MODELS",
+  "CHECK_API_HEALTH"
+]);
+const RUNTIME_PERF_STATS = {
+  pipelineScheduleCount: 0,
+  pipelineRunCount: 0,
+  pipelineQueuedCount: 0,
+  pipelineSuppressedCount: 0,
+  pipelineDurationTotalMs: 0,
+  pipelineDurationMaxMs: 0,
+  searchResultScheduleCount: 0,
+  googleLightScheduleCount: 0,
+  mediaSafetyScheduleCount: 0,
+  targetedMediaSafetyScheduleCount: 0,
+  runtimeMessageCount: 0,
+  backendMessageCount: 0,
+  mutationBatchCount: 0,
+  mutationRecordCount: 0,
+  mutationAddedNodeCount: 0,
+  mutationPotentialMediaBatchCount: 0,
+  mutationGoogleBatchCount: 0,
+  longTaskCount: 0,
+  longTaskMaxMs: 0,
+  eventLoopLagCount: 0,
+  eventLoopLagMaxMs: 0
+};
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
@@ -550,12 +681,17 @@ function isFilteringSuppressedBySensitivity(settings) {
   return normalizeSensitivity(settings?.sensitivity) <= 0;
 }
 
+function isTextMaskingEnabled(settings) {
+  return settings?.textMaskingEnabled !== false;
+}
+
 function buildSettingsSnapshotKey(settings) {
   const normalizedSettings = getMergedSettings(settings || {});
   return JSON.stringify({
     enabled: normalizedSettings.enabled !== false,
     sensitivity: normalizeSensitivity(normalizedSettings.sensitivity),
     interventionMode: normalizeInterventionMode(normalizedSettings.interventionMode),
+    textMaskingEnabled: normalizedSettings.textMaskingEnabled !== false,
     categories: normalizedSettings.categories || DEFAULT_SETTINGS.categories,
     customBlockWords: String(normalizedSettings.customBlockWords || ""),
     customAllowWords: String(normalizedSettings.customAllowWords || ""),
@@ -564,6 +700,11 @@ function buildSettingsSnapshotKey(settings) {
     siteProtectionEnabled: normalizedSettings.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: normalizedSettings.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: normalizedSettings.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: normalizedSettings.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(
+      normalizedSettings.mediaSafetyInterventionMode
+    ),
+    mediaSafetyStartupGateEnabled: normalizedSettings.mediaSafetyStartupGateEnabled === true,
     showWellbeingWidget: normalizedSettings.showWellbeingWidget !== false,
     wellbeingWidgetStyle: normalizedSettings.wellbeingWidgetStyle || DEFAULT_SETTINGS.wellbeingWidgetStyle,
     wellbeingAvatarImages: String(normalizedSettings.wellbeingAvatarImages || ""),
@@ -721,10 +862,35 @@ function teardownInvalidatedExtensionContext() {
     window.cancelAnimationFrame(routeRefreshFrameId);
     routeRefreshFrameId = null;
   }
+  if (searchResultProtectionFrameId) {
+    window.cancelAnimationFrame(searchResultProtectionFrameId);
+    searchResultProtectionFrameId = null;
+  }
+  searchResultProtectionPendingSettings = null;
   if (googleSearchLocalPreflightFrameId) {
     window.cancelAnimationFrame(googleSearchLocalPreflightFrameId);
     googleSearchLocalPreflightFrameId = null;
   }
+  if (googleSearchLocalPreflightTimerId) {
+    window.clearTimeout(googleSearchLocalPreflightTimerId);
+    googleSearchLocalPreflightTimerId = null;
+  }
+  googleSearchLocalPreflightPendingSettings = null;
+  googleSearchLocalPreflightPendingOptions = null;
+  googleSearchLocalPreflightScheduledHref = "";
+  if (mediaSafetyFrameId) {
+    window.cancelAnimationFrame(mediaSafetyFrameId);
+    mediaSafetyFrameId = null;
+  }
+  if (mediaSafetyTimerId) {
+    window.clearTimeout(mediaSafetyTimerId);
+    mediaSafetyTimerId = null;
+  }
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+    mediaSafetyStartupGateTimerId = null;
+  }
+  clearMediaSafetyStartupGate();
   if (suppressedMutationRefreshTimerId) {
     window.clearTimeout(suppressedMutationRefreshTimerId);
     suppressedMutationRefreshTimerId = null;
@@ -739,11 +905,13 @@ function teardownInvalidatedExtensionContext() {
     window.clearInterval(navigationPollTimerId);
     navigationPollTimerId = null;
   }
+  stopRuntimePerfTelemetry({ reset: true });
   for (const timeoutId of ROUTE_REFRESH_TIMEOUT_IDS) {
     window.clearTimeout(timeoutId);
   }
   ROUTE_REFRESH_TIMEOUT_IDS.clear();
   clearStartupFollowupPipelines();
+  invalidateNsfwClassifierContext({ resetWarmup: true });
 
   cleanupRealtimeWorker();
 }
@@ -815,6 +983,7 @@ async function safeRuntimeSendMessage(message) {
   if (!isExtensionContextAvailable()) return null;
 
   try {
+    recordRuntimeMessageForPerfTelemetry(message?.type);
     return await chrome.runtime.sendMessage(message);
   } catch (error) {
     if (handleExtensionContextError(error)) {
@@ -822,6 +991,250 @@ async function safeRuntimeSendMessage(message) {
     }
     throw error;
   }
+}
+
+async function refreshDeveloperRuntimeLogEnabled(options = {}) {
+  if (!isExtensionContextAvailable()) {
+    developerRuntimeLogEnabled = false;
+    developerRuntimeLogLoaded = true;
+    syncRuntimePerfTelemetry();
+    return false;
+  }
+
+  if (!options.force && developerRuntimeLogLoaded) {
+    return developerRuntimeLogEnabled === true;
+  }
+
+  if (!options.force && developerRuntimeLogLoadPromise) {
+    return developerRuntimeLogLoadPromise;
+  }
+
+  developerRuntimeLogLoadPromise = safeStorageLocalGet(DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY)
+    .then((result) => {
+      developerRuntimeLogEnabled = result?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY] === true;
+      developerRuntimeLogLoaded = true;
+      syncRuntimePerfTelemetry();
+      return developerRuntimeLogEnabled;
+    })
+    .catch((error) => {
+      handleExtensionContextError(error);
+      developerRuntimeLogEnabled = false;
+      developerRuntimeLogLoaded = true;
+      syncRuntimePerfTelemetry();
+      return false;
+    })
+    .finally(() => {
+      developerRuntimeLogLoadPromise = null;
+    });
+
+  return developerRuntimeLogLoadPromise;
+}
+
+function emitRuntimeLogEvent(event) {
+  if (!developerRuntimeLogEnabled) {
+    if (!developerRuntimeLogLoaded && !developerRuntimeLogLoadPromise) {
+      refreshDeveloperRuntimeLogEnabled().catch(() => {});
+    }
+    return;
+  }
+
+  safeRuntimeSendMessage({
+    type: "ADD_RUNTIME_EVENT_LOG",
+    event
+  }).catch((error) => {
+    if (!handleExtensionContextError(error)) {
+      console.warn("[청마루] runtime log emit failed", error);
+    }
+  });
+}
+
+function resetRuntimePerfStats() {
+  for (const key of Object.keys(RUNTIME_PERF_STATS)) {
+    RUNTIME_PERF_STATS[key] = 0;
+  }
+  runtimePerfStatsStartedAt = performance.now();
+}
+
+function hasRuntimePerfActivity() {
+  return Object.values(RUNTIME_PERF_STATS).some((value) => Number(value || 0) > 0);
+}
+
+function scheduleRuntimePerfFlush() {
+  if (!developerRuntimeLogEnabled || !runtimePerfTelemetryStarted || runtimePerfFlushTimerId) {
+    return;
+  }
+
+  runtimePerfFlushTimerId = window.setTimeout(() => {
+    runtimePerfFlushTimerId = null;
+    flushRuntimePerfSummary();
+  }, RUNTIME_PERF_FLUSH_INTERVAL_MS);
+}
+
+function recordRuntimePerfCounter(key, amount = 1) {
+  if (!developerRuntimeLogEnabled || !Object.prototype.hasOwnProperty.call(RUNTIME_PERF_STATS, key)) {
+    return;
+  }
+
+  const value = Math.max(0, Math.round(Number(amount || 0)));
+  if (value <= 0) {
+    return;
+  }
+  RUNTIME_PERF_STATS[key] += value;
+  scheduleRuntimePerfFlush();
+}
+
+function recordRuntimePerfMax(key, value) {
+  if (!developerRuntimeLogEnabled || !Object.prototype.hasOwnProperty.call(RUNTIME_PERF_STATS, key)) {
+    return;
+  }
+
+  const numericValue = Math.max(0, Math.round(Number(value || 0)));
+  if (numericValue <= Number(RUNTIME_PERF_STATS[key] || 0)) {
+    return;
+  }
+  RUNTIME_PERF_STATS[key] = numericValue;
+  scheduleRuntimePerfFlush();
+}
+
+function recordRuntimePerfDuration(totalKey, maxKey, durationMs) {
+  if (!developerRuntimeLogEnabled) {
+    return;
+  }
+  const numericDuration = Math.max(0, Math.round(Number(durationMs || 0)));
+  if (Object.prototype.hasOwnProperty.call(RUNTIME_PERF_STATS, totalKey)) {
+    RUNTIME_PERF_STATS[totalKey] += numericDuration;
+  }
+  recordRuntimePerfMax(maxKey, numericDuration);
+}
+
+function recordRuntimeMessageForPerfTelemetry(type) {
+  const normalizedType = String(type || "");
+  if (!normalizedType || normalizedType === "ADD_RUNTIME_EVENT_LOG") {
+    return;
+  }
+  recordRuntimePerfCounter("runtimeMessageCount");
+  if (RUNTIME_BACKEND_MESSAGE_TYPES.has(normalizedType)) {
+    recordRuntimePerfCounter("backendMessageCount");
+  }
+}
+
+function recordRuntimeMutationPerfStats(mutationList, hasPotentialMediaMutation) {
+  if (!Array.isArray(mutationList) || mutationList.length === 0) {
+    return;
+  }
+  recordRuntimePerfCounter("mutationBatchCount");
+  recordRuntimePerfCounter("mutationRecordCount", mutationList.length);
+  if (hasPotentialMediaMutation) {
+    recordRuntimePerfCounter("mutationPotentialMediaBatchCount");
+  }
+  if (isGoogleSearchPage()) {
+    recordRuntimePerfCounter("mutationGoogleBatchCount");
+  }
+  let addedNodeCount = 0;
+  for (const mutation of mutationList) {
+    addedNodeCount += Number(mutation?.addedNodes?.length || 0);
+  }
+  recordRuntimePerfCounter("mutationAddedNodeCount", addedNodeCount);
+}
+
+function flushRuntimePerfSummary() {
+  if (!developerRuntimeLogEnabled || !runtimePerfTelemetryStarted) {
+    return;
+  }
+  if (!hasRuntimePerfActivity()) {
+    resetRuntimePerfStats();
+    return;
+  }
+
+  const now = performance.now();
+  const summary = {};
+  for (const [key, value] of Object.entries(RUNTIME_PERF_STATS)) {
+    summary[key] = Math.max(0, Math.round(Number(value || 0)));
+  }
+  emitRuntimeLogEvent({
+    type: "chrome-perf-summary",
+    ok: true,
+    status: "summary",
+    source: "content-script",
+    profile: getMediaSafetyProfile(),
+    domain: normalizeDomainForPolicy(location.hostname || ""),
+    url: compactRuntimeUrl(location.href),
+    durationMs: Math.max(0, Math.round(now - Number(runtimePerfStatsStartedAt || now))),
+    ...getPerformanceGuardDiagnostics(),
+    ...summary
+  });
+  resetRuntimePerfStats();
+}
+
+function startRuntimePerfTelemetry() {
+  if (runtimePerfTelemetryStarted || !developerRuntimeLogEnabled || extensionContextInvalidated) {
+    return;
+  }
+
+  runtimePerfTelemetryStarted = true;
+  resetRuntimePerfStats();
+
+  try {
+    if (
+      "PerformanceObserver" in window &&
+      Array.isArray(PerformanceObserver.supportedEntryTypes) &&
+      PerformanceObserver.supportedEntryTypes.includes("longtask")
+    ) {
+      runtimePerfLongTaskObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          recordRuntimePerfCounter("longTaskCount");
+          recordRuntimePerfMax("longTaskMaxMs", entry.duration || 0);
+        }
+      });
+      runtimePerfLongTaskObserver.observe({ entryTypes: ["longtask"] });
+    }
+  } catch {
+    runtimePerfLongTaskObserver = null;
+  }
+
+  runtimePerfLagLastAt = performance.now();
+  runtimePerfLagTimerId = window.setInterval(() => {
+    const now = performance.now();
+    const expected = runtimePerfLagLastAt + RUNTIME_PERF_EVENT_LOOP_SAMPLE_MS;
+    const lagMs = now - expected;
+    runtimePerfLagLastAt = now;
+    if (lagMs >= RUNTIME_PERF_EVENT_LOOP_LAG_THRESHOLD_MS) {
+      recordRuntimePerfCounter("eventLoopLagCount");
+      recordRuntimePerfMax("eventLoopLagMaxMs", lagMs);
+    }
+  }, RUNTIME_PERF_EVENT_LOOP_SAMPLE_MS);
+}
+
+function stopRuntimePerfTelemetry(options = {}) {
+  if (runtimePerfFlushTimerId) {
+    window.clearTimeout(runtimePerfFlushTimerId);
+    runtimePerfFlushTimerId = null;
+  }
+  if (runtimePerfLagTimerId) {
+    window.clearInterval(runtimePerfLagTimerId);
+    runtimePerfLagTimerId = null;
+  }
+  if (runtimePerfLongTaskObserver) {
+    try {
+      runtimePerfLongTaskObserver.disconnect();
+    } catch {
+      // Ignore teardown failures from pages that are already unloading.
+    }
+    runtimePerfLongTaskObserver = null;
+  }
+  runtimePerfTelemetryStarted = false;
+  runtimePerfLagLastAt = 0;
+  if (options.reset !== false) {
+    resetRuntimePerfStats();
+  }
+}
+
+function syncRuntimePerfTelemetry() {
+  if (developerRuntimeLogEnabled) {
+    startRuntimePerfTelemetry();
+    return;
+  }
+  stopRuntimePerfTelemetry({ reset: true });
 }
 
 function getRuntimeUrl(path) {
@@ -846,7 +1259,7 @@ function isShieldTextManagedElement(element) {
 
   return Boolean(
     element.closest(
-      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true']"
+      ".shieldtext-editable-overlay, .shieldtext-site-policy-overlay, [data-shieldtext-rendered='true'], [data-shieldtext-wrapper='true'], [data-shieldtext-overlay='true'], [data-chungmaru-media-hidden='true'], [data-chungmaru-media-summary='true']"
     )
   );
 }
@@ -944,9 +1357,13 @@ function getMergedSettings(storedSettings) {
     ...DEFAULT_SETTINGS,
     ...(storedSettings || {}),
     interventionMode: normalizeInterventionMode(storedSettings?.interventionMode),
+    textMaskingEnabled: storedSettings?.textMaskingEnabled !== false,
     siteProtectionEnabled: storedSettings?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: storedSettings?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(storedSettings?.mediaSafetyInterventionMode),
+    mediaSafetyStartupGateEnabled: storedSettings?.mediaSafetyStartupGateEnabled === true,
     wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
     wellbeingAgeStageCount: normalizeWellbeingStageCount(
       storedSettings?.wellbeingAgeStageCount,
@@ -1302,13 +1719,16 @@ function normalizeBackendSearchResultPolicy(url, response) {
 
   const riskScore = Number(policy?.risk_score || 0);
   const hasExactMatch = Boolean(policy?.exact_match?.domain);
-  const hasStrongBackendSignal =
-    verdict === "block" ||
+  const siteCategory = String(policy?.site_category || "").toLowerCase();
+  const hasDomainLevelRisk =
     Boolean(policy?.security_threat) ||
-    Boolean(policy?.harmful_content) ||
-    riskScore >= 0.34;
+    /(?:phishing|malware|scam|illegal|adult-gambling-link-guide|gambling-site|casino|sportsbook|toto)/i.test(siteCategory);
+  const hasStrongDomainSignal =
+    hasExactMatch ||
+    Boolean(policy?.security_threat) ||
+    (verdict === "block" && riskScore >= 0.86 && hasDomainLevelRisk);
 
-  if (!hasExactMatch && !hasStrongBackendSignal) {
+  if (!hasStrongDomainSignal) {
     return null;
   }
 
@@ -1667,13 +2087,17 @@ function applySearchResultProtection(settings = cachedSettings, runId = ++search
 }
 
 function scheduleSearchResultProtection(settings = cachedSettings) {
+  recordRuntimePerfCounter("searchResultScheduleCount");
+  searchResultProtectionPendingSettings = settings || cachedSettings;
   if (searchResultProtectionFrameId) {
-    window.cancelAnimationFrame(searchResultProtectionFrameId);
+    return;
   }
   const runId = ++searchResultProtectionRunId;
   searchResultProtectionFrameId = window.requestAnimationFrame(() => {
     searchResultProtectionFrameId = null;
-    applySearchResultProtection(settings || cachedSettings, runId);
+    const pendingSettings = searchResultProtectionPendingSettings || cachedSettings;
+    searchResultProtectionPendingSettings = null;
+    applySearchResultProtection(pendingSettings, runId);
   });
 }
 
@@ -1693,16 +2117,24 @@ function applyGoogleSearchLightModeProtection(settings = cachedSettings, options
     };
   }
 
-  scheduleSearchResultProtection(settings || cachedSettings);
+  if (isSearchResultProtectionEnabled(settings || cachedSettings)) {
+    scheduleSearchResultProtection(settings || cachedSettings);
+  } else {
+    clearSearchResultProtection();
+  }
   const localPreflight = applyCachedLocalPreflightForVisiblePage({
     limit: Number.isFinite(options.limit)
       ? Number(options.limit)
       : MAX_DOMAIN_PRIORITY_CANDIDATES,
     startedAt
   });
+  const href = String(location.href || "");
+  const routeChanged = href !== lastGoogleSearchLocalPreflightHref;
   lastGoogleSearchLocalPreflightAt = performance.now();
-  lastGoogleSearchLocalPreflightHref = String(location.href || "");
-  scheduleInitialEditablePass();
+  lastGoogleSearchLocalPreflightHref = href;
+  if (options.force === true || routeChanged) {
+    scheduleInitialEditablePass();
+  }
   return {
     maskedSpanCount: Number(localPreflight.decision?.maskedSpanCount || 0),
     preconcealCount: Number(localPreflight.preconcealCount || 0)
@@ -1711,6 +2143,21 @@ function applyGoogleSearchLightModeProtection(settings = cachedSettings, options
 
 function scheduleGoogleSearchLightModeProtection(settings = cachedSettings, options = {}) {
   if (extensionContextInvalidated || isUnsupportedPage() || !isGoogleSearchPage()) {
+    return;
+  }
+  recordRuntimePerfCounter("googleLightScheduleCount");
+
+  const href = String(location.href || "");
+  if (
+    options.force !== true &&
+    href === googleSearchLocalPreflightScheduledHref &&
+    (googleSearchLocalPreflightFrameId || googleSearchLocalPreflightTimerId)
+  ) {
+    googleSearchLocalPreflightPendingSettings = settings || cachedSettings;
+    googleSearchLocalPreflightPendingOptions = {
+      ...(googleSearchLocalPreflightPendingOptions || {}),
+      ...options
+    };
     return;
   }
 
@@ -1724,7 +2171,9 @@ function scheduleGoogleSearchLightModeProtection(settings = cachedSettings, opti
     googleSearchLocalPreflightTimerId = null;
   }
 
-  const href = String(location.href || "");
+  googleSearchLocalPreflightPendingSettings = settings || cachedSettings;
+  googleSearchLocalPreflightPendingOptions = { ...options };
+  googleSearchLocalPreflightScheduledHref = href;
   const now = performance.now();
   const minIntervalMs = Number.isFinite(options.minIntervalMs)
     ? Math.max(0, Number(options.minIntervalMs))
@@ -1741,7 +2190,11 @@ function scheduleGoogleSearchLightModeProtection(settings = cachedSettings, opti
     googleSearchLocalPreflightTimerId = null;
     googleSearchLocalPreflightFrameId = window.requestAnimationFrame(() => {
       googleSearchLocalPreflightFrameId = null;
-      applyGoogleSearchLightModeProtection(settings || cachedSettings, options);
+      const pendingSettings = googleSearchLocalPreflightPendingSettings || cachedSettings;
+      const pendingOptions = googleSearchLocalPreflightPendingOptions || options;
+      googleSearchLocalPreflightPendingSettings = null;
+      googleSearchLocalPreflightPendingOptions = null;
+      applyGoogleSearchLightModeProtection(pendingSettings, pendingOptions);
     });
   };
 
@@ -1791,7 +2244,17 @@ async function requestCurrentSitePolicy() {
     clearSearchResultProtection();
     return;
   }
-  if (isGoogleImageSearchPage()) {
+  if (isGoogleSearchPage()) {
+    removeSitePolicyOverlay();
+    if (isGoogleImageSearchPage() || !isSearchResultProtectionEnabled(settings)) {
+      clearSearchResultProtection();
+    } else {
+      scheduleSearchResultProtection(settings);
+    }
+    return;
+  }
+
+  if (isGoogleImageSearchPage() || !isSearchResultProtectionEnabled(settings)) {
     clearSearchResultProtection();
   } else {
     scheduleSearchResultProtection(settings);
@@ -1835,6 +2298,2664 @@ async function requestCurrentSitePolicy() {
   }
 }
 
+const MEDIA_SAFETY_CANDIDATE_SELECTOR = [
+  "img",
+  "picture",
+  "video",
+  "[role='img'][aria-label]",
+  "[style*='background-image']"
+].join(", ");
+const MEDIA_SAFETY_LINKED_MEDIA_SELECTOR = [
+  "a[href] img",
+  "a[href] picture",
+  "a[href] video",
+  "a[href] [role='img'][aria-label]",
+  "a[href][style*='background-image']",
+  "a[href] [style*='background-image']"
+].join(", ");
+const MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR = [
+  "a[href]",
+  "article",
+  "figure",
+  "li",
+  "[role='listitem']",
+  "div",
+  "section"
+].join(", ");
+const MEDIA_SAFETY_EXPLICIT_ADULT_PATTERN =
+  /(?:19\s*금|19\s*세|19\s*등급|성인\s*(?:물|전용|인증|만화|영상|방송|사이트|콘텐츠)|야동|포르노|porn|porno|adult\s*(?:content|video|site|only|comic|animation)|nsfw|섹스|sex(?:ual)?|후방\s*주의|무삭제|AV\s*(?:추천|배우|영상)?)/i;
+const MEDIA_SAFETY_SUGGESTIVE_ADULT_PATTERN =
+  /(?:sexy|노출|가슴|비키니|란제리|속옷|은밀한)/i;
+const MEDIA_SAFETY_BENIGN_ADULT_CONTEXT_PATTERN =
+  /(?:성인\s*(?:adhd|병|심리|정신|발달|건강|의학|의료|질환|자가\s*진단|검사|테스트|상담)|(?:adhd|심리|정신\s*건강|자가\s*진단|인지\s*검사|정신\s*질환|성인병))/i;
+const MEDIA_SAFETY_GAMBLING_PATTERN =
+  /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|bet(?:ting)?|casino|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|롤링\s*\d|배팅\s*보너스)/i;
+const MEDIA_SAFETY_RISK_DOMAIN_PATTERN =
+  /(?:juso(?:guide|why)|casino|sportsbook|toto|bet365|porn|xvideo|xnxx|baccarat|slot)/i;
+const MEDIA_SAFETY_LINK_GUIDE_PATTERN =
+  /(?:주소\s*(?:모음|안내|가이드|변경|바로가기)?|링크\s*(?:모음|사이트|주소)?|토렌트|웹툰|성인\s*사이트|먹튀\s*(?:검증|사이트)?)/i;
+const MEDIA_SAFETY_THUMBNAIL_ADULT_PATTERN =
+  /(?:19\s*금|19\s*세|19\s*등급|성인\s*(?:물|전용|인증|만화|영상|방송|사이트|콘텐츠)|야동|포르노|(?:^|[^a-z])(?:porn|porno|nsfw|sex(?:ual)?|nude|av)(?:\s*(?:추천|배우|영상))?(?:$|[^a-z])|섹스|노출|후방\s*주의|무삭제)/i;
+const MEDIA_SAFETY_THUMBNAIL_GAMBLING_PATTERN =
+  /(?:카지노|도박|토토|스포츠\s*토토|바카라|슬롯|베팅|(?:^|[^a-z])bet(?:ting)?(?:$|[^a-z])|(?:^|[^a-z])casino(?:$|[^a-z])|sportsbook|가입\s*코드|가입\s*첫\s*충|첫\s*충|페이백|콤프|먹튀|보증\s*업체|고액\s*환전|무제재|배팅\s*보너스)/i;
+const MEDIA_SAFETY_THUMBNAIL_RISK_DOMAIN_PATTERN =
+  /(?:juso(?:guide|why)|(?:^|[.\-/])(?:casino|sportsbook|toto|bet365|porn|xvideo|xnxx|baccarat|slot)(?:[.\-/]|$))/i;
+
+function isMediaSafetyEnabled(settings = cachedSettings) {
+  return (
+    settings?.enabled !== false &&
+    normalizeSensitivity(settings?.sensitivity) > 0 &&
+    settings?.mediaSafetyEnabled === true
+  );
+}
+
+function resetMediaSafetySchedulerStats() {
+  MEDIA_SAFETY_SCHEDULER_STATS.scanRequestCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.coalescedScanRequestCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.mediaLoadEventCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathSeedCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathCandidateCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathActionCount = 0;
+}
+
+function consumeMediaSafetySchedulerStats() {
+  const snapshot = {
+    mediaSafetyScanRequestCount: MEDIA_SAFETY_SCHEDULER_STATS.scanRequestCount,
+    mediaSafetyCoalescedScanRequestCount: MEDIA_SAFETY_SCHEDULER_STATS.coalescedScanRequestCount,
+    mediaSafetyMediaLoadEventCount: MEDIA_SAFETY_SCHEDULER_STATS.mediaLoadEventCount,
+    mediaSafetyMutationBatchCount: MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount,
+    mediaSafetyMutationAddedNodeCount: MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount,
+    mediaSafetyPotentialMutationBatchCount: MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount,
+    mediaSafetyFastPathSeedCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathSeedCount,
+    mediaSafetyFastPathRequestCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount,
+    mediaSafetyFastPathRunCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount,
+    mediaSafetyFastPathCandidateCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathCandidateCount,
+    mediaSafetyFastPathActionCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathActionCount
+  };
+  resetMediaSafetySchedulerStats();
+  return snapshot;
+}
+
+function recordMediaSafetyMutationStats(mutationList, hasPotentialMediaMutation) {
+  if (!Array.isArray(mutationList) || mutationList.length === 0) {
+    return;
+  }
+  MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount += 1;
+  if (hasPotentialMediaMutation) {
+    MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount += 1;
+    invalidateMediaSafetyPageContext();
+  }
+  let addedNodeCount = 0;
+  for (const mutation of mutationList) {
+    addedNodeCount += Number(mutation?.addedNodes?.length || 0);
+  }
+  MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount += addedNodeCount;
+}
+
+function invalidateMediaSafetyPageContext() {
+  mediaSafetyPageContextGeneration += 1;
+  mediaSafetyPageContextCache = null;
+}
+
+function getCachedMediaSafetyPageContext(profile, buildContext) {
+  const href = String(location.href || "");
+  const now = performance.now();
+  const cached = mediaSafetyPageContextCache;
+  if (
+    cached &&
+    cached.profile === profile &&
+    cached.href === href &&
+    cached.generation === mediaSafetyPageContextGeneration &&
+    now - cached.createdAt <= MEDIA_SAFETY_PAGE_CONTEXT_CACHE_TTL_MS
+  ) {
+    return { ...cached.context, cacheHit: true };
+  }
+
+  const context = buildContext();
+  mediaSafetyPageContextCache = {
+    profile,
+    href,
+    generation: mediaSafetyPageContextGeneration,
+    createdAt: now,
+    context
+  };
+  return { ...context, cacheHit: false };
+}
+
+function isLowPriorityMediaSafetyScanReason(reason) {
+  return [
+    "media-load-settle",
+    "mutation-settle",
+    "visibility",
+    "strict-settle"
+  ].includes(String(reason || ""));
+}
+
+function scheduleMediaSafetyScanForActiveProfile(settings = cachedSettings, options = {}) {
+  const activeSettings = settings || cachedSettings || {};
+  if (!isMediaSafetyEnabled(activeSettings) || shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    clearMediaSafetyProtectionIfNeeded();
+    return;
+  }
+  scheduleMediaSafetyScan(activeSettings, options);
+}
+
+function hasHighConfidenceMediaSafetyStartupContext(profile = getMediaSafetyProfile()) {
+  if (shouldSkipMediaSafetyProfile(profile)) {
+    return false;
+  }
+  const host = normalizeDomainForPolicy(location.hostname || "");
+  if (MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host)) {
+    return true;
+  }
+  if (isThumbnailMediaSafetySurface(profile)) {
+    return hasHighConfidenceMediaSafetyQueryContext(profile);
+  }
+  return false;
+}
+
+function clearMediaSafetyStartupGate() {
+  if (document?.documentElement) {
+    document.documentElement.removeAttribute("data-chungmaru-media-startup-gate");
+  }
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+    mediaSafetyStartupGateTimerId = null;
+  }
+}
+
+function maybeEnableMediaSafetyStartupGate(settings = cachedSettings) {
+  if (!document?.documentElement || !isMediaSafetyEnabled(settings)) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+  if (settings?.mediaSafetyStartupGateEnabled !== true) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+  if (!hasHighConfidenceMediaSafetyStartupContext()) {
+    clearMediaSafetyStartupGate();
+    return false;
+  }
+
+  document.documentElement.setAttribute("data-chungmaru-media-startup-gate", "true");
+  if (mediaSafetyStartupGateTimerId) {
+    window.clearTimeout(mediaSafetyStartupGateTimerId);
+  }
+  mediaSafetyStartupGateTimerId = window.setTimeout(() => {
+    mediaSafetyStartupGateTimerId = null;
+    clearMediaSafetyStartupGate();
+  }, MEDIA_SAFETY_STARTUP_GATE_TTL_MS);
+  return true;
+}
+
+function getMediaSafetyProfile() {
+  if (isGoogleImageSearchPage()) {
+    return "google-images";
+  }
+  if (isGoogleTextSearchAnalysisPage()) {
+    return "google-text";
+  }
+  if (isYouTubePage()) {
+    return "youtube";
+  }
+  return "generic";
+}
+
+function isMediaRectVisible(rect) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  if (rect.width < MEDIA_SAFETY_MIN_DIMENSION_PX && rect.height < MEDIA_SAFETY_MIN_DIMENSION_PX) {
+    return false;
+  }
+  if (rect.width * rect.height < MEDIA_SAFETY_MIN_AREA_PX) {
+    return false;
+  }
+  return (
+    rect.bottom >= -MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.top <= window.innerHeight + MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.right >= -MEDIA_SAFETY_VIEWPORT_BUFFER_PX &&
+    rect.left <= window.innerWidth + MEDIA_SAFETY_VIEWPORT_BUFFER_PX
+  );
+}
+
+function isMediaSafetyAlreadyProtectedElement(element) {
+  return Boolean(
+    element instanceof Element &&
+      element.closest("[data-chungmaru-media-hidden='true'], [data-chungmaru-media-summary='true']")
+  );
+}
+
+function getMediaSourceUrl(element) {
+  if (element instanceof HTMLImageElement) {
+    return String(element.currentSrc || element.src || element.getAttribute("src") || "");
+  }
+  if (typeof HTMLPictureElement !== "undefined" && element instanceof HTMLPictureElement) {
+    const image = element.querySelector("img");
+    if (image instanceof HTMLImageElement) {
+      return String(image.currentSrc || image.src || image.getAttribute("src") || "");
+    }
+    const source = element.querySelector("source[srcset]");
+    const srcset = String(source?.getAttribute?.("srcset") || "");
+    return srcset.split(",")[0]?.trim().split(/\s+/)[0] || "";
+  }
+  if (element instanceof HTMLVideoElement) {
+    const source = element.querySelector("source[src]");
+    return String(
+      element.currentSrc ||
+      element.src ||
+      element.getAttribute("src") ||
+      element.poster ||
+      element.getAttribute("poster") ||
+      source?.getAttribute?.("src") ||
+      ""
+    );
+  }
+  if (element instanceof Element) {
+    return getElementBackgroundImageUrl(element);
+  }
+  return "";
+}
+
+function extractBackgroundImageUrl(value) {
+  const raw = String(value || "");
+  if (!raw || raw === "none") {
+    return "";
+  }
+  const match = raw.match(/url\((['"]?)(.*?)\1\)/i);
+  return match?.[2] ? String(match[2]) : "";
+}
+
+function getElementBackgroundImageUrl(element) {
+  if (!(element instanceof Element) || ["HTML", "BODY"].includes(element.tagName)) {
+    return "";
+  }
+  const inline = String(element.getAttribute("style") || "");
+  const inlineUrl = extractBackgroundImageUrl(inline);
+  if (inlineUrl) {
+    return inlineUrl;
+  }
+  try {
+    return extractBackgroundImageUrl(window.getComputedStyle(element).backgroundImage || "");
+  } catch {
+    return "";
+  }
+}
+
+function hasInlineMediaSafetyBackgroundImage(element) {
+  if (!(element instanceof Element)) {
+    return false;
+  }
+  return Boolean(extractBackgroundImageUrl(element.getAttribute("style") || ""));
+}
+
+function hasMediaSafetyBackgroundImage(element) {
+  return Boolean(getElementBackgroundImageUrl(element));
+}
+
+function compactRuntimeUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^data:image\//i.test(raw)) {
+    return "data:image";
+  }
+  try {
+    const parsed = new URL(raw, location.href);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return "";
+    }
+    return `${parsed.origin}${parsed.pathname}`.slice(0, 180);
+  } catch {
+    return raw.slice(0, 120);
+  }
+}
+
+function getBoundedElementText(element, limit = MEDIA_SAFETY_CONTEXT_TEXT_LIMIT) {
+  if (!(element instanceof Element)) {
+    return "";
+  }
+  return normalizeText(
+    [
+      element.getAttribute("aria-label"),
+      element.getAttribute("title"),
+      element.getAttribute("alt"),
+      element instanceof HTMLImageElement ? element.alt : "",
+      element.textContent
+    ].filter(Boolean).join(" ")
+  ).slice(0, limit);
+}
+
+function getSearchQueryContext() {
+  try {
+    const params = new URLSearchParams(location.search || "");
+    return normalizeText([
+      params.get("q"),
+      params.get("search_query"),
+      document.title
+    ].filter(Boolean).join(" "));
+  } catch {
+    return normalizeText(document.title || "");
+  }
+}
+
+function getMetaContent(name) {
+  try {
+    return document.querySelector(`meta[name='${name}']`)?.getAttribute?.("content") || "";
+  } catch {
+    return "";
+  }
+}
+
+function getBoundedPageText(limit = MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT) {
+  const body = document.body;
+  if (!body || typeof document.createTreeWalker !== "function") {
+    return "";
+  }
+  const chunks = [];
+  let totalLength = 0;
+  let visited = 0;
+  const maxLength = Math.max(0, limit * 2);
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  while (visited < MEDIA_SAFETY_PAGE_TEXT_NODE_LIMIT && totalLength < maxLength) {
+    const node = walker.nextNode();
+    if (!node) {
+      break;
+    }
+    const parent = node.parentElement;
+    if (!parent || SKIP_TAGS.has(parent.tagName) || isShieldTextManagedElement(parent)) {
+      continue;
+    }
+    const value = normalizeText(node.nodeValue || "");
+    if (!value) {
+      continue;
+    }
+    visited += 1;
+    chunks.push(value);
+    totalLength += value.length;
+  }
+  return chunks.join(" ").slice(0, maxLength);
+}
+
+function hasRiskyMediaLinkSignal(value) {
+  const text = normalizeText(String(value || ""));
+  if (!text) {
+    return false;
+  }
+  return (
+    MEDIA_SAFETY_GAMBLING_PATTERN.test(text) ||
+    hasExplicitAdultMediaSignal(text)
+  );
+}
+
+function hasExplicitAdultMediaSignal(value) {
+  const text = normalizeText(String(value || ""));
+  return Boolean(text) &&
+    !MEDIA_SAFETY_BENIGN_ADULT_CONTEXT_PATTERN.test(text) &&
+    MEDIA_SAFETY_EXPLICIT_ADULT_PATTERN.test(text);
+}
+
+function hasSuggestiveAdultMediaSignal(value) {
+  const text = normalizeText(String(value || ""));
+  return Boolean(text) &&
+    !MEDIA_SAFETY_BENIGN_ADULT_CONTEXT_PATTERN.test(text) &&
+    MEDIA_SAFETY_SUGGESTIVE_ADULT_PATTERN.test(text);
+}
+
+function hasRiskyThumbnailMediaSignal(value) {
+  const text = normalizeText(String(value || ""));
+  if (!text) {
+    return false;
+  }
+  return (
+    MEDIA_SAFETY_THUMBNAIL_GAMBLING_PATTERN.test(text) ||
+    MEDIA_SAFETY_THUMBNAIL_ADULT_PATTERN.test(text) ||
+    MEDIA_SAFETY_THUMBNAIL_RISK_DOMAIN_PATTERN.test(text)
+  );
+}
+
+function hasMediaSafetyRiskDomainSignal(...values) {
+  for (const value of values) {
+    const raw = String(value || "").trim();
+    if (!raw) {
+      continue;
+    }
+    const domain = normalizeDomainForPolicy(domainFromHref(raw) || raw);
+    if (domain && MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(domain)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isThumbnailMediaSafetySurface(profile = getMediaSafetyProfile()) {
+  return profile === "google-images" || profile === "youtube";
+}
+
+function hasHighConfidenceMediaSafetyQueryContext(profile = getMediaSafetyProfile()) {
+  if (!isThumbnailMediaSafetySurface(profile)) {
+    return false;
+  }
+  return hasRiskyThumbnailMediaSignal(getSearchQueryContext());
+}
+
+function getLinkedMediaDenseGridInfo(pageHasRiskContext, profile = getMediaSafetyProfile()) {
+  const seen = new Set();
+  let visibleLinkedCount = 0;
+  let riskyLinkedCount = 0;
+  const useConservativeThumbnailSignal =
+    isThumbnailMediaSafetySurface(profile) &&
+    !pageHasRiskContext &&
+    !hasHighConfidenceMediaSafetyQueryContext(profile);
+  const nodes = Array.from(document.querySelectorAll(MEDIA_SAFETY_LINKED_MEDIA_SELECTOR)).slice(
+    0,
+    MEDIA_SAFETY_DENSE_LINK_SCAN_NODE_LIMIT
+  );
+
+  for (const node of nodes) {
+    if (
+      !(node instanceof Element) ||
+      seen.has(node) ||
+      isShieldTextManagedElement(node) ||
+      isMediaSafetyAlreadyProtectedElement(node)
+    ) {
+      continue;
+    }
+    seen.add(node);
+    if (!isMediaRectVisible(node.getBoundingClientRect())) {
+      continue;
+    }
+
+    visibleLinkedCount += 1;
+    const link = node.closest("a[href]");
+    const sourceUrl = getMediaSourceUrl(node);
+    const linkHref = link instanceof HTMLAnchorElement ? link.href : "";
+    const domainSignal = hasMediaSafetyRiskDomainSignal(linkHref, sourceUrl);
+    const signalText = useConservativeThumbnailSignal
+      ? [
+          getBoundedElementText(link || node, 180),
+          domainFromHref(linkHref || sourceUrl)
+        ].filter(Boolean).join(" ")
+      : [
+          linkHref,
+          sourceUrl,
+          domainFromHref(linkHref || sourceUrl),
+          getBoundedElementText(link || node, 180)
+        ].filter(Boolean).join(" ");
+    const hasRiskSignal = useConservativeThumbnailSignal
+      ? hasRiskyThumbnailMediaSignal(signalText)
+      : hasRiskyMediaLinkSignal(signalText) || domainSignal;
+    if (pageHasRiskContext || hasRiskSignal) {
+      riskyLinkedCount += 1;
+    }
+    if (riskyLinkedCount >= MEDIA_SAFETY_DENSE_LINK_MIN_COUNT) {
+      break;
+    }
+  }
+
+  return {
+    visibleLinkedCount,
+    riskyLinkedCount,
+    isDenseRiskGrid: riskyLinkedCount >= MEDIA_SAFETY_DENSE_LINK_MIN_COUNT
+  };
+}
+
+function getMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
+  return getCachedMediaSafetyPageContext(profile, () => buildMediaSafetyPageContext(profile));
+}
+
+function collectBoundedMediaSafetyLinkContext(linkLimit = 80, nodeVisitLimit = 640) {
+  const body = document.body;
+  if (!body || !document.createTreeWalker) {
+    return { linkText: "", hasRiskLinkDomain: false };
+  }
+
+  const chunks = [];
+  let hasRiskLinkDomain = false;
+  let linkCount = 0;
+  let visited = 0;
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_ELEMENT);
+  while (linkCount < linkLimit && visited < nodeVisitLimit) {
+    const node = walker.nextNode();
+    if (!(node instanceof Element)) {
+      break;
+    }
+    visited += 1;
+    if (!(node instanceof HTMLAnchorElement) || !node.href) {
+      continue;
+    }
+    linkCount += 1;
+    chunks.push([
+      node.textContent,
+      node.getAttribute("title"),
+      node.getAttribute("aria-label"),
+      node.href
+    ].filter(Boolean).join(" "));
+    if (!hasRiskLinkDomain && hasMediaSafetyRiskDomainSignal(node.href)) {
+      hasRiskLinkDomain = true;
+    }
+  }
+  return {
+    linkText: chunks.join(" "),
+    hasRiskLinkDomain
+  };
+}
+
+function buildMediaSafetyPageContext(profile) {
+  if (profile === "google-text") {
+    return {
+      strictMediaMode: false,
+      category: "media",
+      reason: "google text search media safety skipped"
+    };
+  }
+
+  const host = normalizeDomainForPolicy(location.hostname || "");
+  const hasRiskHost = MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host);
+  const hasRiskQuery = hasHighConfidenceMediaSafetyQueryContext(profile);
+  const { linkText, hasRiskLinkDomain } = collectBoundedMediaSafetyLinkContext();
+  const pageText = normalizeText([
+    isThumbnailMediaSafetySurface(profile) ? getSearchQueryContext() : "",
+    getMetaContent("description"),
+    getBoundedPageText(),
+    linkText,
+    location.hostname || ""
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_PAGE_CONTEXT_TEXT_LIMIT);
+  const hasAdult = hasExplicitAdultMediaSignal(pageText);
+  const hasGambling = MEDIA_SAFETY_GAMBLING_PATTERN.test(pageText) || hasRiskHost || hasRiskLinkDomain;
+  const hasLinkGuide = MEDIA_SAFETY_LINK_GUIDE_PATTERN.test(pageText);
+  const pageHasRiskContext = hasRiskHost || (hasGambling && hasLinkGuide) || (hasAdult && hasGambling && hasLinkGuide);
+  const denseGrid = getLinkedMediaDenseGridInfo(pageHasRiskContext || hasRiskQuery, profile);
+  const isHighConfidenceHub =
+    pageHasRiskContext ||
+    hasRiskQuery ||
+    denseGrid.isDenseRiskGrid;
+  return {
+    strictMediaMode: isHighConfidenceHub,
+    category: hasAdult && hasGambling ? "mixed" : hasAdult ? "adult" : "gambling",
+    reason: denseGrid.isDenseRiskGrid
+      ? "dense risky media link grid"
+      : hasLinkGuide
+        ? "page risk link context"
+        : "page risk context",
+    mode: denseGrid.isDenseRiskGrid ? "dense-risk-grid" : ""
+  };
+}
+
+function getFastMediaSafetyPageContext(profile = getMediaSafetyProfile()) {
+  if (profile === "google-text") {
+    return {
+      strictMediaMode: false,
+      category: "media",
+      reason: "google text search media safety skipped",
+      mode: "targeted"
+    };
+  }
+
+  const host = normalizeDomainForPolicy(location.hostname || "");
+  if (MEDIA_SAFETY_RISK_DOMAIN_PATTERN.test(host)) {
+    return {
+      strictMediaMode: true,
+      category: "gambling",
+      reason: "risk domain fast path",
+      mode: "targeted-risk-domain"
+    };
+  }
+
+  if (isThumbnailMediaSafetySurface(profile) && hasHighConfidenceMediaSafetyQueryContext(profile)) {
+    return {
+      strictMediaMode: true,
+      category: "media",
+      reason: "risky thumbnail query fast path",
+      mode: "targeted-thumbnail-query"
+    };
+  }
+
+  return {
+    strictMediaMode: false,
+    category: "media",
+    reason: "targeted media mutation",
+    mode: "targeted"
+  };
+}
+
+function normalizeMediaSafetyInterventionMode(value) {
+  return ["auto", "placeholder", "remove"].includes(value) ? value : "auto";
+}
+
+function rectArea(rect) {
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return 0;
+  }
+  return rect.width * rect.height;
+}
+
+function rectIntersectionArea(left, right) {
+  if (!left || !right) {
+    return 0;
+  }
+  const width = Math.max(0, Math.min(left.right, right.right) - Math.max(left.left, right.left));
+  const height = Math.max(0, Math.min(left.bottom, right.bottom) - Math.max(left.top, right.top));
+  return width * height;
+}
+
+function isLikelyFloatingMediaOverlay(element, mediaRect) {
+  if (!(element instanceof Element) || !mediaRect || ["HTML", "BODY"].includes(element.tagName)) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  if (rectArea(rect) > viewportArea * MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO) {
+    return false;
+  }
+  const mediaArea = Math.max(1, rectArea(mediaRect));
+  const overlapRatio = rectIntersectionArea(rect, mediaRect) / mediaArea;
+  if (overlapRatio < 0.72) {
+    return false;
+  }
+  const style = window.getComputedStyle(element);
+  const zIndex = Number.parseInt(style.zIndex || "0", 10);
+  const idClass = `${element.id || ""} ${element.className || ""}`;
+  const nameLooksOverlay = /(?:modal|popup|pop|layer|dialog|toast|floating|ad)/i.test(idClass);
+  if (style.position === "fixed") {
+    return true;
+  }
+  return style.position === "absolute" && (nameLooksOverlay || zIndex >= MEDIA_SAFETY_OVERLAY_Z_INDEX);
+}
+
+function getFloatingMediaOverlayContainer(element, mediaRect) {
+  let current = element instanceof Element ? element.parentElement : null;
+  let best = null;
+  let depth = 0;
+  while (current && depth < 6) {
+    if (isLikelyFloatingMediaOverlay(current, mediaRect)) {
+      best = current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return best;
+}
+
+function isReasonableMediaAncestor(candidate, mediaRect) {
+  if (!(candidate instanceof Element) || !mediaRect) {
+    return false;
+  }
+  if (["HTML", "BODY"].includes(candidate.tagName)) {
+    return false;
+  }
+  const rect = candidate.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+  const maxWidth = Math.max(mediaRect.width + 180, mediaRect.width * 2.4);
+  const maxHeight = Math.max(mediaRect.height + 180, mediaRect.height * 2.8);
+  const maxArea = Math.max(mediaRect.width * mediaRect.height * 6, 12000);
+  return rect.width <= maxWidth && rect.height <= maxHeight && rect.width * rect.height <= maxArea;
+}
+
+function getMediaSafetyContainer(element, mediaRect) {
+  if (!(element instanceof Element)) {
+    return null;
+  }
+  const floatingOverlay = getFloatingMediaOverlayContainer(element, mediaRect);
+  if (floatingOverlay) {
+    return floatingOverlay;
+  }
+  const selectors = isGoogleImageSearchPage()
+    ? ["[data-ri]", "[data-ved]", "[role='listitem']", "a[href]", "figure", "article", "li"]
+    : isYouTubePage()
+      ? ["ytd-thumbnail", "ytd-rich-item-renderer", "ytd-video-renderer", "ytd-compact-video-renderer", "a[href]"]
+      : ["a[href]", "picture", "figure", "article", "li", "[role='listitem']"];
+
+  for (const selector of selectors) {
+    const ancestor = element.closest(selector);
+    if (isReasonableMediaAncestor(ancestor, mediaRect)) {
+      return ancestor;
+    }
+  }
+
+  let current = element.parentElement;
+  let depth = 0;
+  while (current && depth < 3) {
+    if (isReasonableMediaAncestor(current, mediaRect)) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+
+  return element;
+}
+
+function getMediaSafetyTarget(element, container, mediaRect) {
+  if (
+    isReasonableMediaAncestor(container, mediaRect) ||
+    isLikelyFloatingMediaOverlay(container, mediaRect)
+  ) {
+    return container;
+  }
+  return element instanceof Element ? element : null;
+}
+
+function buildMediaSafetyCandidate(element, profile) {
+  if (!(element instanceof Element)) {
+    return null;
+  }
+  if (!element.isConnected || isShieldTextManagedElement(element) || isMediaSafetyAlreadyProtectedElement(element)) {
+    return null;
+  }
+
+  const mediaRect = element.getBoundingClientRect();
+  if (!isMediaRectVisible(mediaRect)) {
+    return null;
+  }
+
+  const sourceUrl = getMediaSourceUrl(element);
+  const link = element.closest("a[href]");
+  const linkUrl = link instanceof HTMLAnchorElement ? extractSearchResultTargetUrl(link) || link.href : "";
+  const domain = domainFromHref(linkUrl || sourceUrl);
+  const container = getMediaSafetyContainer(element, mediaRect);
+  const target = getMediaSafetyTarget(element, container, mediaRect);
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  if (isShieldTextManagedElement(target) || isMediaSafetyAlreadyProtectedElement(target)) {
+    return null;
+  }
+
+  if (!MEDIA_SAFETY_FIRST_SEEN_AT.has(target)) {
+    MEDIA_SAFETY_FIRST_SEEN_AT.set(target, performance.now());
+  }
+
+  const visibleText = normalizeText([
+    getBoundedElementText(element),
+    container && container !== element ? getBoundedElementText(container) : "",
+    isThumbnailMediaSafetySurface(profile) ? getSearchQueryContext() : ""
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+  const urlText = normalizeText([
+    domain,
+    compactRuntimeUrl(linkUrl || sourceUrl)
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+  const contextText = normalizeText([
+    visibleText,
+    urlText
+  ].filter(Boolean).join(" ")).slice(0, MEDIA_SAFETY_CONTEXT_TEXT_LIMIT);
+
+  return {
+    element,
+    container,
+    target,
+    profile,
+    contextText,
+    visibleText,
+    urlText,
+    sourceUrl,
+    linkUrl,
+    domain,
+    mediaAreaPx: Math.round(rectArea(mediaRect)),
+    targetAreaPx: Math.round(rectArea(target.getBoundingClientRect())),
+    isFloatingOverlay: isLikelyFloatingMediaOverlay(target, mediaRect),
+    firstSeenAt: MEDIA_SAFETY_FIRST_SEEN_AT.get(target) || performance.now()
+  };
+}
+
+function pushMediaSafetyNode(nodes, seen, node) {
+  if (
+    !(node instanceof Element) ||
+    seen.has(node) ||
+    isShieldTextManagedElement(node) ||
+    isMediaSafetyAlreadyProtectedElement(node)
+  ) {
+    return;
+  }
+  seen.add(node);
+  nodes.push(node);
+}
+
+function pushMediaSafetyNodesFromElement(nodes, seen, element, descendantLimit = 4) {
+  if (
+    !(element instanceof Element) ||
+    element === document.body ||
+    element === document.documentElement ||
+    isShieldTextManagedElement(element) ||
+    isMediaSafetyAlreadyProtectedElement(element)
+  ) {
+    return;
+  }
+
+  if (element.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    pushMediaSafetyNode(nodes, seen, element);
+  }
+
+  const backgroundElement = getClosestMediaSafetyBackgroundElement(element);
+  if (backgroundElement instanceof Element) {
+    pushMediaSafetyNode(nodes, seen, backgroundElement);
+  }
+
+  const closestMedia = element.closest(MEDIA_SAFETY_CANDIDATE_SELECTOR);
+  if (closestMedia instanceof Element) {
+    pushMediaSafetyNode(nodes, seen, closestMedia);
+  }
+
+  const container = element.closest("a[href], picture, figure, article, li, [role='listitem']");
+  if (!(container instanceof Element) || container === document.body || container === document.documentElement) {
+    return;
+  }
+  if (container.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    pushMediaSafetyNode(nodes, seen, container);
+  }
+  if (hasMediaSafetyBackgroundImage(container)) {
+    pushMediaSafetyNode(nodes, seen, container);
+  }
+
+  for (const child of Array.from(container.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(
+    0,
+    descendantLimit
+  )) {
+    pushMediaSafetyNode(nodes, seen, child);
+  }
+  for (const child of Array.from(container.querySelectorAll(MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR)).slice(
+    0,
+    descendantLimit
+  )) {
+    if (hasMediaSafetyBackgroundImage(child)) {
+      pushMediaSafetyNode(nodes, seen, child);
+    }
+  }
+}
+
+function getClosestMediaSafetyBackgroundElement(element, maxDepth = 4) {
+  let current = element instanceof Element ? element : null;
+  let depth = 0;
+  while (current && depth <= maxDepth) {
+    if (["HTML", "BODY"].includes(current.tagName)) {
+      return null;
+    }
+    if (
+      hasMediaSafetyBackgroundImage(current) &&
+      isMediaRectVisible(current.getBoundingClientRect())
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return null;
+}
+
+function isLowCoreMediaSafetyDevice() {
+  return Math.max(1, Number(navigator.hardwareConcurrency || 1)) <= NSFW_CLASSIFIER_LOW_CORE_THRESHOLD;
+}
+
+function getMediaSafetyViewportSampleBudget() {
+  if (isLowCoreMediaSafetyDevice()) {
+    return { rows: 3, columns: 3, stackDepth: 6 };
+  }
+  return {
+    rows: MEDIA_SAFETY_VIEWPORT_SAMPLE_ROWS,
+    columns: MEDIA_SAFETY_VIEWPORT_SAMPLE_COLUMNS,
+    stackDepth: 8
+  };
+}
+
+function collectBoundedElementDescendants(root, limit) {
+  if (!(root instanceof Element) || !document.createTreeWalker || limit <= 0) {
+    return [];
+  }
+  const elements = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  while (elements.length < limit) {
+    const node = walker.nextNode();
+    if (!(node instanceof Element)) {
+      break;
+    }
+    elements.push(node);
+  }
+  return elements;
+}
+
+function collectViewportMediaSeedNodes(nodes, seen) {
+  const width = Math.max(0, Number(window.innerWidth || 0));
+  const height = Math.max(0, Number(window.innerHeight || 0));
+  if (!width || !height || typeof document.elementsFromPoint !== "function") {
+    return;
+  }
+
+  const { rows, columns, stackDepth } = getMediaSafetyViewportSampleBudget();
+  for (let row = 0; row < rows; row += 1) {
+    const y = Math.min(height - 1, Math.max(0, ((row + 0.5) * height) / rows));
+    for (let column = 0; column < columns; column += 1) {
+      const x = Math.min(width - 1, Math.max(0, ((column + 0.5) * width) / columns));
+      for (const element of document.elementsFromPoint(x, y).slice(0, stackDepth)) {
+        pushMediaSafetyNodesFromElement(nodes, seen, element);
+      }
+    }
+  }
+}
+
+function collectSidebarBackgroundMediaNodes(nodes, seen) {
+  const isLowCore = isLowCoreMediaSafetyDevice();
+  const rootLimit = isLowCore ? 2 : MEDIA_SAFETY_SIDEBAR_ROOT_LIMIT;
+  const descendantLimit = isLowCore ? 16 : MEDIA_SAFETY_SIDEBAR_BACKGROUND_NODE_LIMIT;
+  const roots = Array.from(document.querySelectorAll("aside, [role='complementary']"))
+    .slice(0, rootLimit);
+
+  for (const root of roots) {
+    if (!(root instanceof Element) || !isMediaRectVisible(root.getBoundingClientRect())) {
+      continue;
+    }
+    const candidates = [root, ...collectBoundedElementDescendants(root, descendantLimit)];
+    for (const candidate of candidates) {
+      if (
+        candidate instanceof Element &&
+        isMediaRectVisible(candidate.getBoundingClientRect()) &&
+        hasMediaSafetyBackgroundImage(candidate)
+      ) {
+        pushMediaSafetyNode(nodes, seen, candidate);
+      }
+    }
+  }
+}
+
+function getMediaSafetyCandidateNodes(pageContext = null) {
+  const nodes = [];
+  const seen = new Set();
+
+  collectViewportMediaSeedNodes(nodes, seen);
+  collectSidebarBackgroundMediaNodes(nodes, seen);
+
+  if (pageContext?.strictMediaMode === true || pageContext?.mode === "dense-risk-grid") {
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_LINKED_MEDIA_SELECTOR)).slice(
+      0,
+      MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT
+    )) {
+      pushMediaSafetyNode(nodes, seen, node);
+    }
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_BACKGROUND_SCAN_SELECTOR)).slice(
+      0,
+      MEDIA_SAFETY_LINKED_MEDIA_NODE_LIMIT
+    )) {
+      if (hasMediaSafetyBackgroundImage(node)) {
+        pushMediaSafetyNode(nodes, seen, node);
+      }
+    }
+    for (const node of Array.from(document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)).slice(
+      0,
+      MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT
+    )) {
+      pushMediaSafetyNode(nodes, seen, node);
+    }
+  }
+
+  // Normal pages are driven by the visible viewport, mutation seeds, and media
+  // load events. Walking an arbitrary DOM prefix on every scroll penalizes
+  // infinite feeds while still missing images appended later in the document.
+  // Dense risk grids retain the broader scan above because their visible tiles
+  // often share one container and must be collapsed as a group.
+  return nodes;
+}
+
+function collectMediaSafetyCandidates(limit = MEDIA_SAFETY_CANDIDATE_LIMIT, pageContext = null) {
+  const profile = getMediaSafetyProfile();
+  const candidates = [];
+  const seenTargets = new Set();
+  const nodes = getMediaSafetyCandidateNodes(pageContext);
+
+  for (const node of nodes) {
+    const candidate = buildMediaSafetyCandidate(node, profile);
+    if (!candidate || seenTargets.has(candidate.target)) {
+      continue;
+    }
+    seenTargets.add(candidate.target);
+    candidates.push(candidate);
+    if (candidates.length >= limit) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function pushMediaSafetyNodesFromSeedNode(nodes, seen, seedNode, descendantLimit = 4) {
+  if (seedNode instanceof Text) {
+    pushMediaSafetyNodesFromElement(nodes, seen, seedNode.parentElement, descendantLimit);
+    return;
+  }
+  if (seedNode instanceof Element) {
+    pushMediaSafetyNodesFromElement(nodes, seen, seedNode, descendantLimit);
+    return;
+  }
+  if (seedNode instanceof DocumentFragment) {
+    for (const child of Array.from(seedNode.childNodes).slice(0, descendantLimit)) {
+      pushMediaSafetyNodesFromSeedNode(nodes, seen, child, descendantLimit);
+    }
+  }
+}
+
+function collectMediaSafetyCandidatesFromSeedNodes(
+  seedNodes,
+  limit = MEDIA_SAFETY_FAST_MUTATION_CANDIDATE_LIMIT
+) {
+  const profile = getMediaSafetyProfile();
+  const candidates = [];
+  const seenNodes = new Set();
+  const seenTargets = new Set();
+  const nodes = [];
+
+  for (const seedNode of seedNodes || []) {
+    if (nodes.length >= MEDIA_SAFETY_FAST_MUTATION_NODE_LIMIT) {
+      break;
+    }
+    pushMediaSafetyNodesFromSeedNode(nodes, seenNodes, seedNode, 6);
+  }
+
+  for (const node of nodes.slice(0, MEDIA_SAFETY_FAST_MUTATION_NODE_LIMIT)) {
+    const candidate = buildMediaSafetyCandidate(node, profile);
+    if (!candidate || seenTargets.has(candidate.target)) {
+      continue;
+    }
+    seenTargets.add(candidate.target);
+    candidates.push(candidate);
+    if (candidates.length >= limit) {
+      break;
+    }
+  }
+
+  return candidates;
+}
+
+function isStrictGenericMediaPage(pageContext, profile) {
+  return pageContext?.strictMediaMode === true && profile === "generic";
+}
+
+function shouldSkipMediaSafetyProfile(profile) {
+  return profile === "google-text";
+}
+
+function shouldSkipThumbnailSurfaceCandidate(candidate, pageContext = null) {
+  const profile = candidate?.profile || "";
+  if (!isThumbnailMediaSafetySurface(profile)) {
+    return false;
+  }
+  if (pageContext?.strictMediaMode === true || hasHighConfidenceMediaSafetyQueryContext(profile)) {
+    return false;
+  }
+
+  const domain = normalizeDomainForPolicy(candidate?.domain || domainFromHref(candidate?.linkUrl || candidate?.sourceUrl));
+  const conservativeHaystack = normalizeText([
+    candidate?.visibleText,
+    domain
+  ].filter(Boolean).join(" "));
+  return !hasRiskyThumbnailMediaSignal(conservativeHaystack);
+}
+
+function getMediaSafetyMatch(candidate, pageContext = null) {
+  if (
+    pageContext?.strictMediaMode &&
+    candidate?.profile === "generic" &&
+    !isKnownSafeMediaFixture(candidate)
+  ) {
+    return {
+      category: pageContext.category || "media",
+      reason: pageContext.reason || "page risk context",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
+    };
+  }
+
+  if (shouldSkipThumbnailSurfaceCandidate(candidate, pageContext)) {
+    return null;
+  }
+
+  const haystack = normalizeText([
+    candidate?.contextText,
+    candidate?.domain,
+    candidate?.linkUrl,
+    candidate?.sourceUrl
+  ].filter(Boolean).join(" "));
+  const hasRiskDomain = hasMediaSafetyRiskDomainSignal(
+    candidate?.domain,
+    candidate?.linkUrl,
+    candidate?.sourceUrl
+  );
+  if (!haystack) {
+    return null;
+  }
+
+  if (MEDIA_SAFETY_GAMBLING_PATTERN.test(haystack) || hasRiskDomain) {
+    return {
+      category: "gambling",
+      reason: "gambling keyword/domain",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
+    };
+  }
+
+  if (hasExplicitAdultMediaSignal(haystack)) {
+    return {
+      category: "adult",
+      reason: "explicit adult keyword/context",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
+    };
+  }
+
+  if (hasSuggestiveAdultMediaSignal(haystack) && hasRiskDomain) {
+    return {
+      category: "adult",
+      reason: "suggestive media on risk domain",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
+    };
+  }
+
+  if (pageContext?.strictMediaMode && !isKnownSafeMediaFixture(candidate)) {
+    return {
+      category: pageContext.category || "media",
+      reason: pageContext.reason || "page risk context",
+      intervention: candidate?.isFloatingOverlay ? "remove" : "placeholder"
+    };
+  }
+
+  return null;
+}
+
+function normalizeNsfwClassifierSource(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^data:image\//i.test(raw)) {
+    return raw.length <= NSFW_CLASSIFIER_MAX_DATA_URL_CHARS ? raw : "";
+  }
+  try {
+    const parsed = new URL(raw, location.href);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function getNsfwClassifierSource(candidate) {
+  const element = candidate?.element;
+  let sourceUrl = "";
+  if (element instanceof HTMLVideoElement) {
+    sourceUrl = String(element.poster || element.getAttribute("poster") || "");
+  } else if (typeof HTMLPictureElement !== "undefined" && element instanceof HTMLPictureElement) {
+    const image = element.querySelector("img");
+    sourceUrl = image instanceof HTMLImageElement
+      ? String(image.currentSrc || image.src || image.getAttribute("src") || "")
+      : "";
+  } else if (element instanceof HTMLImageElement) {
+    sourceUrl = String(element.currentSrc || element.src || element.getAttribute("src") || "");
+  } else if (element instanceof Element) {
+    sourceUrl = getElementBackgroundImageUrl(element);
+  }
+  return normalizeNsfwClassifierSource(sourceUrl);
+}
+
+function hasNsfwAdultContext(candidate, pageContext = null) {
+  const localContext = normalizeText([
+    candidate?.visibleText,
+    candidate?.urlText,
+    candidate?.contextText
+  ].filter(Boolean).join(" "));
+  if (hasExplicitAdultMediaSignal(localContext)) {
+    return true;
+  }
+  return (
+    pageContext?.strictMediaMode === true &&
+    ["adult", "mixed"].includes(String(pageContext?.category || ""))
+  );
+}
+
+function invalidateNsfwClassifierContext(options = {}) {
+  nsfwClassifierContextGeneration += 1;
+  NSFW_CLASSIFIER_PENDING_BY_SOURCE.clear();
+  nsfwClassifierElementState = new WeakMap();
+  if (options.resetWarmup === true) {
+    nsfwClassifierWarmupRequested = false;
+  }
+}
+
+function requestNsfwClassifierWarmup(settings = cachedSettings) {
+  if (nsfwClassifierWarmupRequested || !isMediaSafetyEnabled(settings)) {
+    return;
+  }
+  nsfwClassifierWarmupRequested = true;
+  const runWarmup = () => {
+    safeRuntimeSendMessage({ type: "WARMUP_NSFW_CLASSIFIER" })
+      .then((response) => {
+        if (!response?.ok && response?.status !== "disabled") {
+          throw new Error(response?.errorCode || response?.reason || "NSFW_MODEL_LOAD_FAILED");
+        }
+      })
+      .catch((error) => {
+        nsfwClassifierWarmupRequested = false;
+        emitRuntimeLogEvent({
+          type: "media-safety-classifier-error",
+          ok: false,
+          status: "warmup-failed",
+          source: "content-script",
+          errorCount: 1,
+          errorCode: String(error?.errorCode || error?.message || "NSFW_MODEL_LOAD_FAILED").slice(0, 80),
+          reason: "bundled NSFW classifier warmup failed"
+        });
+      });
+  };
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(runWarmup, { timeout: 1200 });
+  } else {
+    window.setTimeout(runWarmup, 0);
+  }
+}
+
+function shouldQueueNsfwClassifierCandidate(candidate, sourceUrl) {
+  const target = candidate?.target;
+  if (!(target instanceof Element) || !target.isConnected || !sourceUrl) {
+    return false;
+  }
+  const state = nsfwClassifierElementState.get(target);
+  if (!state || state.sourceUrl !== sourceUrl || state.generation !== nsfwClassifierContextGeneration) {
+    return true;
+  }
+  if (["queued", "in-flight", "blocked", "benign", "ambiguous"].includes(state.status)) {
+    return false;
+  }
+  return state.status !== "error" || Date.now() - Number(state.updatedAt || 0) >= NSFW_CLASSIFIER_RETRY_BACKOFF_MS;
+}
+
+function setNsfwClassifierElementState(target, sourceUrl, status, errorCode = "") {
+  if (!(target instanceof Element)) return;
+  nsfwClassifierElementState.set(target, {
+    sourceUrl,
+    status,
+    errorCode: String(errorCode || "").slice(0, 80),
+    generation: nsfwClassifierContextGeneration,
+    updatedAt: Date.now()
+  });
+}
+
+function isNsfwClassifierEntryCurrent(entry) {
+  const candidate = entry?.candidate;
+  const target = candidate?.target;
+  const element = candidate?.element;
+  if (
+    entry?.generation !== nsfwClassifierContextGeneration ||
+    entry?.pageHref !== String(location.href || "") ||
+    !isMediaSafetyEnabled(cachedSettings) ||
+    !(target instanceof Element) ||
+    !(element instanceof Element) ||
+    !target.isConnected ||
+    !element.isConnected ||
+    isMediaSafetyAlreadyProtectedElement(target)
+  ) {
+    return false;
+  }
+  if (!isMediaRectVisible(element.getBoundingClientRect())) {
+    return false;
+  }
+  return getNsfwClassifierSource(candidate) === entry.sourceUrl;
+}
+
+function markNsfwClassifierRecordError(record, errorCode) {
+  for (const entry of record?.entries || []) {
+    if (
+      entry?.generation === nsfwClassifierContextGeneration &&
+      entry?.pageHref === String(location.href || "") &&
+      entry?.candidate?.target instanceof Element
+    ) {
+      setNsfwClassifierElementState(entry.candidate.target, entry.sourceUrl, "error", errorCode);
+    }
+  }
+}
+
+function emitNsfwClassifierBatchLog(response, metrics) {
+  const event = {
+    type: "media-safety-classifier-batch",
+    ok: metrics.errorCount === 0,
+    status: metrics.errorCount > 0 ? "classified-with-errors" : "classified",
+    source: "content-script",
+    modelVersion: response?.modelVersion || "",
+    backend: response?.backend || "",
+    modelLoadMs: response?.modelLoadMs || 0,
+    warmupMs: response?.warmupMs || 0,
+    classifierCandidateCount: metrics.candidateCount,
+    cacheHitCount: response?.cacheHitCount || 0,
+    blockedCount: metrics.blockedCount,
+    benignCount: metrics.benignCount,
+    ambiguousCount: metrics.ambiguousCount,
+    errorCount: metrics.errorCount,
+    fetchMs: response?.fetchMs || 0,
+    decodeMs: response?.decodeMs || 0,
+    inferenceMs: response?.inferenceMs || 0,
+    queueWaitMs: metrics.queueWaitMs,
+    classifierDecisionMs: metrics.classifierDecisionMs,
+    domAddedToActionMs: metrics.domAddedToActionMs,
+    modelLoadCount: response?.modelLoadCount || 0,
+    tensorCount: response?.tensorCount || 0,
+    errorCode: metrics.errorCode || "",
+    reason: "visible media NSFW classifier batch"
+  };
+  emitRuntimeLogEvent(event);
+  if (metrics.errorCount > 0) {
+    emitRuntimeLogEvent({
+      ...event,
+      type: "media-safety-classifier-error",
+      ok: false,
+      status: "batch-error",
+      reason: "one or more NSFW classifier candidates failed"
+    });
+  }
+}
+
+function applyNsfwClassifierResponse(records, response, requestStartedAt) {
+  if (!response?.ok) {
+    const error = new Error(response?.reason || "NSFW classifier batch failed");
+    error.errorCode = response?.errorCode || "NSFW_CLASSIFIER_FAILED";
+    throw error;
+  }
+
+  const resultsByKey = new Map(
+    (Array.isArray(response.results) ? response.results : [])
+      .map((result) => [String(result?.candidateKey || ""), result])
+  );
+  const metrics = {
+    candidateCount: records.length,
+    blockedCount: 0,
+    benignCount: 0,
+    ambiguousCount: 0,
+    errorCount: 0,
+    errorCode: "",
+    queueWaitMs: Math.max(
+      Number(response.queueWaitMs || 0),
+      ...records.map((record) => requestStartedAt - Number(record.queuedAt || requestStartedAt))
+    ),
+    classifierDecisionMs: 0,
+    domAddedToActionMs: 0
+  };
+
+  suppressMutationFeedback(140);
+  for (const record of records) {
+    const result = resultsByKey.get(record.candidateKey);
+    if (!result?.ok) {
+      const errorCode = String(result?.errorCode || "NSFW_CLASSIFIER_RESULT_MISSING").slice(0, 80);
+      metrics.errorCount += 1;
+      metrics.errorCode = metrics.errorCode || errorCode;
+      markNsfwClassifierRecordError(record, errorCode);
+      continue;
+    }
+
+    let recordVerdict = "benign";
+    let appliedForRecord = false;
+    for (const entry of record.entries) {
+      if (!isNsfwClassifierEntryCurrent(entry)) {
+        continue;
+      }
+      const decision = globalThis.ChungmaruNsfwPolicy?.evaluate?.(result.scores, entry.adultContext);
+      const verdict = decision?.verdict || "ambiguous";
+      if (verdict === "block") {
+        recordVerdict = "block";
+        const applied = applyMediaSafetyCandidate(
+          entry.candidate,
+          {
+            category: "adult",
+            reason: decision?.reason || "nsfw visual classifier",
+            intervention: entry.candidate?.isFloatingOverlay ? "remove" : "placeholder"
+          },
+          getMergedSettings(cachedSettings || {})
+        );
+        setNsfwClassifierElementState(entry.candidate.target, entry.sourceUrl, "blocked");
+        if (applied.applied) {
+          appliedForRecord = true;
+          metrics.domAddedToActionMs = Math.max(
+            metrics.domAddedToActionMs,
+            performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+          );
+        }
+      } else {
+        if (verdict === "ambiguous" && recordVerdict !== "block") {
+          recordVerdict = "ambiguous";
+        }
+        setNsfwClassifierElementState(entry.candidate.target, entry.sourceUrl, verdict);
+      }
+    }
+
+    if (appliedForRecord) {
+      metrics.blockedCount += 1;
+    } else if (recordVerdict === "ambiguous") {
+      metrics.ambiguousCount += 1;
+    } else {
+      metrics.benignCount += 1;
+    }
+  }
+
+  metrics.queueWaitMs = Math.round(Math.max(0, metrics.queueWaitMs));
+  metrics.classifierDecisionMs = Math.round(performance.now() - requestStartedAt);
+  metrics.domAddedToActionMs = Math.round(metrics.domAddedToActionMs);
+  emitNsfwClassifierBatchLog(response, metrics);
+}
+
+async function flushNsfwClassifierQueue() {
+  if (
+    nsfwClassifierBatchInFlight ||
+    NSFW_CLASSIFIER_PENDING_BY_SOURCE.size === 0 ||
+    !isMediaSafetyEnabled(cachedSettings) ||
+    shouldSkipMediaSafetyProfile(getMediaSafetyProfile())
+  ) {
+    return;
+  }
+
+  const { batchLimit } = getNsfwClassifierAdmissionLimits();
+  const records = Array.from(NSFW_CLASSIFIER_PENDING_BY_SOURCE.values()).slice(0, batchLimit);
+  for (const record of records) {
+    NSFW_CLASSIFIER_PENDING_BY_SOURCE.delete(record.sourceUrl);
+    for (const entry of record.entries) {
+      setNsfwClassifierElementState(entry.candidate.target, entry.sourceUrl, "in-flight");
+    }
+  }
+  nsfwClassifierBatchInFlight = true;
+  const requestStartedAt = performance.now();
+  try {
+    const response = await safeRuntimeSendMessage({
+      type: "CLASSIFY_NSFW_IMAGE_BATCH",
+      requestId: `nsfw-${records[0]?.generation || 0}-${++nsfwClassifierRequestSequence}`,
+      contextKey: `${records[0]?.generation || 0}:${compactRuntimeUrl(location.href)}`,
+      items: records.map((record) => ({
+        candidateKey: record.candidateKey,
+        sourceUrl: record.sourceUrl
+      }))
+    });
+    if (!response) {
+      const error = new Error("NSFW classifier returned no response");
+      error.errorCode = "NSFW_CLASSIFIER_NO_RESPONSE";
+      throw error;
+    }
+    applyNsfwClassifierResponse(records, response, requestStartedAt);
+  } catch (error) {
+    const errorCode = String(error?.errorCode || error?.message || "NSFW_CLASSIFIER_FAILED").slice(0, 80);
+    for (const record of records) {
+      markNsfwClassifierRecordError(record, errorCode);
+    }
+    emitRuntimeLogEvent({
+      type: "media-safety-classifier-error",
+      ok: false,
+      status: "batch-failed",
+      source: "content-script",
+      classifierCandidateCount: records.length,
+      errorCount: records.length,
+      classifierDecisionMs: Math.round(performance.now() - requestStartedAt),
+      errorCode,
+      reason: "NSFW classifier batch request failed"
+    });
+  } finally {
+    nsfwClassifierBatchInFlight = false;
+    if (NSFW_CLASSIFIER_PENDING_BY_SOURCE.size > 0 && isMediaSafetyEnabled(cachedSettings)) {
+      queueMicrotask(() => flushNsfwClassifierQueue());
+    }
+  }
+}
+
+function getNsfwClassifierAdmissionLimits() {
+  if (isLowCoreMediaSafetyDevice()) {
+    return {
+      batchLimit: NSFW_CLASSIFIER_LOW_CORE_BATCH_LIMIT,
+      queueLimit: NSFW_CLASSIFIER_LOW_CORE_QUEUE_LIMIT
+    };
+  }
+  return {
+    batchLimit: NSFW_CLASSIFIER_BATCH_LIMIT,
+    queueLimit: NSFW_CLASSIFIER_QUEUE_LIMIT
+  };
+}
+
+function scheduleNsfwClassifierForCandidates(candidates, selected, pageContext, settings = cachedSettings) {
+  if (
+    !isMediaSafetyEnabled(settings) ||
+    shouldSkipMediaSafetyProfile(getMediaSafetyProfile()) ||
+    !globalThis.ChungmaruNsfwPolicy
+  ) {
+    return 0;
+  }
+
+  const excludedTargets = new Set((selected || []).map((entry) => entry?.candidate?.target).filter(Boolean));
+  const sortedCandidates = (candidates || [])
+    .filter((candidate) => candidate?.target instanceof Element && !excludedTargets.has(candidate.target))
+    .sort((left, right) => Number(right?.mediaAreaPx || 0) - Number(left?.mediaAreaPx || 0));
+  const { batchLimit, queueLimit } = getNsfwClassifierAdmissionLimits();
+  const availableSourceSlots = Math.max(
+    0,
+    Math.min(batchLimit, queueLimit - NSFW_CLASSIFIER_PENDING_BY_SOURCE.size)
+  );
+  let queuedSourceCount = 0;
+
+  for (const candidate of sortedCandidates) {
+    const sourceUrl = getNsfwClassifierSource(candidate);
+    if (!shouldQueueNsfwClassifierCandidate(candidate, sourceUrl)) {
+      continue;
+    }
+
+    const entry = {
+      candidate,
+      sourceUrl,
+      adultContext: hasNsfwAdultContext(candidate, pageContext),
+      generation: nsfwClassifierContextGeneration,
+      pageHref: String(location.href || "")
+    };
+    const existing = NSFW_CLASSIFIER_PENDING_BY_SOURCE.get(sourceUrl);
+    if (existing) {
+      if (!existing.entries.some((item) => item.candidate?.target === candidate.target)) {
+        existing.entries.push(entry);
+        setNsfwClassifierElementState(candidate.target, sourceUrl, "queued");
+      }
+      continue;
+    }
+    if (queuedSourceCount >= availableSourceSlots) {
+      break;
+    }
+
+    NSFW_CLASSIFIER_PENDING_BY_SOURCE.set(sourceUrl, {
+      candidateKey: `candidate-${nsfwClassifierContextGeneration}-${++nsfwClassifierRequestSequence}`,
+      sourceUrl,
+      entries: [entry],
+      generation: nsfwClassifierContextGeneration,
+      queuedAt: performance.now()
+    });
+    setNsfwClassifierElementState(candidate.target, sourceUrl, "queued");
+    queuedSourceCount += 1;
+  }
+
+  if (queuedSourceCount > 0 && !nsfwClassifierBatchInFlight) {
+    // Cheap-filter hits never need the visual model. Deferring warm-up until an
+    // unresolved visible source exists keeps dense gambling-banner pages off the
+    // GPU/worker path entirely.
+    requestNsfwClassifierWarmup(settings);
+    queueMicrotask(() => flushNsfwClassifierQueue());
+  }
+  return queuedSourceCount;
+}
+
+function isKnownSafeMediaFixture(candidate) {
+  return Boolean(
+    candidate?.element?.closest?.("[data-chungmaru-media-safe='true']") ||
+    candidate?.target?.closest?.("[data-chungmaru-media-safe='true']")
+  );
+}
+
+function clearProtectedMediaCandidate(target) {
+  if (!(target instanceof Element)) {
+    return;
+  }
+  target.classList.remove("shieldtext-media-safety-hidden");
+  target.classList.remove("shieldtext-media-safety-removed");
+  target.classList.remove("shieldtext-media-safety-group");
+  target.removeAttribute("data-chungmaru-media-hidden");
+  target.removeAttribute("data-chungmaru-media-action");
+  target.removeAttribute("data-chungmaru-media-area");
+  target.removeAttribute("data-chungmaru-media-group-id");
+  target.removeAttribute("data-shieldtext-media-safety");
+  target.removeAttribute("data-chungmaru-media-reason");
+}
+
+function clearMediaSafetyProtection() {
+  if (!document?.body && !document?.documentElement) {
+    return 0;
+  }
+  clearMediaSafetyStartupGate();
+
+  let cleared = 0;
+  for (const summary of document.querySelectorAll("[data-chungmaru-media-summary='true']")) {
+    summary.remove();
+    cleared += 1;
+  }
+  for (const group of document.querySelectorAll(".shieldtext-media-safety-group")) {
+    group.classList.remove("shieldtext-media-safety-group");
+    group.removeAttribute("data-chungmaru-media-group-id");
+  }
+  for (const target of document.querySelectorAll(".shieldtext-media-safety-hidden, [data-chungmaru-media-hidden='true']")) {
+    clearProtectedMediaCandidate(target);
+    cleared += 1;
+  }
+  mediaSafetyHasProtectedElements = false;
+  return cleared;
+}
+
+function clearMediaSafetyProtectionIfNeeded() {
+  return mediaSafetyHasProtectedElements ? clearMediaSafetyProtection() : 0;
+}
+
+function resolveMediaSafetyIntervention(candidate, match, settings) {
+  const configured = normalizeMediaSafetyInterventionMode(settings?.mediaSafetyInterventionMode);
+  if (configured !== "auto") {
+    return configured;
+  }
+  if (match?.intervention === "remove" || candidate?.isFloatingOverlay) {
+    return "remove";
+  }
+  return "placeholder";
+}
+
+function describeMediaSafetyAction(removedCount, placeholderCount) {
+  if (removedCount > 0 && placeholderCount > 0) {
+    return "mixed";
+  }
+  if (removedCount > 0) {
+    return "remove";
+  }
+  if (placeholderCount > 0) {
+    return "placeholder";
+  }
+  return "none";
+}
+
+function shouldUseCompactMediaGroup(pageContext, profile, settings) {
+  // Only collapse a verified dense-risk grid. Normal content remains
+  // dimension-preserving so one mistaken match cannot reflow a whole page.
+  return (
+    profile === "generic" &&
+    pageContext?.strictMediaMode === true &&
+    pageContext?.mode === "dense-risk-grid" &&
+    isMediaSafetyEnabled(settings)
+  );
+}
+
+function countVisibleMediaDescendants(root, limit = MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+  if (!(root instanceof Element)) {
+    return 0;
+  }
+  let count = 0;
+  for (const node of root.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
+      continue;
+    }
+    if (isMediaRectVisible(node.getBoundingClientRect())) {
+      count += 1;
+      if (count >= limit) {
+        return count;
+      }
+    }
+  }
+  return count;
+}
+
+function getMediaSafetyCompactGroupRoot(target) {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  let current = target.parentElement;
+  let depth = 0;
+  while (current && depth < MEDIA_SAFETY_COMPACT_GROUP_MAX_DEPTH) {
+    if (["HTML", "BODY"].includes(current.tagName)) {
+      return null;
+    }
+    const rect = current.getBoundingClientRect();
+    if (
+      rect &&
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rectArea(rect) <= viewportArea * MEDIA_SAFETY_COMPACT_GROUP_MAX_VIEWPORT_AREA_RATIO &&
+      countVisibleMediaDescendants(current) >= MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+    depth += 1;
+  }
+  return null;
+}
+
+function selectMediaSafetyCompactGroups(selected, pageContext, profile, settings) {
+  if (!shouldUseCompactMediaGroup(pageContext, profile, settings)) {
+    return { groups: [], groupedTargets: new Set() };
+  }
+  const byRoot = new Map();
+  for (const entry of selected) {
+    const target = entry?.candidate?.target;
+    if (!(target instanceof Element) || entry?.candidate?.isFloatingOverlay) {
+      continue;
+    }
+    const root = getMediaSafetyCompactGroupRoot(target);
+    if (!root) {
+      continue;
+    }
+    if (!byRoot.has(root)) {
+      byRoot.set(root, []);
+    }
+    byRoot.get(root).push(entry);
+  }
+
+  const groups = [];
+  const groupedTargets = new Set();
+  for (const [root, entries] of byRoot.entries()) {
+    const uniqueEntries = [];
+    const seen = new Set();
+    for (const entry of entries) {
+      const target = entry?.candidate?.target;
+      if (!(target instanceof Element) || seen.has(target)) {
+        continue;
+      }
+      seen.add(target);
+      uniqueEntries.push(entry);
+    }
+    if (uniqueEntries.length < MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+      continue;
+    }
+    groups.push({ root, entries: uniqueEntries });
+    for (const entry of uniqueEntries) {
+      groupedTargets.add(entry.candidate.target);
+    }
+  }
+  return { groups, groupedTargets };
+}
+
+function ensureMediaSafetyGroupSummary(root, count, reason) {
+  if (!(root instanceof Element)) {
+    return null;
+  }
+  const existing = Array.from(root.children).find((child) => (
+    child instanceof Element &&
+    child.getAttribute("data-chungmaru-media-summary") === "true"
+  ));
+  const summary = existing || document.createElement("div");
+  summary.className = "shieldtext-media-safety-group-summary";
+  summary.setAttribute("data-chungmaru-media-summary", "true");
+  summary.setAttribute("role", "note");
+  summary.textContent = `청마루 이미지 보호 · 유해 이미지 ${count}개 숨김`;
+  if (reason) {
+    summary.setAttribute("title", reason);
+  }
+  if (!existing) {
+    root.insertBefore(summary, root.firstChild);
+  }
+  return summary;
+}
+
+function applyMediaSafetyCompactGroup(group) {
+  const root = group?.root;
+  const entries = Array.isArray(group?.entries) ? group.entries : [];
+  if (!(root instanceof Element) || entries.length < MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT) {
+    return { hiddenCount: 0, areaPx: 0 };
+  }
+
+  const groupId = root.getAttribute("data-chungmaru-media-group-id") || `media-group-${++mediaSafetyGroupId}`;
+  root.classList.add("shieldtext-media-safety-group");
+  root.setAttribute("data-chungmaru-media-group-id", groupId);
+
+  let hiddenCount = 0;
+  let areaPx = 0;
+  let reason = "";
+  for (const entry of entries) {
+    const target = entry?.candidate?.target;
+    if (!(target instanceof Element) || isMediaSafetyAlreadyProtectedElement(target)) {
+      continue;
+    }
+    const targetRect = target.getBoundingClientRect();
+    areaPx += Math.max(0, Math.round(rectArea(targetRect)));
+    target.classList.add("shieldtext-media-safety-removed");
+    target.setAttribute("data-chungmaru-media-hidden", "true");
+    target.setAttribute("data-chungmaru-media-action", "compact");
+    target.setAttribute("data-chungmaru-media-area", String(Math.round(rectArea(targetRect))));
+    target.setAttribute("data-chungmaru-media-group-id", groupId);
+    target.setAttribute("data-shieldtext-media-safety", entry.match?.category || "media");
+    target.setAttribute("data-chungmaru-media-reason", entry.match?.reason || "media safety compact group");
+    reason = reason || entry.match?.reason || "";
+    hiddenCount += 1;
+  }
+
+  if (hiddenCount > 0) {
+    mediaSafetyHasProtectedElements = true;
+    ensureMediaSafetyGroupSummary(root, hiddenCount, reason || "media safety compact group");
+  }
+  return { hiddenCount, areaPx };
+}
+
+function isMediaSafetyCoveredByAncestor(target) {
+  return Boolean(target?.parentElement?.closest?.("[data-chungmaru-media-hidden='true']"));
+}
+
+function isMediaSafetyRedundantTarget(target, appliedTargets = []) {
+  if (!(target instanceof Element)) {
+    return true;
+  }
+  const targetRect = target.getBoundingClientRect();
+  const targetArea = rectArea(targetRect);
+  for (const appliedTarget of appliedTargets) {
+    if (!(appliedTarget instanceof Element)) {
+      continue;
+    }
+    if (target === appliedTarget || appliedTarget.contains(target) || target.contains(appliedTarget)) {
+      return true;
+    }
+    const appliedRect = appliedTarget.getBoundingClientRect();
+    const minArea = Math.max(1, Math.min(targetArea, rectArea(appliedRect)));
+    if (rectIntersectionArea(targetRect, appliedRect) / minArea >= 0.82) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyMediaSafetyCandidate(candidate, match, settings) {
+  const target = candidate?.target;
+  if (!(target instanceof Element) || !match) {
+    return { applied: false, action: "", areaPx: 0, merged: false };
+  }
+  if (isMediaSafetyAlreadyProtectedElement(target)) {
+    return { applied: false, action: "", areaPx: 0, merged: true };
+  }
+  if (isMediaSafetyCoveredByAncestor(target)) {
+    return { applied: false, action: "", areaPx: 0, merged: true };
+  }
+
+  const action = resolveMediaSafetyIntervention(candidate, match, settings);
+  const targetRect = target.getBoundingClientRect();
+  const areaPx = Math.round(rectArea(targetRect));
+  target.classList.add(
+    action === "remove" ? "shieldtext-media-safety-removed" : "shieldtext-media-safety-hidden"
+  );
+  target.setAttribute("data-chungmaru-media-hidden", "true");
+  target.setAttribute("data-chungmaru-media-action", action);
+  target.setAttribute("data-chungmaru-media-area", String(areaPx));
+  target.setAttribute("data-shieldtext-media-safety", match.category || "media");
+  target.setAttribute("data-chungmaru-media-reason", match.reason || "media safety");
+  mediaSafetyHasProtectedElements = true;
+  return { applied: true, action, areaPx, merged: false };
+}
+
+function countKnownHarmfulVisibleMediaMisses() {
+  const markers = Array.from(document.querySelectorAll("[data-chungmaru-media-harmful='true']"));
+  let missed = 0;
+  for (const marker of markers) {
+    if (!(marker instanceof Element)) {
+      continue;
+    }
+    if (marker.closest("[data-chungmaru-media-hidden='true']")) {
+      continue;
+    }
+    const media = marker.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)
+      ? marker
+      : marker.querySelector(MEDIA_SAFETY_CANDIDATE_SELECTOR);
+    if (media instanceof Element && media.closest("[data-chungmaru-media-hidden='true']")) {
+      continue;
+    }
+    if (media instanceof Element && isMediaRectVisible(media.getBoundingClientRect())) {
+      missed += 1;
+    }
+  }
+  return missed;
+}
+
+function countVisibleUnprotectedMediaCandidates(limit = 6) {
+  let count = 0;
+  for (const node of document.querySelectorAll(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    if (!(node instanceof Element) || isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
+      continue;
+    }
+    if (isKnownSafeMediaFixture({ element: node, target: node })) {
+      continue;
+    }
+    if (isMediaRectVisible(node.getBoundingClientRect())) {
+      count += 1;
+      if (count >= limit) {
+        return count;
+      }
+    }
+  }
+  return count;
+}
+
+function nodeHasPotentialMediaSafetyCandidate(node) {
+  if (!(node instanceof Element)) {
+    return false;
+  }
+  if (isShieldTextManagedElement(node) || isMediaSafetyAlreadyProtectedElement(node)) {
+    return false;
+  }
+  if (
+    typeof HTMLSourceElement !== "undefined" &&
+    node instanceof HTMLSourceElement &&
+    node.parentElement instanceof HTMLVideoElement
+  ) {
+    return !isMediaSafetyAlreadyProtectedElement(node.parentElement);
+  }
+  if (node.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    return true;
+  }
+  if (hasInlineMediaSafetyBackgroundImage(node)) {
+    return true;
+  }
+  return Boolean(node.querySelector?.(MEDIA_SAFETY_CANDIDATE_SELECTOR));
+}
+
+function mutationListHasPotentialMediaSafetyCandidate(mutationList) {
+  for (const mutation of mutationList || []) {
+    for (const node of mutation.addedNodes || []) {
+      if (nodeHasPotentialMediaSafetyCandidate(node)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getMediaSafetyRescanInterval(reason) {
+  const normalizedReason = String(reason || "");
+  if (
+    normalizedReason === "manual-media-safety-scan" ||
+    normalizedReason.startsWith("smoke-") ||
+    normalizedReason.startsWith("live-smoke-")
+  ) {
+    return 0;
+  }
+  if (normalizedReason === "bootstrap" || normalizedReason === "initial-load" || normalizedReason === "settings-updated") {
+    return 0;
+  }
+  if (normalizedReason === "visibility") {
+    return MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS;
+  }
+  if (normalizedReason === "media-load-settle" || normalizedReason === "mutation-settle") {
+    return MEDIA_SAFETY_SETTLE_RESCAN_INTERVAL_MS;
+  }
+  return MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS;
+}
+
+function runMediaSafetyScan(settings = cachedSettings, options = {}) {
+  const activeSettings = getMergedSettings(settings || cachedSettings || {});
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    invalidateNsfwClassifierContext({ resetWarmup: true });
+    const cleared = clearMediaSafetyProtectionIfNeeded();
+    return {
+      ok: true,
+      status: "disabled",
+      reason: "MEDIA_SAFETY_DISABLED",
+      clearedCount: cleared,
+      candidateCount: 0,
+      visibleTileCount: 0,
+      cheapFilterHitCount: 0,
+      actionCount: 0,
+      removedCount: 0,
+      placeholderCount: 0,
+      mergedTargetCount: 0,
+      collapsedGroupCount: 0,
+      hiddenAreaPx: 0,
+      viewportCoveragePct: 0,
+      remainingVisibleTileCount: 0,
+      missedVisibleTileCount: 0,
+      falseHiddenCount: 0,
+      collectMs: 0,
+      cheapFilterMs: 0,
+      applyMs: 0,
+      domAddedToActionMs: 0
+    };
+  }
+
+  const startedAt = performance.now();
+  const profile = getMediaSafetyProfile();
+  if (shouldSkipMediaSafetyProfile(profile)) {
+    invalidateNsfwClassifierContext();
+    const cleared = clearMediaSafetyProtectionIfNeeded();
+    return {
+      ok: true,
+      status: "skipped",
+      source: "content-script",
+      profile,
+      reason: "GOOGLE_TEXT_SEARCH_MEDIA_SAFETY_SKIPPED",
+      clearedCount: cleared,
+      candidateCount: 0,
+      visibleTileCount: 0,
+      cheapFilterHitCount: 0,
+      actionCount: 0,
+      removedCount: 0,
+      placeholderCount: 0,
+      mergedTargetCount: 0,
+      collapsedGroupCount: 0,
+      hiddenAreaPx: 0,
+      viewportCoveragePct: 0,
+      remainingVisibleTileCount: 0,
+      missedVisibleTileCount: 0,
+      falseHiddenCount: 0,
+      collectMs: 0,
+      cheapFilterMs: 0,
+      applyMs: 0,
+      domAddedToActionMs: 0,
+      domain: normalizeDomainForPolicy(location.hostname || ""),
+      url: compactRuntimeUrl(location.href)
+    };
+  }
+  mediaSafetyLastScanAt = Date.now();
+  const schedulerStats = consumeMediaSafetySchedulerStats();
+  const pageContext = getMediaSafetyPageContext(profile);
+  const collectStartedAt = performance.now();
+  const candidates = collectMediaSafetyCandidates(
+    isStrictGenericMediaPage(pageContext, profile)
+      ? MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT
+      : MEDIA_SAFETY_CANDIDATE_LIMIT,
+    pageContext
+  );
+  const collectMs = performance.now() - collectStartedAt;
+  const cheapFilterStartedAt = performance.now();
+  const selected = [];
+  for (const candidate of candidates) {
+    const match = getMediaSafetyMatch(candidate, pageContext);
+    if (match) {
+      selected.push({ candidate, match });
+    }
+  }
+  const cheapFilterMs = performance.now() - cheapFilterStartedAt;
+  const applyStartedAt = performance.now();
+  let actionCount = 0;
+  let removedCount = 0;
+  let placeholderCount = 0;
+  let mergedTargetCount = 0;
+  let collapsedGroupCount = 0;
+  let hiddenAreaPx = 0;
+  let falseHiddenCount = 0;
+  let domAddedToActionMs = 0;
+  const appliedTargets = [];
+  const compactGrouping = selectMediaSafetyCompactGroups(selected, pageContext, profile, activeSettings);
+
+  suppressMutationFeedback(160);
+  for (const group of compactGrouping.groups) {
+    const result = applyMediaSafetyCompactGroup(group);
+    if (result.hiddenCount <= 0) {
+      continue;
+    }
+    actionCount += result.hiddenCount;
+    removedCount += result.hiddenCount;
+    hiddenAreaPx += result.areaPx;
+    collapsedGroupCount += 1;
+    mergedTargetCount += Math.max(0, result.hiddenCount - 1);
+    for (const entry of group.entries) {
+      appliedTargets.push(entry.candidate.target);
+      if (isKnownSafeMediaFixture(entry.candidate)) {
+        falseHiddenCount += 1;
+      }
+      domAddedToActionMs = Math.max(
+        domAddedToActionMs,
+        performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+      );
+    }
+  }
+
+  for (const entry of selected) {
+    if (compactGrouping.groupedTargets.has(entry.candidate?.target)) {
+      continue;
+    }
+    if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
+      mergedTargetCount += 1;
+      continue;
+    }
+    const result = applyMediaSafetyCandidate(entry.candidate, entry.match, activeSettings);
+    if (result.merged) {
+      mergedTargetCount += 1;
+    }
+    if (!result.applied) {
+      continue;
+    }
+    actionCount += 1;
+    hiddenAreaPx += Math.max(0, Number(result.areaPx || 0));
+    if (result.action === "remove") {
+      removedCount += 1;
+    } else {
+      placeholderCount += 1;
+    }
+    appliedTargets.push(entry.candidate.target);
+    if (isKnownSafeMediaFixture(entry.candidate)) {
+      falseHiddenCount += 1;
+    }
+    domAddedToActionMs = Math.max(
+      domAddedToActionMs,
+      performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+    );
+  }
+
+  if (isStrictGenericMediaPage(pageContext, profile) && countVisibleUnprotectedMediaCandidates() > 0) {
+    const residualSelected = [];
+    for (const candidate of collectMediaSafetyCandidates(MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT, pageContext)) {
+      if (!(candidate?.target instanceof Element)) {
+        continue;
+      }
+      if (isMediaSafetyAlreadyProtectedElement(candidate.target)) {
+        continue;
+      }
+      const match = getMediaSafetyMatch(candidate, pageContext);
+      if (match) {
+        residualSelected.push({ candidate, match });
+      }
+    }
+
+    const residualGrouping = selectMediaSafetyCompactGroups(
+      residualSelected,
+      pageContext,
+      profile,
+      activeSettings
+    );
+    for (const group of residualGrouping.groups) {
+      const result = applyMediaSafetyCompactGroup(group);
+      if (result.hiddenCount <= 0) {
+        continue;
+      }
+      actionCount += result.hiddenCount;
+      removedCount += result.hiddenCount;
+      hiddenAreaPx += result.areaPx;
+      collapsedGroupCount += 1;
+      mergedTargetCount += Math.max(0, result.hiddenCount - 1);
+      for (const entry of group.entries) {
+        appliedTargets.push(entry.candidate.target);
+        if (isKnownSafeMediaFixture(entry.candidate)) {
+          falseHiddenCount += 1;
+        }
+        domAddedToActionMs = Math.max(
+          domAddedToActionMs,
+          performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+        );
+      }
+    }
+
+    for (const entry of residualSelected) {
+      if (residualGrouping.groupedTargets.has(entry.candidate?.target)) {
+        continue;
+      }
+      if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
+        mergedTargetCount += 1;
+        continue;
+      }
+      const result = applyMediaSafetyCandidate(entry.candidate, entry.match, activeSettings);
+      if (result.merged) {
+        mergedTargetCount += 1;
+      }
+      if (!result.applied) {
+        continue;
+      }
+      actionCount += 1;
+      hiddenAreaPx += Math.max(0, Number(result.areaPx || 0));
+      if (result.action === "remove") {
+        removedCount += 1;
+      } else {
+        placeholderCount += 1;
+      }
+      appliedTargets.push(entry.candidate.target);
+      if (isKnownSafeMediaFixture(entry.candidate)) {
+        falseHiddenCount += 1;
+      }
+      domAddedToActionMs = Math.max(
+        domAddedToActionMs,
+        performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+      );
+    }
+  }
+  const classifierCandidateCount = scheduleNsfwClassifierForCandidates(
+    candidates,
+    selected,
+    pageContext,
+    activeSettings
+  );
+  const applyMs = performance.now() - applyStartedAt;
+  const missedVisibleTileCount = countKnownHarmfulVisibleMediaMisses();
+  const remainingVisibleTileCount = isStrictGenericMediaPage(pageContext, profile)
+    ? countVisibleUnprotectedMediaCandidates()
+    : 0;
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  const summary = {
+    ok: true,
+    status: "scanned",
+    source: "content-script",
+    profile,
+    reason: options.reason || "media-safety-scan",
+    durationMs: Math.round(performance.now() - startedAt),
+    candidateCount: candidates.length,
+    visibleTileCount: candidates.length,
+    cheapFilterHitCount: selected.length,
+    classifierCandidateCount,
+    actionCount,
+    action: describeMediaSafetyAction(removedCount, placeholderCount),
+    removedCount,
+    placeholderCount,
+    mergedTargetCount,
+    collapsedGroupCount,
+    hiddenAreaPx: Math.round(hiddenAreaPx),
+    viewportCoveragePct: Math.min(100, Math.round((hiddenAreaPx / viewportArea) * 1000) / 10),
+    remainingVisibleTileCount,
+    missedVisibleTileCount,
+    falseHiddenCount,
+    pageContextCacheHit: pageContext.cacheHit === true,
+    collectMs: Math.round(collectMs),
+    cheapFilterMs: Math.round(cheapFilterMs),
+    applyMs: Math.round(applyMs),
+    domAddedToActionMs: Math.round(domAddedToActionMs),
+    ...schedulerStats,
+    domain: normalizeDomainForPolicy(location.hostname || ""),
+    url: compactRuntimeUrl(location.href)
+  };
+
+  if (
+    candidates.length > 0 ||
+    actionCount > 0 ||
+    !hasHighConfidenceMediaSafetyStartupContext(profile)
+  ) {
+    clearMediaSafetyStartupGate();
+  }
+
+  emitRuntimeLogEvent({
+    type: "media-safety-scan",
+    ...summary
+  });
+  if (actionCount > 0 || missedVisibleTileCount > 0 || falseHiddenCount > 0) {
+    emitRuntimeLogEvent({
+      type: "media-safety-action",
+      ...summary
+    });
+  }
+
+  if (
+    remainingVisibleTileCount > 0 &&
+    isStrictGenericMediaPage(pageContext, profile) &&
+    options.reason !== "strict-settle"
+  ) {
+    scheduleMediaSafetyScanForActiveProfile(activeSettings, { reason: "strict-settle", delayMs: 180 });
+  }
+
+  return summary;
+}
+
+function runTargetedMediaSafetyScan(settings = cachedSettings, options = {}) {
+  const activeSettings = getMergedSettings(settings || cachedSettings || {});
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    return null;
+  }
+
+  const profile = getMediaSafetyProfile();
+  if (shouldSkipMediaSafetyProfile(profile)) {
+    return null;
+  }
+
+  const seedNodes = Array.isArray(options.seedNodes) ? options.seedNodes : [];
+  if (seedNodes.length === 0) {
+    return null;
+  }
+
+  const startedAt = performance.now();
+  const pageContext = getFastMediaSafetyPageContext(profile);
+  const collectStartedAt = performance.now();
+  const candidates = collectMediaSafetyCandidatesFromSeedNodes(
+    seedNodes,
+    MEDIA_SAFETY_FAST_MUTATION_CANDIDATE_LIMIT
+  );
+  const collectMs = performance.now() - collectStartedAt;
+  const cheapFilterStartedAt = performance.now();
+  const selected = [];
+  for (const candidate of candidates) {
+    const match = getMediaSafetyMatch(candidate, pageContext);
+    if (match) {
+      selected.push({ candidate, match });
+    }
+  }
+  const cheapFilterMs = performance.now() - cheapFilterStartedAt;
+
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount += 1;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathCandidateCount += candidates.length;
+  const classifierCandidateCount = scheduleNsfwClassifierForCandidates(
+    candidates,
+    selected,
+    pageContext,
+    activeSettings
+  );
+
+  if (selected.length === 0) {
+    return {
+      ok: true,
+      status: "targeted-scanned",
+      source: "content-script",
+      profile,
+      reason: options.reason || "targeted-media-safety-scan",
+      candidateCount: candidates.length,
+      visibleTileCount: candidates.length,
+      cheapFilterHitCount: 0,
+      classifierCandidateCount,
+      actionCount: 0,
+      collectMs: Math.round(collectMs),
+      cheapFilterMs: Math.round(cheapFilterMs),
+      applyMs: 0,
+      domAddedToActionMs: 0
+    };
+  }
+
+  const applyStartedAt = performance.now();
+  let actionCount = 0;
+  let removedCount = 0;
+  let placeholderCount = 0;
+  let mergedTargetCount = 0;
+  let hiddenAreaPx = 0;
+  let falseHiddenCount = 0;
+  let domAddedToActionMs = 0;
+  const appliedTargets = [];
+
+  suppressMutationFeedback(140);
+  for (const entry of selected) {
+    if (isMediaSafetyRedundantTarget(entry.candidate?.target, appliedTargets)) {
+      mergedTargetCount += 1;
+      continue;
+    }
+    const result = applyMediaSafetyCandidate(entry.candidate, entry.match, activeSettings);
+    if (result.merged) {
+      mergedTargetCount += 1;
+    }
+    if (!result.applied) {
+      continue;
+    }
+    actionCount += 1;
+    hiddenAreaPx += Math.max(0, Number(result.areaPx || 0));
+    if (result.action === "remove") {
+      removedCount += 1;
+    } else {
+      placeholderCount += 1;
+    }
+    appliedTargets.push(entry.candidate.target);
+    if (isKnownSafeMediaFixture(entry.candidate)) {
+      falseHiddenCount += 1;
+    }
+    domAddedToActionMs = Math.max(
+      domAddedToActionMs,
+      performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
+    );
+  }
+
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathActionCount += actionCount;
+  const applyMs = performance.now() - applyStartedAt;
+  const viewportArea = Math.max(1, window.innerWidth * window.innerHeight);
+  const summary = {
+    ok: true,
+    status: "targeted-scanned",
+    source: "content-script",
+    profile,
+    reason: options.reason || "targeted-media-safety-scan",
+    durationMs: Math.round(performance.now() - startedAt),
+    candidateCount: candidates.length,
+    visibleTileCount: candidates.length,
+    cheapFilterHitCount: selected.length,
+    classifierCandidateCount,
+    actionCount,
+    action: describeMediaSafetyAction(removedCount, placeholderCount),
+    removedCount,
+    placeholderCount,
+    mergedTargetCount,
+    collapsedGroupCount: 0,
+    hiddenAreaPx: Math.round(hiddenAreaPx),
+    viewportCoveragePct: Math.min(100, Math.round((hiddenAreaPx / viewportArea) * 1000) / 10),
+    remainingVisibleTileCount: 0,
+    missedVisibleTileCount: countKnownHarmfulVisibleMediaMisses(),
+    falseHiddenCount,
+    collectMs: Math.round(collectMs),
+    cheapFilterMs: Math.round(cheapFilterMs),
+    applyMs: Math.round(applyMs),
+    domAddedToActionMs: Math.round(domAddedToActionMs),
+    mediaSafetyFastPath: true,
+    mediaSafetyFastPathSeedCount: seedNodes.length,
+    mediaSafetyFastPathRequestCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount,
+    mediaSafetyFastPathRunCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount,
+    mediaSafetyFastPathCandidateCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathCandidateCount,
+    mediaSafetyFastPathActionCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathActionCount,
+    domain: normalizeDomainForPolicy(location.hostname || ""),
+    url: compactRuntimeUrl(location.href)
+  };
+
+  if (actionCount > 0 || summary.missedVisibleTileCount > 0 || falseHiddenCount > 0) {
+    emitRuntimeLogEvent({
+      type: "media-safety-action",
+      ...summary
+    });
+  }
+
+  return summary;
+}
+
+function scheduleTargetedMediaSafetyScanForNodes(settings = cachedSettings, seedNodes = [], options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return;
+  }
+  recordRuntimePerfCounter("targetedMediaSafetyScheduleCount");
+
+  const activeSettings = settings || cachedSettings || {};
+  if (!isMediaSafetyEnabled(activeSettings) || shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    return;
+  }
+
+  const seedCountBefore = MEDIA_SAFETY_FAST_PATH_NODES.size;
+  for (const seedNode of seedNodes || []) {
+    if (MEDIA_SAFETY_FAST_PATH_NODES.size >= MEDIA_SAFETY_FAST_MUTATION_NODE_LIMIT) {
+      break;
+    }
+    if (seedNode instanceof Element || seedNode instanceof Text || seedNode instanceof DocumentFragment) {
+      MEDIA_SAFETY_FAST_PATH_NODES.add(seedNode);
+    }
+  }
+  if (MEDIA_SAFETY_FAST_PATH_NODES.size === 0) {
+    return;
+  }
+
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount += 1;
+  MEDIA_SAFETY_SCHEDULER_STATS.fastPathSeedCount += Math.max(
+    0,
+    MEDIA_SAFETY_FAST_PATH_NODES.size - seedCountBefore
+  );
+  if (mediaSafetyFastPathFrameId) {
+    return;
+  }
+
+  // requestAnimationFrame is throttled in background/headless tabs. This path
+  // is capped to a small seed set, so one queued task keeps late media handling
+  // responsive without reopening the expensive full-DOM scan path.
+  mediaSafetyFastPathFrameId = window.setTimeout(() => {
+    mediaSafetyFastPathFrameId = null;
+    const pendingNodes = Array.from(MEDIA_SAFETY_FAST_PATH_NODES);
+    MEDIA_SAFETY_FAST_PATH_NODES.clear();
+    try {
+      runTargetedMediaSafetyScan(activeSettings, {
+        ...options,
+        seedNodes: pendingNodes,
+        reason: options.reason || "targeted-media-mutation"
+      });
+    } catch (error) {
+      emitRuntimeLogEvent({
+        type: "media-safety-error",
+        ok: false,
+        status: "failed",
+        source: "content-script",
+        errorCode: String(error?.errorCode || "MEDIA_SAFETY_TARGETED_SCAN_FAILED"),
+        reason: serializeFailureReason(error),
+        domain: normalizeDomainForPolicy(location.hostname || ""),
+        url: compactRuntimeUrl(location.href)
+      });
+      if (!handleExtensionContextError(error)) {
+        console.warn("[청마루] targeted media safety scan failed", error);
+      }
+    }
+  }, 0);
+}
+
+function scheduleMediaSafetyScan(settings = cachedSettings, options = {}) {
+  if (
+    extensionContextInvalidated ||
+    isUnsupportedPage() ||
+    !document.body ||
+    document.visibilityState === "hidden"
+  ) {
+    return;
+  }
+  recordRuntimePerfCounter("mediaSafetyScheduleCount");
+
+  const activeSettings = settings || cachedSettings || {};
+  const reason = String(options.reason || "media-safety-scan");
+  MEDIA_SAFETY_SCHEDULER_STATS.scanRequestCount += 1;
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    clearMediaSafetyProtectionIfNeeded();
+    return;
+  }
+  if (shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    clearMediaSafetyProtectionIfNeeded();
+    return;
+  }
+
+  if ((mediaSafetyFrameId || mediaSafetyTimerId) && isLowPriorityMediaSafetyScanReason(reason)) {
+    MEDIA_SAFETY_SCHEDULER_STATS.coalescedScanRequestCount += 1;
+    return;
+  }
+
+  if (mediaSafetyFrameId) {
+    window.cancelAnimationFrame(mediaSafetyFrameId);
+    mediaSafetyFrameId = null;
+  }
+  if (mediaSafetyTimerId) {
+    window.clearTimeout(mediaSafetyTimerId);
+    mediaSafetyTimerId = null;
+  }
+
+  const delayMs = Math.max(
+    0,
+    Number.isFinite(options.delayMs)
+      ? Number(options.delayMs)
+      : options.reason === "visibility"
+        ? MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS
+        : MEDIA_SAFETY_SCAN_DEBOUNCE_MS
+  );
+  const minIntervalMs = getMediaSafetyRescanInterval(options.reason);
+  const elapsedSinceScan = Math.max(0, Date.now() - Number(mediaSafetyLastScanAt || 0));
+  // Keep the immediate media-load fast path responsive. Only a lower-priority
+  // viewport/settle scan yields while text masking is already consuming the
+  // main thread.
+  const contentionDelayMs =
+    isPipelineRunning && isLowPriorityMediaSafetyScanReason(reason)
+      ? MEDIA_SAFETY_PIPELINE_CONTENTION_DELAY_MS
+      : 0;
+  const throttledDelayMs = Math.max(
+    delayMs,
+    contentionDelayMs,
+    minIntervalMs > elapsedSinceScan ? minIntervalMs - elapsedSinceScan : 0
+  );
+  const runId = ++mediaSafetyRunId;
+  const scheduleFrame = () => {
+    mediaSafetyTimerId = null;
+    mediaSafetyFrameId = window.requestAnimationFrame(() => {
+      mediaSafetyFrameId = null;
+      if (runId !== mediaSafetyRunId) {
+        return;
+      }
+      try {
+        runMediaSafetyScan(activeSettings, options);
+      } catch (error) {
+        emitRuntimeLogEvent({
+          type: "media-safety-error",
+          ok: false,
+          status: "failed",
+          source: "content-script",
+          errorCode: String(error?.errorCode || "MEDIA_SAFETY_SCAN_FAILED"),
+          reason: serializeFailureReason(error),
+          domain: normalizeDomainForPolicy(location.hostname || ""),
+          url: compactRuntimeUrl(location.href)
+        });
+        if (!handleExtensionContextError(error)) {
+          console.warn("[청마루] media safety scan failed", error);
+        }
+      }
+    });
+  };
+
+  if (throttledDelayMs > 0) {
+    mediaSafetyTimerId = window.setTimeout(scheduleFrame, throttledDelayMs);
+    return;
+  }
+  scheduleFrame();
+}
+
+function runImmediateMediaSafetyScan(settings = cachedSettings, options = {}) {
+  if (extensionContextInvalidated || isUnsupportedPage() || !document.body) {
+    return null;
+  }
+
+  const activeSettings = settings || cachedSettings || {};
+  if (!isMediaSafetyEnabled(activeSettings)) {
+    clearMediaSafetyProtectionIfNeeded();
+    return null;
+  }
+  if (shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    clearMediaSafetyProtectionIfNeeded();
+    return null;
+  }
+
+  try {
+    return runMediaSafetyScan(activeSettings, options);
+  } catch (error) {
+    emitRuntimeLogEvent({
+      type: "media-safety-error",
+      ok: false,
+      status: "failed",
+      source: "content-script",
+      errorCode: String(error?.errorCode || "MEDIA_SAFETY_IMMEDIATE_SCAN_FAILED"),
+      reason: serializeFailureReason(error),
+      domain: normalizeDomainForPolicy(location.hostname || ""),
+      url: compactRuntimeUrl(location.href)
+    });
+    if (!handleExtensionContextError(error)) {
+      console.warn("[청마루] immediate media safety scan failed", error);
+    }
+    return null;
+  }
+}
+
+function getMediaSafetyLoadElement(target) {
+  if (target instanceof HTMLImageElement || target instanceof HTMLVideoElement) {
+    return target;
+  }
+  if (
+    typeof HTMLSourceElement !== "undefined" &&
+    target instanceof HTMLSourceElement &&
+    target.parentElement instanceof HTMLVideoElement
+  ) {
+    return target.parentElement;
+  }
+  if (target instanceof Element && target.matches(MEDIA_SAFETY_CANDIDATE_SELECTOR)) {
+    return target;
+  }
+  return null;
+}
+
+function handleMediaSafetyLoadEvent(event) {
+  const element = getMediaSafetyLoadElement(event?.target);
+  if (
+    !(element instanceof Element) ||
+    isShieldTextManagedElement(element) ||
+    isMediaSafetyAlreadyProtectedElement(element) ||
+    !isMediaSafetyEnabled(cachedSettings)
+  ) {
+    return;
+  }
+  MEDIA_SAFETY_SCHEDULER_STATS.mediaLoadEventCount += 1;
+  scheduleTargetedMediaSafetyScanForNodes(cachedSettings, [element], {
+    reason: "media-load-fast-path"
+  });
+  scheduleMediaSafetyScanForActiveProfile(cachedSettings, {
+    reason: "media-load-settle",
+    delayMs: MEDIA_SAFETY_SETTLE_SCAN_DELAY_MS
+  });
+}
+
+function initializeMediaSafetyLoadListeners() {
+  if (mediaSafetyLoadListenersInitialized) {
+    return;
+  }
+  mediaSafetyLoadListenersInitialized = true;
+
+  document.addEventListener("load", handleMediaSafetyLoadEvent, true);
+  document.addEventListener("loadedmetadata", handleMediaSafetyLoadEvent, true);
+  document.addEventListener("loadeddata", handleMediaSafetyLoadEvent, true);
+}
+
 function suppressMutationFeedback(ms = 160) {
   const nextUntil = Date.now() + Math.max(40, Number(ms || 0));
   ignoreMutationsUntil = Math.max(ignoreMutationsUntil, nextUntil);
@@ -1844,6 +4965,7 @@ function invalidateAnalysisForSettingsChange() {
   ANALYSIS_CACHE.clear();
   latestAnalysisGeneration += 1;
   latestPipelineSequence += 1;
+  invalidateMediaSafetyPageContext();
   suppressMutationFeedback(180);
 
   for (const state of NODE_STATE_BY_ID.values()) {
@@ -8921,6 +12043,28 @@ async function executeHotPathForCandidates(candidates, runReason) {
     return { ok: true, skipped: true };
   }
 
+  if (!isTextMaskingEnabled(settings)) {
+    for (const candidate of nextCandidates) {
+      if (candidate.candidateKind === "editable-value") {
+        restoreEditableValueState(candidate.state);
+      } else if (candidate.candidateKind === "attribute-value") {
+        restoreAttributeValueState(candidate.state);
+      } else {
+        restoreNodeState(candidate.state);
+      }
+    }
+    scheduleHotPathStatsPersist({
+      enabled: true,
+      runReason,
+      backendStatus: "ready",
+      sensitivityMode: getSensitivityMode(settings),
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0,
+      lastDecisionSource: "text-masking-disabled"
+    });
+    return { ok: true, skipped: true, reason: "TEXT_MASKING_DISABLED" };
+  }
+
   if (isFilteringSuppressedBySensitivity(settings)) {
     restoreAllRenderedContent();
     scheduleHotPathStatsPersist({
@@ -9316,6 +12460,7 @@ async function executePipeline(runReason) {
   }
 
   if (isPipelineRunning) {
+    recordRuntimePerfCounter("pipelineQueuedCount");
     queuedReason = chooseHigherPriorityPipelineReason(queuedReason, runReason);
     return { ok: true, queued: true };
   }
@@ -9323,6 +12468,7 @@ async function executePipeline(runReason) {
   isPipelineRunning = true;
   const pipelineSequence = ++latestPipelineSequence;
   const startedAt = performance.now();
+  recordRuntimePerfCounter("pipelineRunCount");
 
   try {
     const settings = await loadSettings({ force: shouldForceSettingsLoadForRun(runReason) });
@@ -9370,6 +12516,54 @@ async function executePipeline(runReason) {
 
       await persistDebug(payload, decision, stats);
       return { ok: true, stats };
+    }
+
+    if (!isTextMaskingEnabled(settings)) {
+      restoreAllRenderedContent();
+      cancelScheduledPipeline();
+
+      const payload = buildPayload([], 0, 0);
+      const decision = {
+        blockedNodeIds: [],
+        matchedKeywords: [],
+        categoryHits: emptyCategoryHits(),
+        nodeCategoryMap: {},
+        nodeReasonMap: {},
+        nodeScoreMap: {},
+        nodeEvidenceMap: {},
+        nodePendingMap: {},
+        nodeOutcomeMap: {},
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendDurationMs: 0,
+        backendStatus: "ready",
+        apiMode: "text-masking-disabled"
+      };
+      const stats = {
+        hostname,
+        analyzedNodeCount: 0,
+        blockedNodeCount: 0,
+        matchedKeywordCount: 0,
+        durationMs: Math.round(performance.now() - startedAt),
+        runReason,
+        enabled: true,
+        textMaskingEnabled: false,
+        sensitivityMode: getSensitivityMode(settings),
+        sensitivity: normalizeSensitivity(settings.sensitivity),
+        backendEndpoint: settings.backendApiBaseUrl,
+        backendStatus: "ready",
+        totalCandidateCount: 0,
+        requestedAnalysisCount: 0,
+        cacheHitCount: 0,
+        lastDecisionSource: "text-masking-disabled",
+        maskedSpanCount: 0,
+        firstMaskLatencyMs: 0,
+        visibleContainerBatchSize: 0
+      };
+
+      await persistDebug(payload, decision, stats);
+      return { ok: true, stats, skipped: true, reason: "TEXT_MASKING_DISABLED" };
     }
 
     if (isFilteringSuppressedBySensitivity(settings)) {
@@ -9914,6 +13108,7 @@ async function executePipeline(runReason) {
       retryable: failure.retryable
     };
   } finally {
+    recordRuntimePerfDuration("pipelineDurationTotalMs", "pipelineDurationMaxMs", performance.now() - startedAt);
     isPipelineRunning = false;
 
     if (queuedReason) {
@@ -10000,8 +13195,15 @@ function handleScheduledPipelineError(reason, error) {
 
 function schedulePipeline(reason) {
   if (extensionContextInvalidated || isUnsupportedPage()) return;
-  if (shouldSuppressPipelineForGoogleSearch(reason)) return;
-  if (shouldSuppressPipelineForPerformanceGuard(reason)) return;
+  if (shouldSuppressPipelineForGoogleSearch(reason)) {
+    recordRuntimePerfCounter("pipelineSuppressedCount");
+    return;
+  }
+  if (shouldSuppressPipelineForPerformanceGuard(reason)) {
+    recordRuntimePerfCounter("pipelineSuppressedCount");
+    return;
+  }
+  recordRuntimePerfCounter("pipelineScheduleCount");
 
   const delay = getPipelineScheduleDelayMs(reason);
   const deadlineMs = performance.now() + delay;
@@ -10128,6 +13330,8 @@ function scheduleBackendWarmup(options = {}) {
 function invalidatePendingAnalysisForNavigation() {
   latestAnalysisGeneration += 1;
   latestPipelineSequence += 1;
+  invalidateMediaSafetyPageContext();
+  invalidateNsfwClassifierContext();
   suppressMutationFeedback(180);
   clearStartupFollowupPipelines();
 
@@ -10630,8 +13834,24 @@ function initializeObserver() {
     const pageMutations = mutationList.filter((mutation) => !isShieldTextManagedMutation(mutation));
     managedMutationSkipCount += mutationList.length - pageMutations.length;
     if (pageMutations.length === 0) return;
+    const hasPotentialMediaMutation = mutationListHasPotentialMediaSafetyCandidate(pageMutations);
+    recordRuntimeMutationPerfStats(pageMutations, hasPotentialMediaMutation);
+    if (isMediaSafetyEnabled(cachedSettings)) {
+      recordMediaSafetyMutationStats(pageMutations, hasPotentialMediaMutation);
+    }
 
     if (isGoogleSearchPage()) {
+      if (hasPotentialMediaMutation) {
+        scheduleTargetedMediaSafetyScanForNodes(
+          cachedSettings,
+          pageMutations.flatMap((mutation) => Array.from(mutation.addedNodes || [])),
+          { reason: "mutation-fast-path" }
+        );
+        scheduleMediaSafetyScanForActiveProfile(cachedSettings, {
+          reason: "mutation-settle",
+          delayMs: MEDIA_SAFETY_SETTLE_SCAN_DELAY_MS
+        });
+      }
       scheduleGoogleSearchLightModeProtection(cachedSettings, {
         limit: MAX_DOMAIN_PRIORITY_CANDIDATES
       });
@@ -10671,6 +13891,17 @@ function initializeObserver() {
 
     if (sawAddedContent && !shouldSchedule) {
       scheduleScrollVisibilityRefresh({ withSettleRefresh: false });
+    }
+    if (sawAddedContent && hasPotentialMediaMutation) {
+      scheduleTargetedMediaSafetyScanForNodes(
+        cachedSettings,
+        pageMutations.flatMap((mutation) => Array.from(mutation.addedNodes || [])),
+        { reason: "mutation-fast-path" }
+      );
+      scheduleMediaSafetyScanForActiveProfile(cachedSettings, {
+        reason: "mutation-settle",
+        delayMs: MEDIA_SAFETY_SETTLE_SCAN_DELAY_MS
+      });
     }
     if (sawAddedContent && isGoogleTextSearchAnalysisPage()) {
       scheduleSearchResultProtection(cachedSettings);
@@ -10773,6 +14004,7 @@ function initializeViewportListeners() {
     () => {
       syncOverlays();
       scheduleScrollVisibilityRefresh();
+      scheduleMediaSafetyScanForActiveProfile(cachedSettings, { reason: "visibility" });
     },
     true
   );
@@ -10780,6 +14012,7 @@ function initializeViewportListeners() {
   window.addEventListener("resize", () => {
     syncOverlays();
     scheduleScrollVisibilityRefresh();
+    scheduleMediaSafetyScanForActiveProfile(cachedSettings, { reason: "visibility" });
     schedulePipeline("visibility");
   });
 
@@ -10789,6 +14022,7 @@ function initializeViewportListeners() {
       () => {
         syncOverlays();
         scheduleScrollVisibilityRefresh();
+        scheduleMediaSafetyScanForActiveProfile(cachedSettings, { reason: "visibility" });
       },
       { passive: true }
     );
@@ -10797,6 +14031,7 @@ function initializeViewportListeners() {
       () => {
         syncOverlays();
         scheduleScrollVisibilityRefresh();
+        scheduleMediaSafetyScanForActiveProfile(cachedSettings, { reason: "visibility" });
       },
       { passive: true }
     );
@@ -10861,6 +14096,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "RUN_MEDIA_SAFETY_SCAN") {
+    try {
+      const settings = getMergedSettings(message.settings || cachedSettings || {});
+      const summary = runMediaSafetyScan(settings, {
+        reason: message.reason || "manual-media-safety-scan"
+      });
+      sendResponse(summary);
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        reason: serializeFailureReason(error),
+        errorCode: String(error?.errorCode || "RUN_MEDIA_SAFETY_SCAN_FAILED")
+      });
+    }
+    return false;
+  }
+
+  if (message?.type === "FLUSH_RUNTIME_PERF_SUMMARY") {
+    try {
+      flushRuntimePerfSummary();
+      sendResponse({
+        ok: true,
+        developerRuntimeLogEnabled: developerRuntimeLogEnabled === true
+      });
+    } catch (error) {
+      sendResponse({
+        ok: false,
+        reason: serializeFailureReason(error),
+        errorCode: String(error?.errorCode || "FLUSH_RUNTIME_PERF_SUMMARY_FAILED")
+      });
+    }
+    return false;
+  }
+
   if (message?.type === "RUN_PIPELINE" || message?.type === "RUN_FILTER") {
     executePipeline(message.reason || "manual")
       .then((result) => {
@@ -10910,10 +14179,15 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
   const nextSettings = updateCachedSettings(storedSettings || {});
   invalidateAnalysisForSettingsChange();
   restoreAllRenderedContent();
+  if (!isMediaSafetyEnabled(nextSettings)) {
+    invalidateNsfwClassifierContext({ resetWarmup: true });
+    clearMediaSafetyProtectionIfNeeded();
+  }
 
   if (nextSettings.enabled === false) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: false,
@@ -10929,6 +14203,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
   if (isFilteringSuppressedBySensitivity(nextSettings)) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     cancelScheduledPipeline();
     scheduleHotPathStatsPersist({
       enabled: true,
@@ -10948,11 +14223,45 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
     };
   }
 
+  if (!isTextMaskingEnabled(nextSettings)) {
+    restoreAllRenderedContent();
+    cancelScheduledPipeline();
+    requestCurrentSitePolicy().catch((error) => {
+      handleExtensionContextError(error);
+    });
+    if (isGoogleSearchPage()) {
+      scheduleGoogleSearchLightModeProtection(nextSettings, {
+        limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
+        force: true
+      });
+    } else {
+      scheduleSearchResultProtection(nextSettings);
+    }
+    scheduleMediaSafetyScanForActiveProfile(nextSettings, { reason: runReason, delayMs: 0 });
+    scheduleHotPathStatsPersist({
+      enabled: true,
+      runReason,
+      backendStatus: "ready",
+      sensitivityMode: getSensitivityMode(nextSettings),
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0,
+      lastDecisionSource: "text-masking-disabled"
+    });
+    return {
+      ok: true,
+      enabled: true,
+      textMaskingEnabled: false,
+      sensitivityMode: getSensitivityMode(nextSettings),
+      skipped: true,
+      reason: "TEXT_MASKING_DISABLED"
+    };
+  }
+
   requestCurrentSitePolicy().catch((error) => {
     handleExtensionContextError(error);
   });
   if (nextSettings.backendEnabled === true) {
-    scheduleBackendWarmup({ immediate: isGoogleSearchPage() });
+    scheduleBackendWarmup({ immediate: false });
   }
   if (isGoogleSearchPage()) {
     scheduleGoogleSearchLightModeProtection(nextSettings, {
@@ -10968,6 +14277,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
       visibleContainerBatchSize: 0,
       lastDecisionSource: "google-search-light-mode"
     });
+    scheduleMediaSafetyScanForActiveProfile(nextSettings, { reason: runReason, delayMs: 0 });
     return {
       ok: true,
       enabled: true,
@@ -10977,6 +14287,7 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
     };
   }
   scheduleSearchResultProtection(nextSettings);
+  scheduleMediaSafetyScanForActiveProfile(nextSettings, { reason: runReason, delayMs: 0 });
   scheduleInitialEditablePass();
   schedulePipeline(runReason);
   return {
@@ -10987,6 +14298,14 @@ function applySettingsSnapshot(storedSettings, runReason = "settings-updated") {
 }
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]) {
+    developerRuntimeLogEnabled =
+      changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY].newValue === true;
+    developerRuntimeLogLoaded = true;
+    developerRuntimeLogLoadPromise = null;
+    syncRuntimePerfTelemetry();
+    return;
+  }
   if (areaName !== "sync") return;
   if (!changes?.settings) return;
   applySettingsSnapshot(changes.settings.newValue || {}, "settings-updated");
@@ -11001,10 +14320,10 @@ async function runInitialPageAnalysis(initialSettings, scheduledAt) {
   if (settings.enabled === false || normalizeSensitivity(settings.sensitivity) <= 0) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    clearMediaSafetyProtection();
     initializeObserver();
     return;
   }
-
   if (settings.backendEnabled === true) {
     scheduleBackendWarmup();
   }
@@ -11018,11 +14337,23 @@ async function runInitialPageAnalysis(initialSettings, scheduledAt) {
       limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
       force: true
     });
+    scheduleMediaSafetyScanForActiveProfile(settings, { reason: "initial-load", delayMs: 0 });
     initializeObserver();
     return;
   }
 
   scheduleSearchResultProtection(settings);
+  scheduleMediaSafetyScanForActiveProfile(settings, { reason: "initial-load", delayMs: 0 });
+  if (!isTextMaskingEnabled(settings)) {
+    initializeObserver();
+    scheduleHotPathStatsPersist({
+      startupDeferredMs: Math.round(performance.now() - Number(scheduledAt || performance.now())),
+      lastDecisionSource: "text-masking-disabled",
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0
+    });
+    return;
+  }
   registerTextNodesInTree(document.body, {
     markDirty: true,
     onlyVisible: true,
@@ -11075,26 +14406,36 @@ async function bootstrap() {
   if (!document.body || !document.documentElement) return;
 
   bootstrapStarted = true;
-  const initialSettings = await loadSettings({ force: true }).catch(() => getMergedSettings({}));
+  const [initialSettings] = await Promise.all([
+    loadSettings({ force: true }).catch(() => getMergedSettings({})),
+    refreshDeveloperRuntimeLogEnabled().catch(() => false)
+  ]);
   initializeVisibilityObserver();
   initializeSearchResultProtectionClickGuard();
   initializeInputListeners();
   initializeViewportListeners();
+  initializeMediaSafetyLoadListeners();
   initializeNavigationListeners();
   initializeLabSelfTestListeners();
 
   if (initialSettings.enabled === false || normalizeSensitivity(initialSettings.sensitivity) <= 0) {
     removeSitePolicyOverlay();
     clearSearchResultProtection();
+    invalidateNsfwClassifierContext({ resetWarmup: true });
+    clearMediaSafetyProtection();
     initializeObserver();
     return;
+  }
+  maybeEnableMediaSafetyStartupGate(initialSettings);
+  if (!shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    runImmediateMediaSafetyScan(initialSettings, { reason: "bootstrap-fast" });
   }
 
   requestCurrentSitePolicy().catch((error) => {
     handleExtensionContextError(error);
   });
   if (initialSettings.backendEnabled === true) {
-    scheduleBackendWarmup({ immediate: isGoogleSearchPage() });
+    scheduleBackendWarmup({ immediate: false });
   }
 
   if (isGoogleSearchPage()) {
@@ -11106,11 +14447,22 @@ async function bootstrap() {
       limit: MAX_DOMAIN_PRIORITY_CANDIDATES,
       force: true
     });
+    scheduleMediaSafetyScanForActiveProfile(initialSettings, { reason: "bootstrap-followup", delayMs: 120 });
     initializeObserver();
     return;
   }
 
   scheduleSearchResultProtection(initialSettings);
+  scheduleMediaSafetyScanForActiveProfile(initialSettings, { reason: "bootstrap-followup", delayMs: 120 });
+  if (!isTextMaskingEnabled(initialSettings)) {
+    initializeObserver();
+    scheduleHotPathStatsPersist({
+      lastDecisionSource: "text-masking-disabled",
+      maskedSpanCount: 0,
+      visibleContainerBatchSize: 0
+    });
+    return;
+  }
   scheduleInitialEditablePass();
   scheduleInitialPageAnalysis(initialSettings);
 }

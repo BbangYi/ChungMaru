@@ -3,7 +3,8 @@
   "name": "청마루 - 실시간 유해성 필터",
   "description": "웹 페이지 텍스트에서 유해/혐오/모욕 표현을 사용자 설정 기반으로 완화합니다.",
   "version": "0.1.0",
-  "permissions": ["storage", "tabs", "activeTab", "scripting", "webNavigation", "alarms"],
+  "minimum_chrome_version": "109",
+  "permissions": ["storage", "tabs", "activeTab", "scripting", "webNavigation", "alarms", "offscreen"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "청마루",
@@ -20,9 +21,20 @@
         "content-editable-overlay.js",
         "content-self-test.js",
         "content-wellbeing-widget.js",
+        "content-media-classifier.js",
         "content-script.js"
       ],
       "css": ["content-style.css"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "content-media-classifier.js",
+        "content-frame-media-probe.js"
+      ],
+      "css": ["content-frame-media-probe.css"],
+      "all_frames": true,
       "run_at": "document_start"
     }
   ],

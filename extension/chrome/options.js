@@ -5,9 +5,13 @@ const DEFAULT_SETTINGS = {
   warnDomains: "",
   showReason: true,
   interventionMode: "mask",
+  textMaskingEnabled: true,
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
+  mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -21,6 +25,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const AVATAR_ASSET_STORAGE_KEY = "wellbeingAvatarImageAssets";
+const DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled";
 const AVATAR_LOCAL_PREFIX = "local:";
 const AVATAR_IMAGE_MAX_DIMENSION = 512;
 const AVATAR_IMAGE_EXPORT_MIME = "image/webp";
@@ -53,11 +58,13 @@ const els = {
   allowWords: document.getElementById("allowWords"),
   blockedDomains: document.getElementById("blockedDomains"),
   warnDomains: document.getElementById("warnDomains"),
+  textMaskingEnabledToggle: document.getElementById("textMaskingEnabledToggle"),
   showReasonToggle: document.getElementById("showReasonToggle"),
   interventionModeSelect: document.getElementById("interventionModeSelect"),
   siteProtectionEnabledToggle: document.getElementById("siteProtectionEnabledToggle"),
   siteNavigationWarningEnabledToggle: document.getElementById("siteNavigationWarningEnabledToggle"),
   searchResultProtectionEnabledToggle: document.getElementById("searchResultProtectionEnabledToggle"),
+  mediaSafetyEnabledToggle: document.getElementById("mediaSafetyEnabledToggle"),
   showWellbeingWidgetToggle: document.getElementById("showWellbeingWidgetToggle"),
   wellbeingWidgetStyle: document.getElementById("wellbeingWidgetStyle"),
   wellbeingAgeStageCount: document.getElementById("wellbeingAgeStageCount"),
@@ -106,6 +113,8 @@ const els = {
   unlockDeveloperButton: document.getElementById("unlockDeveloperButton"),
   developerLockSection: document.getElementById("developerLockSection"),
   developerToolsSection: document.getElementById("developerToolsSection"),
+  developerRuntimeLogEnabledToggle: document.getElementById("developerRuntimeLogEnabledToggle"),
+  mediaSafetyInterventionModeSelect: document.getElementById("mediaSafetyInterventionMode"),
   debugSimulatedHour: document.getElementById("debugSimulatedHour"),
   debugUsageMinutes: document.getElementById("debugUsageMinutes"),
   debugProfanityCount: document.getElementById("debugProfanityCount"),
@@ -134,6 +143,7 @@ let currentSettings = null;
 let isRunningPipeline = false;
 let isRunningSelfTest = false;
 let currentRuntimeLogs = [];
+let developerRuntimeLogEnabled = false;
 
 const RUNTIME_LOG_TIME_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   dateStyle: "short",
@@ -146,9 +156,13 @@ function mergeSettings(stored) {
     ...DEFAULT_SETTINGS,
     ...(stored || {}),
     interventionMode: normalizeInterventionMode(stored?.interventionMode),
+    textMaskingEnabled: stored?.textMaskingEnabled !== false,
     siteProtectionEnabled: stored?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(stored?.mediaSafetyInterventionMode),
+    mediaSafetyStartupGateEnabled: stored?.mediaSafetyStartupGateEnabled === true,
     showWellbeingWidget: stored?.showWellbeingWidget !== false,
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
     wellbeingWidgetStyle: normalizeWidgetStyle(stored?.wellbeingWidgetStyle),
@@ -198,6 +212,13 @@ function normalizeWidgetStyle(value) {
 function normalizeInterventionMode(value) {
   const mode = String(value || DEFAULT_SETTINGS.interventionMode).trim();
   return ["mask", "blur", "hide", "remove"].includes(mode) ? mode : DEFAULT_SETTINGS.interventionMode;
+}
+
+function normalizeMediaSafetyInterventionMode(value) {
+  const mode = String(value || DEFAULT_SETTINGS.mediaSafetyInterventionMode).trim();
+  return ["auto", "placeholder", "remove"].includes(mode)
+    ? mode
+    : DEFAULT_SETTINGS.mediaSafetyInterventionMode;
 }
 
 function normalizeStageCount(value, fallback = 5) {
@@ -403,6 +424,12 @@ function summarizeRuntimeLogCounts(items) {
     analysisEventCount: 0,
     positiveDetectionCount: 0,
     skippedTextCount: 0,
+    mediaEventCount: 0,
+    mediaActionCount: 0,
+    mediaRemovedCount: 0,
+    mediaPlaceholderCount: 0,
+    mediaCollapsedGroupCount: 0,
+    mediaMissedVisibleTileCount: 0,
     manualNoteCount: 0,
     settingsChangeCount: 0
   };
@@ -427,6 +454,14 @@ function summarizeRuntimeLogCounts(items) {
       summary.analysisEventCount += 1;
       summary.positiveDetectionCount += Number(item.positiveCount || 0);
       summary.skippedTextCount += Number(item.skippedCount || 0);
+    }
+    if (String(item?.type || "").startsWith("media-safety")) {
+      summary.mediaEventCount += 1;
+      summary.mediaActionCount += Number(item.actionCount || 0);
+      summary.mediaRemovedCount = (summary.mediaRemovedCount || 0) + Number(item.removedCount || 0);
+      summary.mediaPlaceholderCount = (summary.mediaPlaceholderCount || 0) + Number(item.placeholderCount || 0);
+      summary.mediaCollapsedGroupCount = (summary.mediaCollapsedGroupCount || 0) + Number(item.collapsedGroupCount || 0);
+      summary.mediaMissedVisibleTileCount += Number(item.missedVisibleTileCount || 0);
     }
     if (item?.type === "manual-note") {
       summary.manualNoteCount += 1;
@@ -465,6 +500,21 @@ function buildRuntimeLogNotionReport(items, context = {}) {
       [
         item.positiveCount ? `positive=${item.positiveCount}` : "",
         item.skippedCount ? `skipped=${item.skippedCount}` : "",
+        item.candidateCount ? `candidate=${item.candidateCount}` : "",
+        item.visibleTileCount ? `visible=${item.visibleTileCount}` : "",
+        item.actionCount ? `action=${item.actionCount}` : "",
+        item.removedCount ? `removed=${item.removedCount}` : "",
+        item.placeholderCount ? `placeholder=${item.placeholderCount}` : "",
+        item.mergedTargetCount ? `merged=${item.mergedTargetCount}` : "",
+        item.collapsedGroupCount ? `groups=${item.collapsedGroupCount}` : "",
+        item.hiddenAreaPx ? `area=${item.hiddenAreaPx}px` : "",
+        item.viewportCoveragePct ? `viewport=${item.viewportCoveragePct}%` : "",
+        item.remainingVisibleTileCount ? `remaining=${item.remainingVisibleTileCount}` : "",
+        item.falseHiddenCount ? `falseHidden=${item.falseHiddenCount}` : "",
+        item.domAddedToActionMs ? `dom=${item.domAddedToActionMs}ms` : "",
+        item.collectMs ? `collect=${item.collectMs}ms` : "",
+        item.cheapFilterMs ? `cheap=${item.cheapFilterMs}ms` : "",
+        item.applyMs ? `apply=${item.applyMs}ms` : "",
         item.count ? `count=${item.count}` : "",
         item.durationMs ? `${item.durationMs}ms` : ""
       ].filter(Boolean).join(", ")
@@ -485,6 +535,7 @@ function buildRuntimeLogNotionReport(items, context = {}) {
     `- 백엔드 실패: ${summary.backendFailureCount}건 (타임아웃 ${summary.backendTimeoutCount}건)`,
     `- 사이트 차단/경고: 차단 ${summary.siteBlockCount}건, 경고 ${summary.siteWarningCount}건, 판정 실패 ${summary.siteFailureCount}건, 수동 판정 확인 ${summary.siteTestCount}건`,
     `- 유해표현 분석: 이벤트 ${summary.analysisEventCount}건, 양성 판정 ${summary.positiveDetectionCount}개, 건너뜀 ${summary.skippedTextCount}개`,
+    `- 유해 이미지 보호: 이벤트 ${summary.mediaEventCount}건, 처리 ${summary.mediaActionCount}개, 놓친 visible tile ${summary.mediaMissedVisibleTileCount}개`,
     `- 설정 변경/수동 메모: 설정 변경 ${summary.settingsChangeCount}건, 수동 재현 메모 ${summary.manualNoteCount}건`,
     "",
     "## 최근 이벤트",
@@ -517,7 +568,24 @@ function summarizeRuntimeLogs(items) {
       title: item.title || "",
       url: item.url || "",
       verdict: item.verdict || "",
+      profile: item.profile || "",
+      action: item.action || "",
       durationMs: Number(item.durationMs || 0),
+      candidateCount: Number(item.candidateCount || 0),
+      visibleTileCount: Number(item.visibleTileCount || 0),
+      actionCount: Number(item.actionCount || 0),
+      removedCount: Number(item.removedCount || 0),
+      placeholderCount: Number(item.placeholderCount || 0),
+      mergedTargetCount: Number(item.mergedTargetCount || 0),
+      collapsedGroupCount: Number(item.collapsedGroupCount || 0),
+      hiddenAreaPx: Number(item.hiddenAreaPx || 0),
+      viewportCoveragePct: Number(item.viewportCoveragePct || 0),
+      remainingVisibleTileCount: Number(item.remainingVisibleTileCount || 0),
+      falseHiddenCount: Number(item.falseHiddenCount || 0),
+      domAddedToActionMs: Number(item.domAddedToActionMs || 0),
+      collectMs: Number(item.collectMs || 0),
+      cheapFilterMs: Number(item.cheapFilterMs || 0),
+      applyMs: Number(item.applyMs || 0),
       count: Number(item.count || 0),
       positiveCount: Number(item.positiveCount || 0),
       skippedCount: Number(item.skippedCount || 0),
@@ -549,6 +617,26 @@ async function clearRuntimeLogs() {
   if (els.runtimeLogPreview) {
     els.runtimeLogPreview.value = "(런타임 로그 없음)";
   }
+}
+
+async function loadDeveloperRuntimeLogEnabled() {
+  const result = await chrome.storage.local.get(DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY);
+  developerRuntimeLogEnabled = result?.[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY] === true;
+  if (els.developerRuntimeLogEnabledToggle) {
+    els.developerRuntimeLogEnabledToggle.checked = developerRuntimeLogEnabled;
+  }
+  return developerRuntimeLogEnabled;
+}
+
+async function saveDeveloperRuntimeLogEnabled(enabled) {
+  developerRuntimeLogEnabled = enabled === true;
+  await chrome.storage.local.set({
+    [DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]: developerRuntimeLogEnabled
+  });
+  if (els.developerRuntimeLogEnabledToggle) {
+    els.developerRuntimeLogEnabledToggle.checked = developerRuntimeLogEnabled;
+  }
+  return developerRuntimeLogEnabled;
 }
 
 async function copyRuntimeLogs() {
@@ -597,6 +685,10 @@ async function addRuntimeManualNote() {
 
   if (!response?.ok) {
     throw new Error(response?.reason || response?.errorCode || "ADD_RUNTIME_EVENT_LOG_FAILED");
+  }
+  if (response?.skipped) {
+    renderStatus("개발자 로그 기록이 꺼져 있습니다");
+    return;
   }
 
   els.runtimeManualNote.value = "";
@@ -831,17 +923,23 @@ async function loadRuntimeState() {
 }
 
 function readSettingsFromForm() {
+  const siteProtectionEnabled = els.siteProtectionEnabledToggle?.checked !== false;
   return {
     ...currentSettings,
     customBlockWords: els.blockWords.value.trim(),
     customAllowWords: els.allowWords.value.trim(),
     blockedDomains: els.blockedDomains.value.trim(),
     warnDomains: els.warnDomains.value.trim(),
+    textMaskingEnabled: els.textMaskingEnabledToggle?.checked !== false,
     showReason: els.showReasonToggle.checked,
     interventionMode: normalizeInterventionMode(els.interventionModeSelect?.value),
-    siteProtectionEnabled: els.siteProtectionEnabledToggle.checked,
-    siteNavigationWarningEnabled: els.siteNavigationWarningEnabledToggle.checked,
-    searchResultProtectionEnabled: els.searchResultProtectionEnabledToggle.checked,
+    siteProtectionEnabled,
+    siteNavigationWarningEnabled: siteProtectionEnabled,
+    searchResultProtectionEnabled: siteProtectionEnabled,
+    mediaSafetyEnabled: els.mediaSafetyEnabledToggle?.checked === true,
+    mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(
+      els.mediaSafetyInterventionModeSelect?.value
+    ),
     showWellbeingWidget: els.showWellbeingWidgetToggle.checked,
     wellbeingWidgetStyle: normalizeWidgetStyle(els.wellbeingWidgetStyle.value),
     wellbeingAvatarImages: els.wellbeingAvatarImages?.value.trim() || "",
@@ -876,13 +974,30 @@ function renderSettingsToForm(settings) {
   els.allowWords.value = settings.customAllowWords;
   els.blockedDomains.value = settings.blockedDomains || "";
   els.warnDomains.value = settings.warnDomains || "";
+  if (els.textMaskingEnabledToggle) {
+    els.textMaskingEnabledToggle.checked = settings.textMaskingEnabled !== false;
+  }
   els.showReasonToggle.checked = settings.showReason;
   if (els.interventionModeSelect) {
     els.interventionModeSelect.value = normalizeInterventionMode(settings.interventionMode);
   }
-  els.siteProtectionEnabledToggle.checked = settings.siteProtectionEnabled !== false;
-  els.siteNavigationWarningEnabledToggle.checked = settings.siteNavigationWarningEnabled !== false;
-  els.searchResultProtectionEnabledToggle.checked = settings.searchResultProtectionEnabled !== false;
+  if (els.siteProtectionEnabledToggle) {
+    els.siteProtectionEnabledToggle.checked = settings.siteProtectionEnabled !== false;
+  }
+  if (els.siteNavigationWarningEnabledToggle) {
+    els.siteNavigationWarningEnabledToggle.checked = settings.siteNavigationWarningEnabled !== false;
+  }
+  if (els.searchResultProtectionEnabledToggle) {
+    els.searchResultProtectionEnabledToggle.checked = settings.searchResultProtectionEnabled !== false;
+  }
+  if (els.mediaSafetyEnabledToggle) {
+    els.mediaSafetyEnabledToggle.checked = settings.mediaSafetyEnabled === true;
+  }
+  if (els.mediaSafetyInterventionModeSelect) {
+    els.mediaSafetyInterventionModeSelect.value = normalizeMediaSafetyInterventionMode(
+      settings.mediaSafetyInterventionMode
+    );
+  }
   els.showWellbeingWidgetToggle.checked = settings.showWellbeingWidget !== false;
   els.wellbeingWidgetStyle.value = normalizeWidgetStyle(settings.wellbeingWidgetStyle);
   if (els.wellbeingAvatarImages) {
@@ -1390,6 +1505,7 @@ async function initialize() {
   currentSettings = mergeSettings(settings || {});
 
   renderSettingsToForm(currentSettings);
+  await loadDeveloperRuntimeLogEnabled().catch(() => {});
   renderAvatarSlotOptions();
   await renderAvatarImagePreviewList();
   if (els.debugSimulatedHour) {
@@ -1462,6 +1578,24 @@ async function initialize() {
 
   if (els.unlockDeveloperButton) {
     els.unlockDeveloperButton.addEventListener("click", unlockDeveloperTools);
+  }
+  if (els.developerRuntimeLogEnabledToggle) {
+    els.developerRuntimeLogEnabledToggle.addEventListener("change", async () => {
+      try {
+        const enabled = await saveDeveloperRuntimeLogEnabled(els.developerRuntimeLogEnabledToggle.checked);
+        renderStatus(enabled ? "개발자 런타임 로그 켜짐" : "개발자 런타임 로그 꺼짐");
+      } catch (error) {
+        els.developerRuntimeLogEnabledToggle.checked = developerRuntimeLogEnabled;
+        renderStatus(`개발자 로그 설정 실패: ${formatUnexpectedError(error)}`);
+      }
+    });
+  }
+  if (els.mediaSafetyInterventionModeSelect) {
+    els.mediaSafetyInterventionModeSelect.addEventListener("change", async () => {
+      currentSettings = readSettingsFromForm();
+      await saveSettingsToSync(currentSettings);
+      renderStatus(`이미지 처리 방식: ${currentSettings.mediaSafetyInterventionMode}`);
+    });
   }
   if (els.developerPassword) {
     els.developerPassword.addEventListener("keydown", (event) => {
@@ -1697,9 +1831,17 @@ async function initialize() {
         changes.lastPipelineError ||
         changes.lastSelfTest ||
         changes.lastSelfTestHistory ||
-        changes.runtimeEventLog
+        changes.runtimeEventLog ||
+        changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]
       )
     ) {
+      if (changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY]) {
+        developerRuntimeLogEnabled =
+          changes[DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY].newValue === true;
+        if (els.developerRuntimeLogEnabledToggle) {
+          els.developerRuntimeLogEnabledToggle.checked = developerRuntimeLogEnabled;
+        }
+      }
       loadRuntimeState().catch(() => {});
       return;
     }

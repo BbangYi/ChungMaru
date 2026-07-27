@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
     spam: true
   },
   interventionMode: "mask",
+  textMaskingEnabled: true,
   customBlockWords: "",
   customAllowWords: "",
   blockedDomains: "",
@@ -16,6 +17,9 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
+  mediaSafetyEnabled: false,
+  mediaSafetyInterventionMode: "auto",
+  mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
   wellbeingWidgetStyle: "soft",
   wellbeingAvatarImages: "",
@@ -40,6 +44,10 @@ const els = {
   siteVerdictBadge: document.getElementById("siteVerdictBadge"),
   todayUsage: document.getElementById("todayUsage"),
   siteDetections: document.getElementById("siteDetections"),
+  widgetToggle: document.getElementById("widgetToggle"),
+  textMaskingToggle: document.getElementById("textMaskingToggle"),
+  siteProtectionToggle: document.getElementById("siteProtectionToggle"),
+  mediaSafetyToggle: document.getElementById("mediaSafetyToggle"),
   backendStatusCard: document.getElementById("backendStatusCard"),
   backendStatusText: document.getElementById("backendStatusText"),
   backendStatusDetail: document.getElementById("backendStatusDetail"),
@@ -70,6 +78,13 @@ function mergeSettings(stored) {
     ...DEFAULT_SETTINGS,
     ...(stored || {}),
     interventionMode: normalizeInterventionMode(stored?.interventionMode),
+    textMaskingEnabled: stored?.textMaskingEnabled !== false,
+    siteProtectionEnabled: stored?.siteProtectionEnabled !== false,
+    siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
+    searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
+    mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyInterventionMode: stored?.mediaSafetyInterventionMode || DEFAULT_SETTINGS.mediaSafetyInterventionMode,
+    mediaSafetyStartupGateEnabled: stored?.mediaSafetyStartupGateEnabled === true,
     categories: {
       ...DEFAULT_SETTINGS.categories,
       ...(stored?.categories || {})
@@ -662,6 +677,24 @@ function bindMode(settings) {
   }
 }
 
+function setSiteProtectionBundle(settings, enabled) {
+  settings.siteProtectionEnabled = enabled;
+  settings.siteNavigationWarningEnabled = enabled;
+  settings.searchResultProtectionEnabled = enabled;
+}
+
+function renderFeatureToggles(settings) {
+  if (els.textMaskingToggle) {
+    els.textMaskingToggle.checked = settings.textMaskingEnabled !== false;
+  }
+  if (els.siteProtectionToggle) {
+    els.siteProtectionToggle.checked = settings.siteProtectionEnabled !== false;
+  }
+  if (els.mediaSafetyToggle) {
+    els.mediaSafetyToggle.checked = settings.mediaSafetyEnabled === true;
+  }
+}
+
 async function runPipelineNow() {
   if (isRunningPipeline) return;
   if (!canRunPipelineOnCurrentTab) {
@@ -711,6 +744,8 @@ async function initialize() {
   let sensitivitySaveTimerId = null;
 
   els.enabledToggle.checked = settings.enabled !== false;
+  els.widgetToggle.checked = settings.showWellbeingWidget !== false;
+  renderFeatureToggles(settings);
   els.sensitivityRange.value = normalizeSensitivity(settings.sensitivity);
   els.catAbuse.checked = settings.categories.abuse !== false;
   els.catHate.checked = settings.categories.hate !== false;
@@ -730,6 +765,37 @@ async function initialize() {
   els.enabledToggle.addEventListener("change", async () => {
     settings.enabled = els.enabledToggle.checked;
     await persistAndApplySettings(settings, settings.enabled ? "보호를 켰습니다" : "보호를 껐습니다");
+  });
+
+  els.widgetToggle.addEventListener("change", async () => {
+    settings.showWellbeingWidget = els.widgetToggle.checked;
+    await saveSettings(settings);
+    renderStatus(settings.showWellbeingWidget ? "화면 위젯을 켰습니다" : "화면 위젯을 껐습니다");
+    await refreshRuntimeState(settings);
+  });
+
+  els.textMaskingToggle?.addEventListener("change", async () => {
+    settings.textMaskingEnabled = els.textMaskingToggle.checked;
+    await persistAndApplySettings(
+      settings,
+      settings.textMaskingEnabled ? "텍스트 마스킹을 켰습니다" : "텍스트 마스킹을 껐습니다"
+    );
+  });
+
+  els.siteProtectionToggle?.addEventListener("change", async () => {
+    setSiteProtectionBundle(settings, els.siteProtectionToggle.checked);
+    await persistAndApplySettings(
+      settings,
+      settings.siteProtectionEnabled ? "유해 사이트 차단을 켰습니다" : "유해 사이트 차단을 껐습니다"
+    );
+  });
+
+  els.mediaSafetyToggle?.addEventListener("change", async () => {
+    settings.mediaSafetyEnabled = els.mediaSafetyToggle.checked;
+    await persistAndApplySettings(
+      settings,
+      settings.mediaSafetyEnabled ? "유해 이미지 차단을 켰습니다" : "유해 이미지 차단을 껐습니다"
+    );
   });
 
   async function persistSensitivityFromControl() {
@@ -791,6 +857,8 @@ async function initialize() {
     if (areaName === "sync" && changes.settings?.newValue) {
       settings = mergeSettings(changes.settings.newValue);
       els.enabledToggle.checked = settings.enabled !== false;
+      els.widgetToggle.checked = settings.showWellbeingWidget !== false;
+      renderFeatureToggles(settings);
       els.sensitivityRange.value = normalizeSensitivity(settings.sensitivity);
       els.catAbuse.checked = settings.categories.abuse !== false;
       els.catHate.checked = settings.categories.hate !== false;

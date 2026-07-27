@@ -201,6 +201,75 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.feature-toggle-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.feature-toggle {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 8px;
+  cursor: pointer;
+}
+
+.feature-toggle span {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feature-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.feature-toggle i {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.feature-toggle i::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 140ms ease, background 140ms ease;
+}
+
+.feature-toggle input:checked + i {
+  border-color: color-mix(in srgb, var(--good) 38%, var(--line));
+  background: var(--good-bg);
+}
+
+.feature-toggle input:checked + i::after {
+  transform: translateX(12px);
+  background: var(--good);
+}
+
 .backend-status {
   margin-top: 8px;
   display: grid;

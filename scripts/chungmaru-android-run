@@ -1,0 +1,2694 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import base64
+import csv
+import json
+import os
+import shlex
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterable
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = REPO_ROOT.parent
+DEFAULT_WAKE_WAIT_SECONDS = 15
+DEFAULT_SSH_WAIT_SECONDS = 20
+DEFAULT_SOURCE_MIRROR_TIMEOUT_SECONDS = 180
+SOURCE_ARCHIVE_NAME = "current.zip"
+MANAGED_SOURCE_MARKER = ".chungmaru-managed-source"
+MANAGED_ARTIFACT_MARKER = ".chungmaru-managed-artifacts"
+RUNNER_DIR_NAME = "chungmaru-desktop-runner"
+WORKSPACE_DESKTOP_CONFIG = WORKSPACE_ROOT / "workspace-services" / "config" / "chungmaru-desktop-test.json"
+WORKSPACE_DESKTOP_STATUS = WORKSPACE_ROOT / "workspace-services" / "runtime" / "status" / "chungmaru-desktop-test.json"
+DEFAULT_DESKTOP_SSH = "HOME@desktop-gmqfqtr"
+DEFAULT_DESKTOP_MAC = "A8:A1:59:F1:3B:C5"
+DEFAULT_SMB_HOST = "100.120.116.115"
+DEFAULT_SMB_DRIVE = "B:"
+DEFAULT_DESKTOP_RUNNER_HOME = f"B:\\{RUNNER_DIR_NAME}"
+DEFAULT_DESKTOP_LOCAL_RUNNER_RELATIVE = "AppData\\Local\\ChungmaruRunner\\shared"
+DEFAULT_DESKTOP_STORAGE_MODE = "local"
+CHROME_MEDIA_STATUS_NAME = "chrome-media.json"
+DESKTOP_AVD_GPU_MODES = ("auto", "host", "software", "lavapipe", "swiftshader", "swangle")
+FORWARDED_DESKTOP_ENV_KEYS = (
+    "PREPARE_DEVICE",
+    "SKIP_BUILD",
+    "ADB_REVERSE",
+    "ONLINE_ANALYSIS_INPUT",
+    "PIPELINE_MODE",
+    "FEATURE_SET",
+    "YOUTUBE_SURFACE",
+    "YOUTUBE_WATCH_URL",
+    "YOUTUBE_OPEN_COMMENTS",
+    "YOUTUBE_VIDEO_WAIT_SECONDS",
+    "YOUTUBE_COMMENT_OPEN_ATTEMPTS",
+    "YOUTUBE_COMMENT_SURFACE_UI_PATTERN",
+    "GOOGLE_SEGMENT_SECONDS",
+    "YOUTUBE_SEGMENT_SECONDS",
+    "GOOGLE_WAIT_SECONDS",
+    "YOUTUBE_WAIT_SECONDS",
+    "GOOGLE_AFTER_SCROLL_HOLD_SECONDS",
+    "YOUTUBE_AFTER_SCROLL_HOLD_SECONDS",
+    "SCROLL_SETTLE_SECONDS",
+    "SWIPE_DURATION_MS",
+    "GOOGLE_QUERY",
+    "YOUTUBE_QUERY",
+    "FAIL_ON_INVALID_DEMO",
+    "REQUIRE_YOUTUBE_COMMENT_SURFACE",
+)
+
+
+def read_json_file(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+WORKSPACE_DESKTOP_POLICY = read_json_file(WORKSPACE_DESKTOP_CONFIG)
+WORKSPACE_DESKTOP_LAST_STATUS = read_json_file(WORKSPACE_DESKTOP_STATUS)
+
+
+def policy_string(key: str, default: str = "") -> str:
+    value = WORKSPACE_DESKTOP_POLICY.get(key)
+    return str(value) if value not in (None, "") else default
+
+
+def default_desktop_ssh() -> str:
+    return (
+        os.environ.get("CHUNGMARU_DESKTOP_SSH")
+        or os.environ.get("CHUNGMARU_DESKTOP_SSH_TARGET")
+        or policy_string("sshTarget")
+        or DEFAULT_DESKTOP_SSH
+    )
+
+
+def default_desktop_mac() -> str:
+    return os.environ.get("CHUNGMARU_DESKTOP_MAC") or DEFAULT_DESKTOP_MAC
+
+
+def default_wake_mode() -> str:
+    if os.environ.get("CHUNGMARU_SKIP_WAKE") == "1":
+        return "none"
+    if WORKSPACE_DESKTOP_POLICY.get("skipWake") is True:
+        return "none"
+    return os.environ.get("CHUNGMARU_WAKE_MODE") or policy_string("wakeMode", "tailscale-ssh")
+
+
+def default_wake_ssh_target() -> str:
+    return (
+        os.environ.get("CHUNGMARU_WAKE_SSH_TARGET")
+        or policy_string("wakeSshTarget")
+        or "root@bbangi"
+    )
+
+
+def default_wake_remote_cwd() -> str:
+    return (
+        os.environ.get("CHUNGMARU_WAKE_REMOTE_CWD")
+        or policy_string("wakeRemoteCwd")
+        or "/opt/giminu-control-center/current"
+    )
+
+
+def default_wake_device_id() -> str:
+    return os.environ.get("CHUNGMARU_WAKE_DEVICE_ID") or policy_string("wakeDeviceId", "desktop-main")
+
+
+def default_ssh_known_hosts_file() -> str:
+    return os.environ.get("CHUNGMARU_DESKTOP_KNOWN_HOSTS") or policy_string("sshKnownHostsFile")
+
+
+def default_desktop_avd() -> str:
+    return os.environ.get("CHUNGMARU_DESKTOP_AVD") or policy_string(
+        "androidAvd",
+        "Medium_Phone_API_36.1",
+    )
+
+
+def default_desktop_avd_launch_mode() -> str:
+    value = (
+        os.environ.get("CHUNGMARU_DESKTOP_AVD_LAUNCH_MODE")
+        or policy_string("androidAvdLaunchMode", "interactive-task")
+    ).lower()
+    return value if value in {"interactive-task", "ssh"} else "interactive-task"
+
+
+def default_desktop_avd_gpu_mode() -> str:
+    value = (
+        os.environ.get("CHUNGMARU_DESKTOP_AVD_GPU")
+        or policy_string("androidAvdGpu", "auto")
+    ).lower()
+    return value if value in DESKTOP_AVD_GPU_MODES else "auto"
+
+
+def default_desktop_avd_cores() -> int:
+    raw = os.environ.get("CHUNGMARU_DESKTOP_AVD_CORES") or policy_string(
+        "androidAvdCores",
+        "4",
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        return 4
+    return value if 1 <= value <= 8 else 4
+
+
+def default_desktop_avd_memory_mb() -> int:
+    raw = os.environ.get("CHUNGMARU_DESKTOP_AVD_MEMORY_MB") or policy_string(
+        "androidAvdMemoryMb",
+        "4096",
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        return 4096
+    return value if 1536 <= value <= 8192 else 4096
+
+
+def default_desktop_keep_awake_minutes() -> int:
+    raw = os.environ.get("CHUNGMARU_DESKTOP_KEEP_AWAKE_MINUTES") or policy_string(
+        "desktopKeepAwakeMinutes",
+        "240",
+    )
+    try:
+        value = int(raw)
+    except ValueError:
+        return 240
+    return value if 30 <= value <= 720 else 240
+
+
+def default_desktop_storage_mode() -> str:
+    value = (
+        os.environ.get("CHUNGMARU_DESKTOP_STORAGE_MODE")
+        or policy_string("desktopStorageMode")
+        or DEFAULT_DESKTOP_STORAGE_MODE
+    ).lower()
+    return value if value in {"local", "auto", "smb"} else DEFAULT_DESKTOP_STORAGE_MODE
+
+
+def default_remote_timeout_seconds() -> int:
+    raw = os.environ.get("CHUNGMARU_REMOTE_TIMEOUT_SECONDS") or policy_string(
+        "remoteTimeoutSeconds",
+        "300",
+    )
+    try:
+        return max(60, int(raw))
+    except ValueError:
+        return 300
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def default_runner_home() -> Path:
+    mac_share = Path("/Volumes/shared-ssd")
+    if directory_is_writable(mac_share):
+        return mac_share / RUNNER_DIR_NAME
+
+    pi_share = Path("/srv/shared-ssd")
+    if directory_is_writable(pi_share):
+        return pi_share / RUNNER_DIR_NAME
+
+    if os.name == "nt":
+        return Path(DEFAULT_DESKTOP_RUNNER_HOME)
+
+    return Path("/private/tmp/chungmaru-runner")
+
+
+def directory_is_writable(path: Path) -> bool:
+    if not path.exists():
+        return False
+    probe = path / f".chungmaru-write-probe-{os.getpid()}"
+    try:
+        probe.write_text("ok\n", encoding="utf-8")
+        return probe.read_text(encoding="utf-8").strip() == "ok"
+    except OSError:
+        return False
+    finally:
+        try:
+            probe.unlink()
+        except OSError:
+            pass
+
+
+def default_local_work_root() -> Path:
+    configured = os.environ.get("CHUNGMARU_LOCAL_WORK_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            return Path(local_app_data) / "ChungmaruRunner"
+        return Path.home() / "AppData" / "Local" / "ChungmaruRunner"
+    return Path("/private/tmp/chungmaru-runner-work")
+
+
+def default_adb_path() -> str:
+    configured = os.environ.get("ADB")
+    if configured:
+        return configured
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        candidates = []
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "Android" / "Sdk" / "platform-tools" / "adb.exe")
+        for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+            value = os.environ.get(key)
+            if value:
+                candidates.append(Path(value) / "platform-tools" / "adb.exe")
+        for candidate in candidates:
+            if candidate.exists():
+                return str(candidate)
+        return str(candidates[0]) if candidates else "adb"
+    return "/Users/giminu0930/Library/Android/sdk/platform-tools/adb"
+
+
+def run_key() -> str:
+    return datetime.now().strftime("run-%Y%m%d-%H%M%S")
+
+
+def print_kv(key: str, value: object) -> None:
+    print(f"{key}={value}")
+
+
+def shell_run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    check: bool = True,
+    timeout: int | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        env=env,
+        check=check,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def ps_quote(value: object) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def powershell_encoded_command(script: str) -> str:
+    wrapped = f"""
+$ErrorActionPreference = "Stop"
+try {{
+{script}
+  exit 0
+}} catch {{
+  Write-Error $_
+  exit 1
+}}
+"""
+    encoded = base64.b64encode(wrapped.encode("utf-16le")).decode("ascii")
+    return f"powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}"
+
+
+def write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_runner_status(
+    runner_home: Path,
+    *,
+    state: str,
+    message: str,
+    command: str,
+    extra: dict[str, object] | None = None,
+) -> Path:
+    payload: dict[str, object] = {
+        "updatedAt": now_iso(),
+        "state": state,
+        "message": message,
+        "command": command,
+        "runnerHome": str(runner_home),
+        "repoRoot": str(REPO_ROOT),
+    }
+    if extra:
+        payload.update(extra)
+    output = runner_home / "status" / "latest.json"
+    write_json(output, payload)
+    return output
+
+
+def chrome_media_status_path(runner_home: Path) -> Path:
+    return runner_home / "status" / CHROME_MEDIA_STATUS_NAME
+
+
+def read_status(path: Path) -> dict[str, object]:
+    return read_json_file(path)
+
+
+def pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+        return str(pid) in completed.stdout
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def write_chrome_media_status(
+    runner_home: Path,
+    *,
+    state: str,
+    message: str,
+    run_key_value: str,
+    pid: int = 0,
+    exit_code: int | None = None,
+    local_work_root: Path | None = None,
+    log_path: Path | None = None,
+) -> Path:
+    payload: dict[str, object] = {
+        "updatedAt": now_iso(),
+        "state": state,
+        "message": message,
+        "command": "chrome-media",
+        "runKey": run_key_value,
+        "pid": pid,
+        "runnerHome": str(runner_home),
+        "current": str(runner_home / "current"),
+        "latest": str(runner_home / "latest"),
+    }
+    if exit_code is not None:
+        payload["exitCode"] = exit_code
+    if local_work_root is not None:
+        payload["localWorkRoot"] = str(local_work_root)
+        payload["localArtifactRoot"] = str(managed_artifact_root(local_work_root, "chrome-media"))
+    if log_path is not None:
+        payload["launcherLog"] = str(log_path)
+    output = chrome_media_status_path(runner_home)
+    write_json(output, payload)
+    write_runner_status(
+        runner_home,
+        state=state,
+        message=message,
+        command="chrome-media",
+        extra=payload,
+    )
+    return output
+
+
+def ensure_runner_home(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "current").mkdir(parents=True, exist_ok=True)
+    (path / "latest").mkdir(parents=True, exist_ok=True)
+    (path / "source").mkdir(parents=True, exist_ok=True)
+    (path / "source" / "current").mkdir(parents=True, exist_ok=True)
+    (path / "status").mkdir(parents=True, exist_ok=True)
+
+
+def write_probe(path: Path) -> None:
+    renamed = path.with_name(f"{path.name}.renamed")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for candidate in (path, renamed):
+        if candidate.exists():
+            candidate.unlink()
+    path.write_text("ok\n", encoding="utf-8")
+    if path.read_text(encoding="utf-8").strip() != "ok":
+        raise RuntimeError(f"write probe failed: {path}")
+    path.rename(renamed)
+    if renamed.read_text(encoding="utf-8").strip() != "ok":
+        raise RuntimeError(f"rename probe failed: {renamed}")
+    renamed.unlink()
+
+
+def find_bash() -> str:
+    configured = os.environ.get("CHUNGMARU_BASH")
+    if configured:
+        return configured
+    if os.name != "nt":
+        return shutil.which("bash") or "/bin/bash"
+    candidates = [
+        Path("C:/Program Files/Git/bin/bash.exe"),
+        Path("C:/Program Files/Git/usr/bin/bash.exe"),
+        Path("C:/msys64/usr/bin/bash.exe"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    raise RuntimeError("bash is required on Windows; install Git for Windows or set CHUNGMARU_BASH")
+
+
+def script_command(script: Path, *args: str) -> list[str]:
+    if os.name == "nt":
+        return [find_bash(), str(script), *args]
+    return [str(script), *args]
+
+
+def adb_ready(adb_path: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [adb_path, "devices"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError:
+        return False
+    if completed.returncode != 0:
+        return False
+    return any(line.rstrip().endswith("\tdevice") for line in completed.stdout.splitlines())
+
+
+def connect_db(runner_home: Path) -> sqlite3.Connection:
+    ensure_runner_home(runner_home)
+    db_path = runner_home / "chungmaru-runner.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=DELETE")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_key TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          command TEXT NOT NULL,
+          executor TEXT NOT NULL,
+          status TEXT NOT NULL,
+          duration_ms INTEGER NOT NULL DEFAULT -1,
+          repo_root TEXT NOT NULL DEFAULT '',
+          runner_home TEXT NOT NULL DEFAULT '',
+          artifact_root TEXT NOT NULL DEFAULT '',
+          summary TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          run_id INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          level TEXT NOT NULL,
+          message TEXT NOT NULL,
+          FOREIGN KEY(run_id) REFERENCES runs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS metrics (
+          run_id INTEGER NOT NULL,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          PRIMARY KEY(run_id, key),
+          FOREIGN KEY(run_id) REFERENCES runs(id)
+        );
+        """
+    )
+    conn.commit()
+    return conn
+
+
+def create_run(
+    conn: sqlite3.Connection,
+    *,
+    key: str,
+    command: str,
+    executor: str,
+    runner_home: Path,
+    artifact_root: Path,
+) -> int:
+    timestamp = now_iso()
+    conn.execute(
+        """
+        INSERT INTO runs (
+          run_key, created_at, updated_at, command, executor, status,
+          repo_root, runner_home, artifact_root
+        )
+        VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?)
+        """,
+        (
+            key,
+            timestamp,
+            timestamp,
+            command,
+            executor,
+            str(REPO_ROOT),
+            str(runner_home),
+            str(artifact_root),
+        ),
+    )
+    conn.commit()
+    row = conn.execute("SELECT id FROM runs WHERE run_key = ?", (key,)).fetchone()
+    if row is None:
+        raise RuntimeError("failed to create run row")
+    return int(row[0])
+
+
+def update_run(
+    conn: sqlite3.Connection,
+    run_id: int,
+    *,
+    status: str,
+    duration_ms: int,
+    summary: str = "",
+) -> None:
+    conn.execute(
+        "UPDATE runs SET status = ?, duration_ms = ?, summary = ?, updated_at = ? WHERE id = ?",
+        (status, duration_ms, summary, now_iso(), run_id),
+    )
+    conn.commit()
+
+
+def add_event(conn: sqlite3.Connection, run_id: int, level: str, message: str) -> None:
+    conn.execute(
+        "INSERT INTO events (run_id, created_at, level, message) VALUES (?, ?, ?, ?)",
+        (run_id, now_iso(), level, message),
+    )
+    conn.commit()
+
+
+def add_metric(conn: sqlite3.Connection, run_id: int, key: str, value: object) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO metrics (run_id, key, value) VALUES (?, ?, ?)",
+        (run_id, key, str(value)),
+    )
+    conn.commit()
+
+
+def send_wol(mac_address: str, *, broadcast: str, port: int) -> None:
+    normalized = mac_address.replace("-", "").replace(":", "").strip()
+    if len(normalized) != 12:
+        raise ValueError("desktop MAC address must contain 12 hex digits")
+    payload = bytes.fromhex("ff" * 6 + normalized * 16)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(payload, (broadcast, port))
+
+
+def bounded_wake_wait(seconds: int) -> int:
+    return min(20, max(10, seconds))
+
+
+def wake_desktop(args: argparse.Namespace) -> None:
+    if args.no_wake:
+        return
+    wake_mode = args.wake_mode
+    if wake_mode == "none":
+        return
+    if wake_mode == "tailscale-ssh":
+        if not args.wake_ssh_target:
+            raise RuntimeError("tailscale-ssh wake mode requires --wake-ssh-target")
+        if not args.wake_remote_cwd:
+            raise RuntimeError("tailscale-ssh wake mode requires --wake-remote-cwd")
+        if not args.wake_device_id:
+            raise RuntimeError("tailscale-ssh wake mode requires --wake-device-id")
+        remote_command = (
+            f"cd {shlex.quote(args.wake_remote_cwd)} && "
+            f"ENABLE_WOL=true WOL_SCHEDULE_DEVICE_IDS={shlex.quote(args.wake_device_id)} "
+            "node scripts/send-scheduled-wol.mjs"
+        )
+        shell_run(["tailscale", "ssh", args.wake_ssh_target, remote_command])
+        time.sleep(bounded_wake_wait(args.wake_wait))
+        return
+    if wake_mode == "magic":
+        mac_address = args.desktop_mac
+        if not mac_address:
+            raise RuntimeError("magic WOL requested but no desktop MAC policy is configured")
+        send_wol(
+            mac_address,
+            broadcast=args.wol_broadcast,
+            port=args.wol_port,
+        )
+        time.sleep(bounded_wake_wait(args.wake_wait))
+        return
+    raise RuntimeError(f"unsupported wake mode: {wake_mode}")
+
+
+def ssh_base_args(args: argparse.Namespace, *, connect_timeout: int = 5) -> list[str]:
+    command = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={connect_timeout}",
+        "-o",
+        "ServerAliveInterval=10",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "TCPKeepAlive=yes",
+    ]
+    if args.ssh_known_hosts_file:
+        command.extend(
+            [
+                "-o",
+                f"UserKnownHostsFile={args.ssh_known_hosts_file}",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+            ]
+        )
+    return command
+
+
+def scp_base_args(args: argparse.Namespace, *, connect_timeout: int = 20) -> list[str]:
+    command = [
+        "scp",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={connect_timeout}",
+        "-o",
+        "ServerAliveInterval=10",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "TCPKeepAlive=yes",
+    ]
+    if args.ssh_known_hosts_file:
+        command.extend(
+            [
+                "-o",
+                f"UserKnownHostsFile={args.ssh_known_hosts_file}",
+                "-o",
+                "StrictHostKeyChecking=accept-new",
+            ]
+        )
+    return command
+
+
+def wait_for_ssh(args: argparse.Namespace, host: str, *, timeout_seconds: int) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        completed = subprocess.run(
+            [*ssh_base_args(args, connect_timeout=15), host, "echo CHUNGMARU_DESKTOP_READY"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if completed.returncode == 0 and "CHUNGMARU_DESKTOP_READY" in completed.stdout:
+            return True
+        time.sleep(2)
+    return False
+
+
+def source_excludes(mode: str | None = None) -> list[str]:
+    excludes = [
+        ".DS_Store",
+        ".git/",
+        ".playwright-mcp/",
+        ".gradle/",
+        "backend/",
+        "docs/",
+        "evaluation/",
+        ".venv/",
+        "build/",
+        "node_modules/",
+    ]
+    if mode == "chrome-media":
+        return [*excludes, "android/"]
+    return [
+        *excludes,
+        "android/.gradle/",
+        "android/app/build/",
+        "android/build/",
+        "extension/",
+    ]
+
+
+def prepare_managed_source_dir(source_dir: Path) -> None:
+    marker = source_dir / MANAGED_SOURCE_MARKER
+    if source_dir.exists() and not marker.exists():
+        has_files = any(source_dir.iterdir())
+        if has_files:
+            if source_dir.name != "current" or source_dir.parent.name != "source":
+                raise RuntimeError(
+                    f"refusing to sync into unmanaged non-empty source dir: {source_dir}"
+                )
+            print_kv("source_mirror", "recover_unmarked_partial")
+    source_dir.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        "Managed by scripts/chungmaru-android-run. Do not edit here.\n",
+        encoding="utf-8",
+    )
+
+
+def write_source_archive(source_dir: Path, archive_path: Path) -> None:
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(
+        archive_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=6,
+    ) as archive:
+        for path in sorted(source_dir.rglob("*")):
+            if path.is_dir():
+                continue
+            archive.write(path, path.relative_to(source_dir).as_posix())
+
+
+def publish_single_file(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.tmp-{os.getpid()}")
+    if temporary.exists():
+        temporary.unlink()
+    shutil.copyfile(source, temporary)
+    try:
+        if destination.exists():
+            destination.unlink()
+        temporary.rename(destination)
+    except OSError:
+        shutil.copyfile(source, destination)
+        if temporary.exists():
+            temporary.unlink()
+
+
+def publish_source(
+    runner_home: Path,
+    *,
+    timeout_seconds: int = DEFAULT_SOURCE_MIRROR_TIMEOUT_SECONDS,
+    mode: str | None = None,
+) -> Path:
+    rsync = shutil.which("rsync")
+    if not rsync:
+        raise RuntimeError("rsync is required for publish-source")
+    archive_path = runner_home / "source" / SOURCE_ARCHIVE_NAME
+    local_parent = Path(tempfile.mkdtemp(prefix="chungmaru-source-"))
+    try:
+        source_dir = local_parent / "current"
+        local_archive = local_parent / SOURCE_ARCHIVE_NAME
+        prepare_managed_source_dir(source_dir)
+        command = [
+            rsync,
+            "-a",
+            "--delete",
+            "--no-specials",
+            "--no-devices",
+        ]
+        for pattern in source_excludes(mode):
+            command.extend(["--exclude", pattern])
+        command.extend([f"{REPO_ROOT}/", f"{source_dir}/"])
+        print_kv("source_mirror", "stage_start")
+        print_kv("source_stage", source_dir)
+        sys.stdout.flush()
+        try:
+            shell_run(command, timeout=timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"source stage mirror timed out after {timeout_seconds}s: {source_dir}"
+            ) from exc
+        write_source_archive(source_dir, local_archive)
+        print_kv("source_archive", "publish_start")
+        print_kv("source_archive", archive_path)
+        sys.stdout.flush()
+        publish_single_file(local_archive, archive_path)
+        print_kv("source_mirror", "ok")
+        return archive_path
+    finally:
+        shutil.rmtree(local_parent, ignore_errors=True)
+
+
+def mode_command(mode: str) -> list[str]:
+    if mode == "quick":
+        return script_command(REPO_ROOT / "scripts" / "android-mask-check.sh", "fast")
+    if mode == "benchmark":
+        return script_command(REPO_ROOT / "scripts" / "android-pipeline-benchmark.sh", "run")
+    if mode == "demo":
+        return script_command(REPO_ROOT / "scripts" / "android-real-e2e-demo.sh", "run")
+    raise ValueError(f"unsupported mode: {mode}")
+
+
+def managed_artifact_root(local_work_root: Path, mode: str) -> Path:
+    return local_work_root / "artifacts" / mode
+
+
+def reset_managed_dir(path: Path) -> None:
+    if path.exists():
+        marker = path / MANAGED_ARTIFACT_MARKER
+        if not marker.exists():
+            raise RuntimeError(f"refusing to reset unmanaged artifact dir: {path}")
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / MANAGED_ARTIFACT_MARKER).write_text(
+        "Managed by scripts/chungmaru-android-run. Safe to replace.\n",
+        encoding="utf-8",
+    )
+
+
+def run_streamed_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    log_path: Path,
+) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8", errors="replace") as log_file:
+        process = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="")
+            log_file.write(line)
+        return_code = process.wait()
+    if return_code != 0:
+        raise subprocess.CalledProcessError(return_code, command)
+
+
+def run_local_mode(mode: str, runner_home: Path, local_work_root: Path) -> None:
+    env = os.environ.copy()
+    env.setdefault("CHUNGMARU_RUNNER_HOME", str(runner_home))
+    env.setdefault("CHUNGMARU_LOCAL_WORK_ROOT", str(local_work_root))
+    if mode != "chrome-media":
+        env.setdefault("ADB", default_adb_path())
+    local_artifacts = managed_artifact_root(local_work_root, mode)
+    reset_managed_dir(local_artifacts)
+    if mode == "demo":
+        artifact_root = local_artifacts / "android-real-e2e-demo"
+        env.setdefault("RUN_ID", "latest")
+        env.setdefault("ARTIFACT_ROOT", str(artifact_root))
+        env.setdefault("ARTIFACT_DIR", str(artifact_root / "runs" / "latest"))
+    if mode == "benchmark":
+        benchmark_root = local_artifacts / "android-pipeline-benchmark"
+        env.setdefault("BATCH_ID", "latest")
+        env.setdefault("BATCH_ROOT", str(benchmark_root / "batch"))
+        env.setdefault("REPORT_DIR", str(benchmark_root / "report"))
+    if mode == "quick":
+        env.setdefault("ARTIFACT_DIR", str(local_artifacts / "android-mask-check"))
+    if mode == "chrome-media":
+        chrome_path = env.get("CHUNGMARU_CHROME_PATH", "")
+        if not chrome_path:
+            raise RuntimeError("Chrome for Testing path was not provided by the runner bootstrap")
+        behavior_output = local_artifacts / "behavior"
+        run_streamed_command(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "chungmaru_chrome_media_safety_smoke.py"),
+                "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
+                "--chrome-path", chrome_path,
+                "--profile-dir", str(local_work_root / "profiles" / "chrome-media-smoke"),
+                "--chrome-log", str(local_artifacts / "chrome-media-smoke.chrome.log"),
+                "--output-dir", str(behavior_output),
+                "--headless",
+                "--clean-profile",
+                "--summary-only",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            log_path=local_artifacts / "chrome-media-smoke.log",
+        )
+        classifier_output = local_artifacts / "nsfw-classifier"
+        run_streamed_command(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "chungmaru_chrome_nsfw_classifier_benchmark.py"),
+                "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
+                "--chrome-path", chrome_path,
+                "--profile-root", str(local_work_root / "profiles" / "chrome-media-classifier"),
+                "--corpus-dir", str(local_work_root / "corpus" / "nsfw-wikimedia"),
+                "--output-dir", str(classifier_output),
+                "--cold-runs", "3",
+                "--warm-runs", "3",
+                "--backend", "cpu",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+            log_path=local_artifacts / "chrome-media.log",
+        )
+        return
+    run_streamed_command(
+        mode_command(mode),
+        cwd=REPO_ROOT,
+        env=env,
+        log_path=local_artifacts / f"{mode}.log",
+    )
+
+
+def desktop_bootstrap_script(
+    args: argparse.Namespace,
+    mode: str | None = None,
+    *,
+    require_source: bool = False,
+) -> str:
+    runner_home = args.desktop_runner_home or DEFAULT_DESKTOP_RUNNER_HOME
+    configured_local_work = args.desktop_local_work_root or ""
+    mode_literal = mode or ""
+    require_source_literal = "$true" if require_source else "$false"
+    forwarded_env_entries = "\n".join(
+        f"  {ps_quote(key)} = {ps_quote(os.environ.get(key, ''))}"
+        for key in FORWARDED_DESKTOP_ENV_KEYS
+    )
+    return f"""
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+
+$RunnerHome = {ps_quote(runner_home)}
+$DesktopStorageMode = {ps_quote(args.desktop_storage_mode)}
+$LocalRunnerHome = Join-Path $env:LOCALAPPDATA "ChungmaruRunner\\shared"
+$ConfiguredLocalWorkRoot = {ps_quote(configured_local_work)}
+$Mode = {ps_quote(mode_literal)}
+$RequireSource = {require_source_literal}
+$DesktopAvd = {ps_quote(args.desktop_avd)}
+$DesktopAvdLaunchMode = {ps_quote(args.desktop_avd_launch_mode)}
+$DesktopAvdGpu = {ps_quote(args.desktop_avd_gpu)}
+$DesktopAvdCores = {args.desktop_avd_cores}
+$DesktopAvdMemoryMb = {args.desktop_avd_memory_mb}
+$DesktopKeepAwakeMinutes = {args.desktop_keep_awake_minutes}
+$SmbDrive = {ps_quote(DEFAULT_SMB_DRIVE)}
+$MountScript = Join-Path $env:USERPROFILE "BbangYi\\bin\\bbangyi-mount-shared-ssd.ps1"
+$SharedSsdReady = $false
+$ForwardedEnv = @{{
+{forwarded_env_entries}
+}}
+foreach ($ForwardedName in $ForwardedEnv.Keys) {{
+  $ForwardedValue = $ForwardedEnv[$ForwardedName]
+  if (![string]::IsNullOrWhiteSpace($ForwardedValue)) {{
+    Set-Item -Path "Env:$ForwardedName" -Value $ForwardedValue
+    Write-Output "desktop_forward_env=$ForwardedName"
+  }}
+}}
+
+Write-Output "desktop_storage_mode=$DesktopStorageMode"
+try {{
+  powercfg /change standby-timeout-ac 0 | Out-Null
+  powercfg /change standby-timeout-dc 0 | Out-Null
+  powercfg /change hibernate-timeout-ac 0 | Out-Null
+  powercfg /change hibernate-timeout-dc 0 | Out-Null
+  powercfg /change monitor-timeout-ac 0 | Out-Null
+  powercfg /change monitor-timeout-dc 0 | Out-Null
+  Write-Output "desktop_powercfg=ac_dc_sleep_disabled"
+}} catch {{
+  Write-Output "desktop_powercfg=warning:$($_.Exception.Message)"
+}}
+if ($DesktopStorageMode -eq "local") {{
+  $RunnerHome = $LocalRunnerHome
+  Write-Output "desktop_smb_ready=skipped"
+}} else {{
+  if (!(Test-Path "$SmbDrive\\")) {{
+    if (Test-Path $MountScript) {{
+      & $MountScript | Out-Null
+    }}
+  }}
+  if (Test-Path "$SmbDrive\\") {{
+    $SharedSsdReady = $true
+    Write-Output "desktop_smb_ready=yes"
+  }} else {{
+    Write-Output "desktop_smb_ready=no"
+    if ($DesktopStorageMode -eq "smb") {{
+      throw "desktop SMB storage mode requested but $SmbDrive is unavailable in this SSH session"
+    }}
+    if ($RunnerHome -like "$SmbDrive*") {{
+      $RunnerHome = $LocalRunnerHome
+    }}
+  }}
+}}
+
+New-Item -ItemType Directory -Path $RunnerHome -Force | Out-Null
+$StatusDir = Join-Path $RunnerHome "status"
+$CurrentDir = Join-Path $RunnerHome "current"
+$LatestDir = Join-Path $RunnerHome "latest"
+$SourceRoot = Join-Path $RunnerHome "source"
+New-Item -ItemType Directory -Path $StatusDir -Force | Out-Null
+New-Item -ItemType Directory -Path $LatestDir -Force | Out-Null
+New-Item -ItemType Directory -Path $SourceRoot -Force | Out-Null
+$Probe = Join-Path $LatestDir "desktop-write-probe.txt"
+$ProbeRenamed = Join-Path $LatestDir "desktop-write-probe.renamed.txt"
+Remove-Item -Path $Probe,$ProbeRenamed -Force -ErrorAction SilentlyContinue
+"ok" | Set-Content -Encoding UTF8 -Path $Probe
+if (!(Test-Path $Probe)) {{
+  throw "shared SSD write probe failed"
+}}
+Rename-Item -Path $Probe -NewName (Split-Path -Leaf $ProbeRenamed)
+if ((Get-Content -Raw -Path $ProbeRenamed).Trim() -ne "ok") {{
+  throw "shared SSD rename/read probe failed"
+}}
+Remove-Item -Path $ProbeRenamed -Force
+Write-Output "desktop_runner_home_effective=$RunnerHome"
+
+$SourceDir = Join-Path $RunnerHome "source\\current"
+$SourceArchive = Join-Path $RunnerHome "source\\{SOURCE_ARCHIVE_NAME}"
+$RunnerScript = Join-Path $SourceDir "scripts\\chungmaru-android-run"
+
+if ($ConfiguredLocalWorkRoot) {{
+  $LocalWorkRoot = [Environment]::ExpandEnvironmentVariables($ConfiguredLocalWorkRoot)
+}} else {{
+  $LocalWorkRoot = Join-Path $env:LOCALAPPDATA "ChungmaruRunner\\work"
+}}
+$LocalRepo = Join-Path $LocalWorkRoot "Chungmaru"
+New-Item -ItemType Directory -Path $LocalWorkRoot -Force | Out-Null
+$GradleUserHome = Join-Path $LocalWorkRoot ".gradle"
+New-Item -ItemType Directory -Path $GradleUserHome -Force | Out-Null
+
+if ($Mode -or $RequireSource) {{
+  if (Test-Path $SourceArchive) {{
+    if (Test-Path $LocalRepo) {{
+      Remove-Item -Path $LocalRepo -Recurse -Force
+    }}
+    New-Item -ItemType Directory -Path $LocalRepo -Force | Out-Null
+    Expand-Archive -Path $SourceArchive -DestinationPath $LocalRepo -Force
+  }} elseif (Test-Path $RunnerScript) {{
+    $RoboLog = Join-Path $StatusDir "last-robocopy.log"
+    robocopy $SourceDir $LocalRepo /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP > $RoboLog
+    if ($LASTEXITCODE -gt 7) {{
+      throw "robocopy source mirror to Desktop local repo failed: exit=$LASTEXITCODE"
+    }}
+  }} else {{
+    throw "source mirror is not ready: $SourceArchive or $RunnerScript"
+  }}
+  $LocalRunnerScript = Join-Path $LocalRepo "scripts\\chungmaru-android-run"
+  if (!(Test-Path $LocalRunnerScript)) {{
+    throw "Desktop local source restore failed: $LocalRunnerScript"
+  }}
+}}
+
+$RequiresAndroid = $Mode -ne "chrome-media"
+$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+$PythonArgs = @()
+if (!$PythonCommand) {{
+  $PythonCommand = Get-Command py -ErrorAction SilentlyContinue
+  $PythonArgs = @("-3")
+}}
+if (!$PythonCommand) {{
+  throw "python is not available on Desktop"
+}}
+$Adb = $null
+$SdkRoot = ""
+$DesktopAndroidUserHome = ""
+$Bash = $null
+
+if ($RequiresAndroid) {{
+$KnownSdkRoot = "C:\\Android\\Sdk"
+if (([string]::IsNullOrWhiteSpace($env:ANDROID_HOME) -or $env:ANDROID_HOME -like (Join-Path $env:LOCALAPPDATA "Android*")) -and (Test-Path (Join-Path $KnownSdkRoot "platform-tools\\adb.exe"))) {{
+  $env:ANDROID_HOME = $KnownSdkRoot
+  $env:ANDROID_SDK_ROOT = $KnownSdkRoot
+}}
+
+$KnownAndroidUserHome = "C:\\Android\\UserHome"
+$ProfileAndroidHome = Join-Path $env:USERPROFILE ".android*"
+$DesktopAndroidUserHome = $env:ANDROID_USER_HOME
+if ([string]::IsNullOrWhiteSpace($DesktopAndroidUserHome) -or $DesktopAndroidUserHome -like $ProfileAndroidHome) {{
+  $DesktopAndroidUserHome = $KnownAndroidUserHome
+}}
+New-Item -ItemType Directory -Path $DesktopAndroidUserHome -Force | Out-Null
+$env:ANDROID_USER_HOME = $DesktopAndroidUserHome
+$env:ANDROID_EMULATOR_HOME = $DesktopAndroidUserHome
+if (Test-Path Env:ANDROID_SDK_HOME) {{
+  Remove-Item Env:ANDROID_SDK_HOME
+}}
+if ([string]::IsNullOrWhiteSpace($env:ANDROID_AVD_HOME) -or $env:ANDROID_AVD_HOME -like $ProfileAndroidHome) {{
+  $env:ANDROID_AVD_HOME = Join-Path $DesktopAndroidUserHome "avd"
+}}
+
+$AdbCandidates = @()
+if ($env:ADB) {{ $AdbCandidates += $env:ADB }}
+if ($env:ANDROID_HOME) {{ $AdbCandidates += (Join-Path $env:ANDROID_HOME "platform-tools\\adb.exe") }}
+if ($env:ANDROID_SDK_ROOT) {{ $AdbCandidates += (Join-Path $env:ANDROID_SDK_ROOT "platform-tools\\adb.exe") }}
+$AdbCandidates += (Join-Path $KnownSdkRoot "platform-tools\\adb.exe")
+$AdbCandidates += (Join-Path $env:LOCALAPPDATA "Android\\Sdk\\platform-tools\\adb.exe")
+$Adb = $AdbCandidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+if (!$Adb) {{
+  throw "adb.exe not found in Android SDK candidates"
+}}
+$SdkRoot = Split-Path -Parent (Split-Path -Parent $Adb)
+if (($Mode -or $RequireSource) -and (Test-Path $LocalRepo)) {{
+  $AndroidDir = Join-Path $LocalRepo "android"
+  if (Test-Path $AndroidDir) {{
+    $LocalProperties = Join-Path $AndroidDir "local.properties"
+    $GradleSdkRoot = $SdkRoot.Replace([string][char]92, "/")
+    "sdk.dir=$GradleSdkRoot" | Set-Content -Encoding ASCII -Path $LocalProperties
+    Write-Output "desktop_android_local_properties=$LocalProperties"
+  }}
+}}
+$AdbOutput = & $Adb devices
+$OfflineLine = $AdbOutput | Where-Object {{ $_ -match "^\\S+\\s+offline(\\s|$)" }} | Select-Object -First 1
+if ($OfflineLine) {{
+  $OfflineDevice = ($OfflineLine -split "\\s+")[0]
+  Write-Output "desktop_adb_offline=$OfflineDevice"
+  & $Adb reconnect offline 2>$null | Out-Null
+  for ($i = 0; $i -lt 5; $i++) {{
+    Start-Sleep -Seconds 2
+    $AdbOutput = & $Adb devices
+    if (($AdbOutput -join "`n") -match "\\tdevice") {{
+      break
+    }}
+  }}
+  if (($AdbOutput -join "`n") -match "\\tdevice") {{
+    Write-Output "desktop_adb_recovered=yes"
+  }} else {{
+    throw "ADB device $OfflineDevice stayed offline after reconnect; refusing to start a second AVD."
+  }}
+}}
+if (($AdbOutput -join "`n") -notmatch "\\tdevice") {{
+  $Emulator = Join-Path $SdkRoot "emulator\\emulator.exe"
+  if (!(Test-Path $Emulator)) {{
+    throw "no ready ADB device on Desktop and emulator.exe is missing"
+  }}
+  $Avds = & $Emulator -list-avds
+  if (($Avds -notcontains $DesktopAvd) -and $Avds.Count -gt 0) {{
+    $DesktopAvd = $Avds[0]
+  }}
+  if ([string]::IsNullOrWhiteSpace($DesktopAvd)) {{
+    throw "no ready ADB device on Desktop and no AVD is configured"
+  }}
+  $AvdConfig = Join-Path $env:ANDROID_AVD_HOME "$DesktopAvd.avd\\config.ini"
+  if (Test-Path $AvdConfig) {{
+    $AvdConfigContent = Get-Content -Raw -Path $AvdConfig
+    $UpdatedAvdConfigContent = $AvdConfigContent
+    if ($UpdatedAvdConfigContent -match "(?m)^hw\\.gpu\\.enabled=.*$") {{
+      $UpdatedAvdConfigContent = $UpdatedAvdConfigContent -replace "(?m)^hw\\.gpu\\.enabled=.*$", "hw.gpu.enabled=yes"
+    }} else {{
+      $UpdatedAvdConfigContent += "`r`nhw.gpu.enabled=yes"
+    }}
+    if ($UpdatedAvdConfigContent -match "(?m)^hw\\.gpu\\.mode=.*$") {{
+      $UpdatedAvdConfigContent = $UpdatedAvdConfigContent -replace "(?m)^hw\\.gpu\\.mode=.*$", "hw.gpu.mode=$DesktopAvdGpu"
+    }} else {{
+      $UpdatedAvdConfigContent += "`r`nhw.gpu.mode=$DesktopAvdGpu"
+    }}
+    if ($UpdatedAvdConfigContent -ne $AvdConfigContent) {{
+      Set-Content -Path $AvdConfig -Value $UpdatedAvdConfigContent -Encoding ASCII
+      Write-Output "desktop_avd_gpu_config=enabled mode=$DesktopAvdGpu"
+    }} else {{
+      Write-Output "desktop_avd_gpu_config=already_enabled mode=$DesktopAvdGpu"
+    }}
+  }} else {{
+    Write-Output "desktop_avd_gpu_config=not_found"
+  }}
+  $EmulatorLogDir = Join-Path $StatusDir "emulator"
+  New-Item -ItemType Directory -Path $EmulatorLogDir -Force | Out-Null
+  $EmulatorStdout = Join-Path $EmulatorLogDir "emulator-stdout.log"
+  $EmulatorStderr = Join-Path $EmulatorLogDir "emulator-stderr.log"
+  $EmulatorArguments = @(
+    "-avd", $DesktopAvd,
+    "-no-window",
+    "-gpu", $DesktopAvdGpu,
+    "-cores", $DesktopAvdCores,
+    "-memory", $DesktopAvdMemoryMb,
+    "-no-audio",
+    "-no-boot-anim",
+    "-no-metrics",
+    "-no-snapshot-save"
+  )
+  Write-Output "desktop_emulator_start=$DesktopAvd"
+  Write-Output "desktop_emulator_launch_mode=$DesktopAvdLaunchMode"
+  Write-Output "desktop_emulator_profile=gpu=$DesktopAvdGpu cores=$DesktopAvdCores memory_mb=$DesktopAvdMemoryMb"
+  if ($DesktopAvdLaunchMode -eq "interactive-task") {{
+    $TaskUser = (Get-CimInstance Win32_ComputerSystem).UserName
+    if ([string]::IsNullOrWhiteSpace($TaskUser)) {{
+      throw "no interactive Windows user is logged in; cannot start the AVD outside the SSH session"
+    }}
+    $TaskName = "Chungmaru-Android-AVD"
+    $TaskScript = Join-Path $EmulatorLogDir "start-avd.ps1"
+    $KeepAwakeScript = Join-Path $EmulatorLogDir "keep-awake.ps1"
+    $KeepAwakeLog = Join-Path $EmulatorLogDir "keep-awake.log"
+    $KeepAwakeErrorLog = Join-Path $EmulatorLogDir "keep-awake-error.log"
+    $KeepAwakeScriptBody = @'
+$ErrorActionPreference = "Stop"
+$ErrorLog = "__KEEP_AWAKE_ERROR_LOG__"
+try {{
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class ChungmaruPowerRequest {{
+  [DllImport("kernel32.dll")]
+  public static extern uint SetThreadExecutionState(uint flags);
+}}
+"@
+$systemRequired = [uint32]2147483651
+$continuous = [uint32]2147483648
+$deadline = (Get-Date).AddMinutes(__KEEP_AWAKE_MINUTES__)
+while ((Get-Date) -lt $deadline) {{
+  [ChungmaruPowerRequest]::SetThreadExecutionState($systemRequired) | Out-Null
+  "$(Get-Date -Format o) system_display_required deadline=$($deadline.ToString('o'))" | Add-Content -Path "__KEEP_AWAKE_LOG__"
+  Start-Sleep -Seconds 30
+}}
+[ChungmaruPowerRequest]::SetThreadExecutionState($continuous) | Out-Null
+}} catch {{
+  "$(Get-Date -Format o) $($_.Exception.Message)" | Add-Content -Path $ErrorLog
+  exit 1
+}}
+'@
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_LOG__", $KeepAwakeLog.Replace("'", "''"))
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_ERROR_LOG__", $KeepAwakeErrorLog.Replace("'", "''"))
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_MINUTES__", [string]$DesktopKeepAwakeMinutes)
+    Set-Content -Path $KeepAwakeScript -Value $KeepAwakeScriptBody -Encoding UTF8
+    $TaskScriptBody = @"
+`$ErrorActionPreference = "Stop"
+`$env:ANDROID_USER_HOME = "$DesktopAndroidUserHome"
+`$env:ANDROID_EMULATOR_HOME = "$DesktopAndroidUserHome"
+`$env:ANDROID_AVD_HOME = "$env:ANDROID_AVD_HOME"
+`$Emulator = "$Emulator"
+`$Arguments = @("-avd", "$DesktopAvd", "-no-window", "-gpu", "$DesktopAvdGpu", "-cores", "$DesktopAvdCores", "-memory", "$DesktopAvdMemoryMb", "-no-audio", "-no-boot-anim", "-no-metrics", "-no-snapshot-save")
+Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "$KeepAwakeScript") -WindowStyle Hidden
+Start-Process -FilePath `$Emulator -ArgumentList `$Arguments -RedirectStandardOutput "$EmulatorStdout" -RedirectStandardError "$EmulatorStderr" -WindowStyle Hidden
+"@
+    Set-Content -Path $TaskScript -Value $TaskScriptBody -Encoding UTF8
+    $TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"$TaskScript`"")
+    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId $TaskUser -LogonType Interactive -RunLevel Limited
+    $TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $TaskName -Action $TaskAction -Principal $TaskPrincipal -Settings $TaskSettings -Force | Out-Null
+    Start-ScheduledTask -TaskName $TaskName
+    Write-Output "desktop_emulator_task=$TaskName"
+    Write-Output "desktop_emulator_task_user=$TaskUser"
+    Write-Output "desktop_keep_awake_minutes=$DesktopKeepAwakeMinutes"
+    Write-Output "desktop_keep_awake_scope=interactive_system_display"
+  }} else {{
+    Start-Process -FilePath $Emulator -ArgumentList $EmulatorArguments -RedirectStandardOutput $EmulatorStdout -RedirectStandardError $EmulatorStderr -WindowStyle Hidden | Out-Null
+  }}
+  $DeviceReady = $false
+  $BootCompleted = $false
+  $ReadyDevice = ""
+  for ($i = 0; $i -lt 90; $i++) {{
+    Start-Sleep -Seconds 2
+    $AdbOutput = & $Adb devices
+    $ReadyLine = $AdbOutput | Where-Object {{ $_ -match "^\\S+\\s+device(\\s|$)" }} | Select-Object -First 1
+    if ($ReadyLine) {{
+      $DeviceReady = $true
+      $ReadyDevice = ($ReadyLine -split "\\s+")[0]
+      $BootOutput = & $Adb -s $ReadyDevice shell getprop sys.boot_completed 2>$null
+      if ((($BootOutput | Select-Object -First 1).Trim()) -eq "1") {{
+        $BootCompleted = $true
+        break
+      }}
+    }}
+  }}
+  if (!$DeviceReady) {{
+    throw "no ready ADB device on Desktop after starting AVD $DesktopAvd"
+  }}
+  if (!$BootCompleted) {{
+    throw "ADB device $ReadyDevice is visible, but Android boot did not complete after starting AVD $DesktopAvd"
+  }}
+  Write-Output "desktop_emulator_boot_completed=yes"
+}}
+if ($RequiresAndroid) {{
+  $KeepAwakeRoot = Join-Path $StatusDir "emulator"
+  $KeepAwakeScript = Join-Path $KeepAwakeRoot "keep-awake.ps1"
+  $KeepAwakeLog = Join-Path $KeepAwakeRoot "keep-awake.log"
+  $KeepAwakeErrorLog = Join-Path $KeepAwakeRoot "keep-awake-error.log"
+  $KeepAwakeTask = "Chungmaru-Android-KeepAwake"
+  New-Item -ItemType Directory -Path $KeepAwakeRoot -Force | Out-Null
+  $KeepAwakeProcess = Get-CimInstance Win32_Process | Where-Object {{
+    $_.Name -match "powershell" -and $_.CommandLine -like "*$KeepAwakeScript*"
+  }} | Select-Object -First 1
+  if ($KeepAwakeProcess) {{
+    Stop-ScheduledTask -TaskName $KeepAwakeTask -ErrorAction SilentlyContinue
+    Stop-Process -Id $KeepAwakeProcess.ProcessId -Force -ErrorAction SilentlyContinue
+    Write-Output "desktop_keep_awake=renewing"
+    Start-Sleep -Milliseconds 200
+    $KeepAwakeProcess = Get-CimInstance Win32_Process | Where-Object {{
+      $_.Name -match "powershell" -and $_.CommandLine -like "*$KeepAwakeScript*"
+    }} | Select-Object -First 1
+  }}
+  if ($KeepAwakeProcess) {{
+    Write-Output "desktop_keep_awake=active"
+    Write-Output "desktop_keep_awake_pid=$($KeepAwakeProcess.ProcessId)"
+  }} else {{
+    $KeepAwakeScriptBody = @'
+$ErrorActionPreference = "Stop"
+ $ErrorLog = "__KEEP_AWAKE_ERROR_LOG__"
+try {{
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class ChungmaruPowerRequest {{
+  [DllImport("kernel32.dll")]
+  public static extern uint SetThreadExecutionState(uint flags);
+}}
+"@
+$systemRequired = [uint32]2147483651
+$continuous = [uint32]2147483648
+$deadline = (Get-Date).AddMinutes(__KEEP_AWAKE_MINUTES__)
+while ((Get-Date) -lt $deadline) {{
+  [ChungmaruPowerRequest]::SetThreadExecutionState($systemRequired) | Out-Null
+  "$(Get-Date -Format o) system_display_required deadline=$($deadline.ToString('o'))" | Add-Content -Path "__KEEP_AWAKE_LOG__"
+  Start-Sleep -Seconds 30
+}}
+[ChungmaruPowerRequest]::SetThreadExecutionState($continuous) | Out-Null
+}} catch {{
+  "$(Get-Date -Format o) $($_.Exception.Message)" | Add-Content -Path $ErrorLog
+  exit 1
+}}
+'@
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_LOG__", $KeepAwakeLog.Replace("'", "''"))
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_ERROR_LOG__", $KeepAwakeErrorLog.Replace("'", "''"))
+    $KeepAwakeScriptBody = $KeepAwakeScriptBody.Replace("__KEEP_AWAKE_MINUTES__", [string]$DesktopKeepAwakeMinutes)
+    Set-Content -Path $KeepAwakeScript -Value $KeepAwakeScriptBody -Encoding UTF8
+    $KeepAwakeUser = (Get-CimInstance Win32_ComputerSystem).UserName
+    if ([string]::IsNullOrWhiteSpace($KeepAwakeUser)) {{
+      Write-Output "desktop_keep_awake=skipped_no_interactive_user"
+    }} else {{
+      $KeepAwakeTask = "Chungmaru-Android-KeepAwake"
+      $KeepAwakeAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"$KeepAwakeScript`"")
+      $KeepAwakePrincipal = New-ScheduledTaskPrincipal -UserId $KeepAwakeUser -LogonType Interactive -RunLevel Limited
+      $KeepAwakeSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+      Register-ScheduledTask -TaskName $KeepAwakeTask -Action $KeepAwakeAction -Principal $KeepAwakePrincipal -Settings $KeepAwakeSettings -Force | Out-Null
+      Start-ScheduledTask -TaskName $KeepAwakeTask
+      Write-Output "desktop_keep_awake=started"
+      Write-Output "desktop_keep_awake_minutes=$DesktopKeepAwakeMinutes"
+      Write-Output "desktop_keep_awake_scope=interactive_system_display"
+    }}
+  }}
+}}
+Write-Output "desktop_adb_ready=yes"
+
+$BashCandidates = @()
+if ($env:CHUNGMARU_BASH) {{ $BashCandidates += $env:CHUNGMARU_BASH }}
+$BashCandidates += "C:\\Program Files\\Git\\bin\\bash.exe"
+$BashCandidates += "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+$BashCandidates += "C:\\msys64\\usr\\bin\\bash.exe"
+$Bash = $BashCandidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+if (!$Bash) {{
+  throw "bash not found on Desktop"
+}}
+
+$JavaCandidates = @()
+if ($env:JAVA_HOME) {{ $JavaCandidates += $env:JAVA_HOME }}
+$JavaCandidates += "C:\\Program Files\\Android\\Android Studio\\jbr"
+$JavaCandidates += "C:\\Program Files\\Android\\Android Studio\\jre"
+$JavaHome = $JavaCandidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+if (!$JavaHome) {{
+  throw "Android Studio JBR/JAVA_HOME not found on Desktop"
+}}
+$env:JAVA_HOME = $JavaHome
+}} else {{
+  $ChromeForTestingRoot = Join-Path $LocalWorkRoot "tools\\chrome-for-testing\\current"
+  $ChromeCandidates = @()
+  if ($env:CHUNGMARU_CHROME_PATH) {{ $ChromeCandidates += $env:CHUNGMARU_CHROME_PATH }}
+  $ChromeCandidates += (Join-Path $ChromeForTestingRoot "chrome-win64\\chrome.exe")
+  $ChromeCandidates += (Join-Path $env:LOCALAPPDATA "Google\\Chrome for Testing\\Application\\chrome.exe")
+  $ChromeCandidates += (Join-Path $env:ProgramFiles "Google\\Chrome for Testing\\Application\\chrome.exe")
+  $ChromeForTesting = $ChromeCandidates | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+  if (!$ChromeForTesting) {{
+    $ChromeToolsRoot = Split-Path -Parent $ChromeForTestingRoot
+    $ChromeZip = Join-Path $ChromeToolsRoot "chrome-win64.zip"
+    New-Item -ItemType Directory -Path $ChromeToolsRoot -Force | Out-Null
+    $Metadata = Invoke-RestMethod -Uri "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+    $Download = $Metadata.channels.Stable.downloads.chrome | Where-Object {{ $_.platform -eq "win64" }} | Select-Object -First 1
+    if (!$Download.url) {{ throw "Chrome for Testing win64 download was not found" }}
+    Invoke-WebRequest -UseBasicParsing -Uri $Download.url -OutFile $ChromeZip
+    Remove-Item -Path $ChromeForTestingRoot -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $ChromeForTestingRoot -Force | Out-Null
+    Expand-Archive -Path $ChromeZip -DestinationPath $ChromeForTestingRoot -Force
+    Remove-Item -Path $ChromeZip -Force -ErrorAction SilentlyContinue
+    $ChromeForTesting = Join-Path $ChromeForTestingRoot "chrome-win64\\chrome.exe"
+  }}
+  if (!(Test-Path $ChromeForTesting)) {{
+    throw "Chrome for Testing is unavailable after setup"
+  }}
+  $env:CHUNGMARU_CHROME_PATH = $ChromeForTesting
+  Write-Output "desktop_chrome_for_testing=ready"
+}}
+
+$env:CHUNGMARU_RUNNER_HOME = $RunnerHome
+$env:CHUNGMARU_LOCAL_WORK_ROOT = Join-Path $env:LOCALAPPDATA "ChungmaruRunner"
+if ($RequiresAndroid) {{
+  $env:CHUNGMARU_BASH = $Bash
+  $env:GRADLE_USER_HOME = $GradleUserHome
+  $env:ADB = $Adb
+  $env:ANDROID_HOME = $SdkRoot
+  $env:ANDROID_SDK_ROOT = $SdkRoot
+  $env:ANDROID_USER_HOME = $DesktopAndroidUserHome
+  $env:ANDROID_EMULATOR_HOME = $DesktopAndroidUserHome
+  if (Test-Path Env:ANDROID_SDK_HOME) {{
+    Remove-Item Env:ANDROID_SDK_HOME
+  }}
+  if ([string]::IsNullOrWhiteSpace($env:ANDROID_AVD_HOME)) {{
+    $env:ANDROID_AVD_HOME = Join-Path $DesktopAndroidUserHome "avd"
+  }}
+  Write-Output "desktop_android_runner=ready"
+}} else {{
+  Write-Output "desktop_chrome_runner=ready"
+}}
+Write-Output "desktop_source_mirror=ready"
+
+if ($Mode) {{
+  Set-Location $LocalRepo
+  $PythonExe = $PythonCommand.Source
+$RunnerArgs = @(
+    "scripts/chungmaru-android-run",
+    "--executor", "local",
+    "--no-wake",
+    "--runner-home", $RunnerHome,
+    "--local-work-root", $env:CHUNGMARU_LOCAL_WORK_ROOT,
+    "--run-key", {ps_quote(args.run_key or "")},
+    "--no-publish-source",
+    "--collect-after",
+    $Mode
+  )
+  & $PythonExe @PythonArgs @RunnerArgs
+  if ($LASTEXITCODE -ne 0) {{
+    throw "Desktop local runner failed: mode=$Mode exit=$LASTEXITCODE"
+  }}
+}}
+"""
+
+
+def run_desktop_powershell(args: argparse.Namespace, script: str) -> subprocess.CompletedProcess[str]:
+    wrapped_script = f"""
+$ErrorActionPreference = "Stop"
+try {{
+{script}
+  exit 0
+}} catch {{
+  Write-Error $_
+  exit 1
+}}
+"""
+    remote_runner = desktop_local_runner_home_windows(args)
+    remote_bootstrap_dir = f"{remote_runner}\\bootstrap"
+    remote_script = (
+        f"{remote_bootstrap_dir}\\bootstrap-{os.getpid()}-{int(time.time() * 1000)}.ps1"
+    )
+    remote_script_scp = remote_script.replace("\\", "/")
+    local_script = Path(tempfile.mkstemp(prefix="chungmaru-desktop-", suffix=".ps1")[1])
+    try:
+        local_script.write_text(wrapped_script, encoding="utf-8")
+        shell_run(
+            [
+                *ssh_base_args(args),
+                args.desktop_ssh,
+                (
+                    "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+                    f"\"New-Item -ItemType Directory -Path '{remote_bootstrap_dir}' -Force | Out-Null\""
+                ),
+            ]
+        )
+        shell_run(
+            [
+                *scp_base_args(args),
+                str(local_script),
+                f"{args.desktop_ssh}:{remote_script_scp}",
+            ]
+        )
+        return shell_run(
+            [
+                *ssh_base_args(args),
+                args.desktop_ssh,
+                f"powershell -NoProfile -ExecutionPolicy Bypass -File {remote_script}",
+            ],
+            timeout=args.remote_timeout,
+        )
+    finally:
+        if local_script.exists():
+            local_script.unlink()
+        subprocess.run(
+            [
+                *ssh_base_args(args),
+                args.desktop_ssh,
+                (
+                    "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+                    f"\"Remove-Item -Path '{remote_script}' -Force -ErrorAction SilentlyContinue\""
+                ),
+            ],
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
+def desktop_ssh_user(args: argparse.Namespace) -> str:
+    target = args.desktop_ssh or DEFAULT_DESKTOP_SSH
+    if "@" in target:
+        return target.split("@", 1)[0]
+    return "HOME"
+
+
+def desktop_local_runner_home_windows(args: argparse.Namespace) -> str:
+    user = desktop_ssh_user(args)
+    return f"C:\\Users\\{user}\\{DEFAULT_DESKTOP_LOCAL_RUNNER_RELATIVE}"
+
+
+def desktop_local_runner_home_scp(args: argparse.Namespace) -> str:
+    return desktop_local_runner_home_windows(args).replace("\\", "/")
+
+
+def copy_source_archive_to_desktop(args: argparse.Namespace, archive_path: Path) -> str:
+    if not archive_path.exists():
+        raise RuntimeError(f"source archive is missing: {archive_path}")
+    remote_runner = desktop_local_runner_home_windows(args)
+    remote_runner_scp = desktop_local_runner_home_scp(args)
+    remote_source_dir = f"{remote_runner}\\source"
+    shell_run(
+        [
+            *ssh_base_args(args),
+            args.desktop_ssh,
+            (
+                "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+                f"\"New-Item -ItemType Directory -Path '{remote_source_dir}' -Force | Out-Null\""
+            ),
+        ]
+    )
+    shell_run(
+        [
+            *scp_base_args(args),
+            str(archive_path),
+            f"{args.desktop_ssh}:{remote_runner_scp}/source/{SOURCE_ARCHIVE_NAME}",
+        ]
+    )
+    print_kv("desktop_source_archive", f"{remote_runner}\\source\\{SOURCE_ARCHIVE_NAME}")
+    return remote_runner
+
+
+def replace_dir_contents(src: Path, dst: Path) -> None:
+    dst.mkdir(parents=True, exist_ok=True)
+    for child in list(dst.iterdir()):
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    for child in src.iterdir():
+        target = dst / child.name
+        if child.is_dir():
+            shutil.copytree(child, target, dirs_exist_ok=True)
+        elif child.is_file():
+            shutil.copy2(child, target)
+
+
+def pull_desktop_fallback_state(args: argparse.Namespace, runner_home: Path) -> bool:
+    remote_runner = desktop_local_runner_home_windows(args)
+    remote_bootstrap = f"{remote_runner}\\bootstrap"
+    remote_zip = f"{remote_bootstrap}\\mac-pull-{os.getpid()}-{int(time.time() * 1000)}.zip"
+    remote_zip_scp = remote_zip.replace("\\", "/")
+    script = f"""
+$RunnerHome = {ps_quote(remote_runner)}
+$ZipPath = {ps_quote(remote_zip)}
+$StagePath = Join-Path (Split-Path -Parent $ZipPath) "stage-{os.getpid()}-{int(time.time() * 1000)}"
+New-Item -ItemType Directory -Path (Split-Path -Parent $ZipPath) -Force | Out-Null
+Remove-Item -Path $ZipPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $StagePath -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Path $StagePath -Force | Out-Null
+foreach ($Name in @("current", "latest", "status")) {{
+  $Path = Join-Path $RunnerHome $Name
+  if (Test-Path $Path) {{
+    Copy-Item -LiteralPath $Path -Destination (Join-Path $StagePath $Name) -Recurse -Force
+  }}
+}}
+if (-not (Get-ChildItem -LiteralPath $StagePath -Force | Select-Object -First 1)) {{ exit 3 }}
+Compress-Archive -Path (Join-Path $StagePath "*") -DestinationPath $ZipPath -Force
+Remove-Item -Path $StagePath -Recurse -Force -ErrorAction SilentlyContinue
+"""
+    local_zip = Path(tempfile.mkstemp(prefix="chungmaru-desktop-pull-", suffix=".zip")[1])
+    extract_dir = Path(tempfile.mkdtemp(prefix="chungmaru-desktop-pull-"))
+    try:
+        completed = run_desktop_powershell(args, script)
+        if completed.stdout:
+            print(completed.stdout, end="")
+        shell_run(
+            [
+                *scp_base_args(args),
+                f"{args.desktop_ssh}:{remote_zip_scp}",
+                str(local_zip),
+            ],
+            check=True,
+        )
+        with zipfile.ZipFile(local_zip) as archive:
+            for member in archive.infolist():
+                normalized = member.filename.replace("\\", "/").strip("/")
+                parts = [part for part in normalized.split("/") if part]
+                if not parts or any(part == ".." for part in parts):
+                    continue
+                target = extract_dir.joinpath(*parts)
+                if member.is_dir() or member.filename.endswith(("/", "\\")):
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(member))
+
+        copied = False
+        for name in ("current", "latest", "status"):
+            candidates = [path for path in extract_dir.rglob(name) if path.is_dir()]
+            if candidates:
+                replace_dir_contents(candidates[0], runner_home / name)
+                copied = True
+        if copied:
+            write_json(
+                runner_home / "current" / "desktop-pull.json",
+                {
+                    "updatedAt": now_iso(),
+                    "desktopRunnerHome": remote_runner,
+                    "pulledBy": "scp-fallback",
+                    "copiedState": True,
+                },
+            )
+            print_kv("desktop_fallback_pull", "ok")
+        else:
+            print_kv("desktop_fallback_pull", "empty")
+        return copied
+    except Exception as exc:
+        print_kv("desktop_fallback_pull", f"failed:{exc}")
+        return False
+    finally:
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        if local_zip.exists():
+            local_zip.unlink()
+        subprocess.run(
+            [
+                *ssh_base_args(args),
+                args.desktop_ssh,
+                (
+                    "powershell -NoProfile -ExecutionPolicy Bypass -Command "
+                    f"\"Remove-Item -Path '{remote_zip}' -Force -ErrorAction SilentlyContinue\""
+                ),
+            ],
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+
+def verify_desktop(
+    args: argparse.Namespace,
+    *,
+    mode: str | None = None,
+    require_source: bool = False,
+) -> None:
+    completed = run_desktop_powershell(
+        args,
+        desktop_bootstrap_script(args, mode=mode, require_source=require_source),
+    )
+    if completed.stdout:
+        print(completed.stdout, end="")
+
+
+def run_desktop_mode(
+    args: argparse.Namespace,
+    mode: str,
+    runner_home: Path,
+    source_archive: Path | None = None,
+) -> None:
+    wake_desktop(args)
+    if not wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait):
+        raise RuntimeError(f"desktop SSH did not become ready: {args.desktop_ssh}")
+    if source_archive is not None:
+        copy_source_archive_to_desktop(args, source_archive)
+    try:
+        verify_desktop(args, mode=mode, require_source=True)
+    finally:
+        pull_desktop_fallback_state(args, runner_home)
+
+
+def clear_known_artifacts(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    for name in ("quick", "benchmark", "demo", "chrome-media"):
+        target = path / name
+        if target.exists():
+            shutil.rmtree(target)
+    for name in (
+        "run.json",
+        "runs.csv",
+        "android-real-e2e-latency-extract.csv",
+        "pipeline-summary.csv",
+        "optimization-comparison.csv",
+        "demo.mp4",
+        "contact-sheet.jpg",
+        "screen.png",
+        "logcat.txt",
+        "mask-logcat.txt",
+    ):
+        target = path / name
+        if target.exists():
+            target.unlink()
+
+
+def copy_file_if_exists(src: Path, dst: Path) -> bool:
+    if not src.exists():
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return True
+
+
+def mirror_current_to_latest(runner_home: Path) -> None:
+    current = runner_home / "current"
+    latest = runner_home / "latest"
+    latest.mkdir(parents=True, exist_ok=True)
+    clear_known_artifacts(latest)
+    for child in current.iterdir():
+        if child.name == MANAGED_ARTIFACT_MARKER:
+            continue
+        destination = latest / child.name
+        if child.is_dir():
+            shutil.copytree(child, destination, dirs_exist_ok=True)
+        elif child.is_file():
+            shutil.copy2(child, destination)
+
+
+def collect_known_artifacts(
+    runner_home: Path,
+    *,
+    mode: str | None = None,
+    local_work_root: Path | None = None,
+) -> int:
+    current = runner_home / "current"
+    current.mkdir(parents=True, exist_ok=True)
+    (current / MANAGED_ARTIFACT_MARKER).write_text(
+        "Managed current artifacts for scripts/chungmaru-android-run.\n",
+        encoding="utf-8",
+    )
+    clear_known_artifacts(current)
+    copied = 0
+
+    local_artifacts = (local_work_root or default_local_work_root()) / "artifacts"
+    quick_root = local_artifacts / "quick" / "android-mask-check"
+    benchmark_report = local_artifacts / "benchmark" / "android-pipeline-benchmark" / "report"
+    benchmark_batch = local_artifacts / "benchmark" / "android-pipeline-benchmark" / "batch"
+    demo_run = local_artifacts / "demo" / "android-real-e2e-demo" / "runs" / "latest"
+    demo_root = local_artifacts / "demo" / "android-real-e2e-demo"
+    chrome_media_root = local_artifacts / "chrome-media"
+    classifier_root = chrome_media_root / "nsfw-classifier"
+    chrome_behavior_root = chrome_media_root / "behavior"
+
+    candidates: list[tuple[Path, Path]] = []
+    if mode in (None, "quick"):
+        candidates.extend(
+            [
+                (local_artifacts / "quick" / "quick.log", current / "quick" / "quick.log"),
+                (quick_root / "screen.png", current / "quick" / "screen.png"),
+                (quick_root / "mask-logcat.txt", current / "quick" / "mask-logcat.txt"),
+                (
+                    quick_root / "youtube_comments_latest.json",
+                    current / "quick" / "youtube_comments_latest.json",
+                ),
+                (
+                    REPO_ROOT / "android/app/build/reports/tests/testDebugUnitTest",
+                    current / "quick" / "test-report",
+                ),
+                (
+                    REPO_ROOT / "android/app/build/test-results/testDebugUnitTest",
+                    current / "quick" / "test-results",
+                ),
+            ]
+        )
+    if mode in (None, "benchmark"):
+        candidates.extend(
+            [
+                (
+                    local_artifacts / "benchmark" / "benchmark.log",
+                    current / "benchmark" / "benchmark.log",
+                ),
+                (benchmark_report / "raw_runs.csv", current / "benchmark" / "raw_runs.csv"),
+                (benchmark_report / "stage_latency.csv", current / "benchmark" / "stage_latency.csv"),
+                (
+                    benchmark_report / "stage_latency_summary.csv",
+                    current / "benchmark" / "stage_latency_summary.csv",
+                ),
+                (benchmark_report / "summary_by_mode.csv", current / "benchmark" / "summary_by_mode.csv"),
+                (benchmark_report / "stage_delta.csv", current / "benchmark" / "stage_delta.csv"),
+                (benchmark_report / "ppt_table.md", current / "benchmark" / "ppt_table.md"),
+                (benchmark_batch / "runs", current / "benchmark" / "runs"),
+                (
+                    REPO_ROOT / "docs/evidence/android-pipeline-benchmark/summary_by_mode.csv",
+                    current / "pipeline-summary.csv",
+                ),
+                (
+                    REPO_ROOT / "docs/evidence/android-pipeline-benchmark/optimization_comparison.csv",
+                    current / "optimization-comparison.csv",
+                ),
+            ]
+        )
+    if mode in (None, "demo"):
+        candidates.extend(
+            [
+                (local_artifacts / "demo" / "demo.log", current / "demo" / "demo.log"),
+                (demo_run / "demo.mp4", current / "demo" / "demo.mp4"),
+                (demo_run / "contact-sheet.jpg", current / "demo" / "contact-sheet.jpg"),
+                (demo_run / "screen.png", current / "demo" / "screen.png"),
+                (demo_run / "summary.md", current / "demo" / "summary.md"),
+                (demo_run / "scene-plan.md", current / "demo" / "scene-plan.md"),
+                (demo_run / "review.md", current / "demo" / "review.md"),
+                (demo_run / "logcat-live.txt", current / "demo" / "logcat-live.txt"),
+                (demo_run / "logs" / "mask-logcat.txt", current / "demo" / "mask-logcat.txt"),
+                (demo_root / "README.md", current / "demo" / "README.md"),
+                (demo_root / "latest-run.txt", current / "demo" / "latest-run.txt"),
+                (
+                    REPO_ROOT
+                    / "evaluation/latency/results/current/presentable/android-real-e2e-latency-extract.csv",
+                    current / "android-real-e2e-latency-extract.csv",
+                ),
+            ]
+        )
+    if mode in (None, "chrome-media"):
+        candidates.extend(
+            [
+                (chrome_media_root / "chrome-media.log", current / "chrome-media" / "chrome-media.log"),
+                (chrome_media_root / "chrome-media-smoke.log", current / "chrome-media" / "chrome-media-smoke.log"),
+                (
+                    chrome_media_root / "chrome-media-smoke.chrome.log",
+                    current / "chrome-media" / "chrome-media-smoke.chrome.log",
+                ),
+                (
+                    classifier_root / "nsfw-classifier-raw.csv",
+                    current / "chrome-media" / "nsfw-classifier-raw.csv",
+                ),
+                (
+                    classifier_root / "nsfw-classifier-summary.csv",
+                    current / "chrome-media" / "nsfw-classifier-summary.csv",
+                ),
+                (
+                    classifier_root / "nsfw-performance-comparison.csv",
+                    current / "chrome-media" / "nsfw-performance-comparison.csv",
+                ),
+                (
+                    classifier_root / "nsfw-classifier-report.md",
+                    current / "chrome-media" / "nsfw-classifier-report.md",
+                ),
+                (
+                    classifier_root / "nsfw-corpus-manifest.json",
+                    current / "chrome-media" / "nsfw-corpus-manifest.json",
+                ),
+                (
+                    classifier_root / "nsfw-cold-start.csv",
+                    current / "chrome-media" / "nsfw-cold-start.csv",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-smoke.csv",
+                    current / "chrome-media" / "media-safety-smoke.csv",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-smoke.jsonl",
+                    current / "chrome-media" / "media-safety-smoke.jsonl",
+                ),
+            ]
+        )
+
+    latest_run = (
+        REPO_ROOT
+        / "evaluation/latency/results/current/presentable/android-real-e2e-demo/latest-run.txt"
+    )
+    if mode in (None, "demo") and latest_run.exists():
+        run_id = latest_run.read_text(encoding="utf-8").strip()
+        run_dir = latest_run.parent / "runs" / run_id
+        candidates.extend(
+            [
+                (run_dir / "demo.mp4", current / "demo.mp4"),
+                (run_dir / "contact-sheet.jpg", current / "contact-sheet.jpg"),
+                (run_dir / "screen.png", current / "screen.png"),
+                (run_dir / "logcat-live.txt", current / "logcat.txt"),
+                (run_dir / "logs/mask-logcat.txt", current / "mask-logcat.txt"),
+            ]
+        )
+
+    for src, dst in candidates:
+        if src.is_dir():
+            if src.exists():
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+                copied += 1
+            continue
+        if copy_file_if_exists(src, dst):
+            copied += 1
+    write_json(
+        current / "run.json",
+        {
+            "updatedAt": now_iso(),
+            "mode": mode or "",
+            "copiedArtifacts": copied,
+            "localArtifactRoot": str(local_artifacts),
+        },
+    )
+    mirror_current_to_latest(runner_home)
+    return copied
+
+
+def export_runs_csv(conn: sqlite3.Connection, runner_home: Path) -> Path:
+    output = runner_home / "current" / "runs.csv"
+    rows = conn.execute(
+        """
+        SELECT run_key, created_at, updated_at, command, executor, status,
+               duration_ms, repo_root, artifact_root, summary
+        FROM runs
+        ORDER BY id
+        """
+    ).fetchall()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            [
+                "run_key",
+                "created_at",
+                "updated_at",
+                "command",
+                "executor",
+                "status",
+                "duration_ms",
+                "repo_root",
+                "artifact_root",
+                "summary",
+            ]
+        )
+        writer.writerows(rows)
+    return output
+
+
+def doctor(args: argparse.Namespace) -> int:
+    runner_home = args.runner_home
+    ensure_runner_home(runner_home)
+    conn = connect_db(runner_home)
+    db_path = runner_home / "chungmaru-runner.sqlite"
+    current = runner_home / "current"
+    write_probe(current / ".write-test.tmp")
+
+    print_kv("repo_root", REPO_ROOT)
+    print_kv("runner_home", runner_home)
+    print_kv("ledger", db_path)
+    print_kv("current", current)
+    print_kv("latest", runner_home / "latest")
+    print_kv("source_current", runner_home / "source" / "current")
+    print_kv("writable", "yes")
+    print_kv("executor", args.executor)
+    print_kv("desktop_mac_configured", "yes" if args.desktop_mac else "no")
+    print_kv("desktop_ssh", args.desktop_ssh)
+    print_kv("desktop_runner_home", args.desktop_runner_home)
+    print_kv("smb_host", args.smb_host)
+
+    should_check_remote = args.check_remote or (args.executor == "desktop" and not args.skip_remote_check)
+    if should_check_remote:
+        if not args.no_wake:
+            wake_desktop(args)
+        ready = wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait)
+        print_kv("desktop_ssh_ready", "yes" if ready else "no")
+        if not ready:
+            conn.close()
+            return 2
+        try:
+            verify_desktop(args)
+            print_kv("desktop_smb_ready", "yes")
+            print_kv("desktop_adb_ready", "yes")
+        except Exception as exc:
+            print_kv("desktop_probe_error", exc)
+            conn.close()
+            return 2
+    elif args.executor == "local":
+        adb = default_adb_path()
+        print_kv("adb", adb)
+        print_kv("adb_ready", "yes" if adb_ready(adb) else "no")
+
+    conn.close()
+    return 0
+
+
+def setup_command(args: argparse.Namespace) -> int:
+    runner_home = args.runner_home
+    conn = connect_db(runner_home)
+    key = args.run_key or run_key()
+    run_id = create_run(
+        conn,
+        key=key,
+        command="setup",
+        executor=args.executor,
+        runner_home=runner_home,
+        artifact_root=runner_home / "current",
+    )
+    started = time.monotonic()
+    try:
+        source_dir: Path | None = None
+        if args.publish_source:
+            source_dir = publish_source(
+                runner_home,
+                timeout_seconds=args.source_mirror_timeout,
+            )
+            add_metric(conn, run_id, "source_dir", source_dir)
+        if args.executor == "desktop":
+            wake_desktop(args)
+            if not wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait):
+                raise RuntimeError(f"desktop SSH did not become ready: {args.desktop_ssh}")
+            if source_dir is not None:
+                copy_source_archive_to_desktop(args, source_dir)
+            verify_desktop(args, require_source=source_dir is not None)
+        else:
+            adb = default_adb_path()
+            add_metric(conn, run_id, "adb", adb)
+            if not adb_ready(adb):
+                raise RuntimeError(f"local ADB device is not ready: {adb}")
+        duration_ms = int((time.monotonic() - started) * 1000)
+        update_run(conn, run_id, status="ok", duration_ms=duration_ms, summary="runner setup ready")
+        export_runs_csv(conn, runner_home)
+        mirror_current_to_latest(runner_home)
+        write_runner_status(
+            runner_home,
+            state="ok",
+            message="runner setup ready",
+            command="setup",
+            extra={"runKey": key, "durationMs": duration_ms, "executor": args.executor},
+        )
+        print_kv("run_key", key)
+        print_kv("status", "ok")
+        print_kv("source_dir", source_dir or "")
+        print_kv("ledger", runner_home / "chungmaru-runner.sqlite")
+        print_kv("current", runner_home / "current")
+        print_kv("latest", runner_home / "latest")
+        return 0
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        update_run(conn, run_id, status="failed", duration_ms=duration_ms, summary=str(exc))
+        add_event(conn, run_id, "error", str(exc))
+        export_runs_csv(conn, runner_home)
+        mirror_current_to_latest(runner_home)
+        write_runner_status(
+            runner_home,
+            state="failed",
+            message=str(exc),
+            command="setup",
+            extra={"runKey": key, "durationMs": duration_ms, "executor": args.executor},
+        )
+        print_kv("run_key", key)
+        print_kv("status", "failed")
+        print_kv("error", exc)
+        print_kv("ledger", runner_home / "chungmaru-runner.sqlite")
+        return 1
+    finally:
+        conn.close()
+
+
+def run_mode(args: argparse.Namespace, mode: str) -> int:
+    runner_home = args.runner_home
+    conn = connect_db(runner_home)
+    key = args.run_key or run_key()
+    args.run_key = key
+    run_id = create_run(
+        conn,
+        key=key,
+        command=mode,
+        executor=args.executor,
+        runner_home=runner_home,
+        artifact_root=runner_home / "current",
+    )
+    started = time.monotonic()
+    try:
+        source_dir: Path | None = None
+        if args.publish_source:
+            source_dir = publish_source(
+                runner_home,
+                timeout_seconds=args.source_mirror_timeout,
+                mode=mode,
+            )
+            add_metric(conn, run_id, "source_dir", source_dir)
+        if args.executor == "desktop":
+            run_desktop_mode(args, mode, runner_home, source_archive=source_dir)
+        else:
+            run_local_mode(mode, runner_home, args.local_work_root)
+        if args.collect_after and args.executor != "desktop":
+            copied = collect_known_artifacts(
+                runner_home,
+                mode=mode,
+                local_work_root=args.local_work_root,
+            )
+            add_metric(conn, run_id, "collected_artifacts", copied)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        update_run(conn, run_id, status="ok", duration_ms=duration_ms)
+        export_runs_csv(conn, runner_home)
+        mirror_current_to_latest(runner_home)
+        write_runner_status(
+            runner_home,
+            state="ok",
+            message=f"{mode} completed",
+            command=mode,
+            extra={
+                "runKey": key,
+                "durationMs": duration_ms,
+                "executor": args.executor,
+                "artifactRoot": str(runner_home / "current"),
+            },
+        )
+        print_kv("run_key", key)
+        print_kv("status", "ok")
+        print_kv("duration_ms", duration_ms)
+        print_kv("ledger", runner_home / "chungmaru-runner.sqlite")
+        print_kv("current", runner_home / "current")
+        print_kv("latest", runner_home / "latest")
+        return 0
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if args.collect_after and args.executor != "desktop":
+            try:
+                copied = collect_known_artifacts(
+                    runner_home,
+                    mode=mode,
+                    local_work_root=args.local_work_root,
+                )
+                add_metric(conn, run_id, "collected_artifacts_on_failure", copied)
+            except Exception as collect_exc:
+                add_event(conn, run_id, "collect_failed", str(collect_exc))
+        update_run(conn, run_id, status="failed", duration_ms=duration_ms, summary=str(exc))
+        add_event(conn, run_id, "error", str(exc))
+        export_runs_csv(conn, runner_home)
+        mirror_current_to_latest(runner_home)
+        write_runner_status(
+            runner_home,
+            state="failed",
+            message=str(exc),
+            command=mode,
+            extra={"runKey": key, "durationMs": duration_ms, "executor": args.executor},
+        )
+        print_kv("run_key", key)
+        print_kv("status", "failed")
+        print_kv("error", exc)
+        print_kv("ledger", runner_home / "chungmaru-runner.sqlite")
+        return 1
+    finally:
+        conn.close()
+
+
+def chrome_media_job_command(args: argparse.Namespace) -> int:
+    key = args.run_key or run_key()
+    write_chrome_media_status(
+        args.runner_home,
+        state="running",
+        message="chrome-media job running",
+        run_key_value=key,
+        pid=os.getpid(),
+        local_work_root=args.local_work_root,
+    )
+    args.run_key = key
+    args.executor = "local"
+    args.publish_source = False
+    args.collect_after = True
+    exit_code = run_mode(args, "chrome-media")
+    state = "ok" if exit_code == 0 else "failed"
+    write_chrome_media_status(
+        args.runner_home,
+        state=state,
+        message=f"chrome-media job exited with code {exit_code}",
+        run_key_value=key,
+        pid=os.getpid(),
+        exit_code=exit_code,
+        local_work_root=args.local_work_root,
+    )
+    return exit_code
+
+
+def chrome_media_start_command(args: argparse.Namespace) -> int:
+    if args.executor != "local":
+        raise RuntimeError("chrome-media-start must run on the execution host with --executor local")
+    ensure_runner_home(args.runner_home)
+    key = args.run_key or run_key()
+    existing = read_status(chrome_media_status_path(args.runner_home))
+    existing_pid = int(existing.get("pid") or 0)
+    if str(existing.get("state") or "") == "running" and pid_is_running(existing_pid):
+        print_kv("status", "already_running")
+        print_kv("pid", existing_pid)
+        print_kv("status_file", chrome_media_status_path(args.runner_home))
+        return 0
+    launcher_log = managed_artifact_root(args.local_work_root, "chrome-media") / "chrome-media-launcher.log"
+    launcher_log.parent.mkdir(parents=True, exist_ok=True)
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--runner-home", str(args.runner_home),
+        "--local-work-root", str(args.local_work_root),
+        "--executor", "local",
+        "--run-key", key,
+        "--no-publish-source",
+        "--collect-after",
+        "chrome-media-job",
+    ]
+    env = os.environ.copy()
+    stdout = launcher_log.open("ab")
+    try:
+        popen_kwargs: dict[str, object] = {
+            "cwd": str(REPO_ROOT),
+            "env": env,
+            "stdout": stdout,
+            "stderr": subprocess.STDOUT,
+            "close_fds": os.name != "nt",
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = (
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "DETACHED_PROCESS", 0)
+            )
+        else:
+            popen_kwargs["start_new_session"] = True
+        process = subprocess.Popen(command, **popen_kwargs)
+    finally:
+        stdout.close()
+    write_chrome_media_status(
+        args.runner_home,
+        state="running",
+        message="chrome-media detached job started",
+        run_key_value=key,
+        pid=process.pid,
+        local_work_root=args.local_work_root,
+        log_path=launcher_log,
+    )
+    print_kv("run_key", key)
+    print_kv("status", "started")
+    print_kv("pid", process.pid)
+    print_kv("status_file", chrome_media_status_path(args.runner_home))
+    print_kv("launcher_log", launcher_log)
+    return 0
+
+
+def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
+    ensure_runner_home(args.runner_home)
+    pulled_desktop_state = False
+    if args.executor == "desktop":
+        wake_desktop(args)
+        if not wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait):
+            raise RuntimeError(f"desktop SSH did not become ready for chrome-media reconcile: {args.desktop_ssh}")
+        # Desktop-local runs do not write directly to the shared SSD. A dropped
+        # SSH session can therefore leave a completed remote run invisible
+        # until reconciliation explicitly pulls its local runner state.
+        pulled_desktop_state = pull_desktop_fallback_state(args, args.runner_home)
+    status_path = chrome_media_status_path(args.runner_home)
+    status = read_status(status_path)
+    if not status:
+        latest_status = read_status(args.runner_home / "status" / "latest.json")
+        if str(latest_status.get("command") or "") == "chrome-media":
+            latest_state = str(latest_status.get("state") or "stale")
+            write_chrome_media_status(
+                args.runner_home,
+                state=latest_state,
+                message=str(latest_status.get("message") or "reconciled desktop chrome-media run"),
+                run_key_value=str(latest_status.get("runKey") or ""),
+                exit_code=0 if latest_state == "ok" else 1,
+            )
+            status = read_status(status_path)
+    pid = int(status.get("pid") or 0)
+    state = str(status.get("state") or "")
+    if state == "running" and pid and not pid_is_running(pid):
+        write_chrome_media_status(
+            args.runner_home,
+            state="stale",
+            message="chrome-media job pid is no longer running and no exit code was recorded",
+            run_key_value=str(status.get("runKey") or ""),
+            pid=pid,
+            local_work_root=args.local_work_root,
+            log_path=Path(str(status.get("launcherLog") or "")) if status.get("launcherLog") else None,
+        )
+        status = read_status(status_path)
+    # A Desktop-local run already collected into its own `current/` before the
+    # fallback pull. Running the local collector here would clear that freshly
+    # pulled directory while looking for artifacts that do not exist on macOS.
+    copied = 0
+    if args.executor != "desktop":
+        copied = collect_known_artifacts(
+            args.runner_home,
+            mode="chrome-media",
+            local_work_root=args.local_work_root,
+        )
+    reconciled_run_key = ""
+    conn = connect_db(args.runner_home)
+    remote_run_key = str(status.get("runKey") or "")
+    if remote_run_key:
+        rows = conn.execute(
+            """
+            SELECT id, run_key FROM runs
+            WHERE command = 'chrome-media' AND executor = 'desktop'
+              AND status IN ('running', 'failed')
+              AND (run_key = ? OR run_key = '')
+            ORDER BY id DESC
+            """,
+            (remote_run_key,),
+        ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                """
+                SELECT id, run_key FROM runs
+                WHERE command = 'chrome-media' AND executor = 'desktop'
+                  AND status IN ('running', 'failed')
+                  AND created_at >= datetime('now', '-6 hours')
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        if len(rows) == 1:
+            run_id, reconciled_run_key = int(rows[0][0]), str(rows[0][1])
+            reconciled_state = "ok" if str(status.get("state") or "") == "ok" else "failed"
+            update_run(
+                conn,
+                run_id,
+                status=reconciled_state,
+                duration_ms=int(status.get("durationMs") or -1),
+                summary=f"reconciled from Desktop local run {remote_run_key}",
+            )
+            add_event(conn, run_id, "info", f"reconciled from Desktop local run {remote_run_key}")
+    csv_path = export_runs_csv(conn, args.runner_home)
+    conn.close()
+    print_kv("status", status.get("state") or "")
+    print_kv("pid_running", "yes" if pid_is_running(pid) else "no")
+    print_kv("desktop_state_pulled", "yes" if pulled_desktop_state else "no")
+    print_kv("ledger_reconciled_run_key", reconciled_run_key)
+    print_kv("collected_artifacts", copied)
+    print_kv("runs_csv", csv_path)
+    print_kv("status_file", status_path)
+    return 0
+
+
+def chrome_media_status_command(args: argparse.Namespace) -> int:
+    status = read_status(chrome_media_status_path(args.runner_home))
+    pid = int(status.get("pid") or 0)
+    if str(status.get("state") or "") == "running" and pid and not pid_is_running(pid):
+        chrome_media_reconcile_command(args)
+        status = read_status(chrome_media_status_path(args.runner_home))
+        pid = int(status.get("pid") or 0)
+    print(json.dumps(
+        {
+            **status,
+            "pidRunning": pid_is_running(pid),
+            "statusFile": str(chrome_media_status_path(args.runner_home)),
+        },
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+    ))
+    return 0
+
+
+def publish_source_command(args: argparse.Namespace) -> int:
+    source_dir = publish_source(
+        args.runner_home,
+        timeout_seconds=args.source_mirror_timeout,
+    )
+    conn = connect_db(args.runner_home)
+    key = args.run_key or run_key()
+    run_id = create_run(
+        conn,
+        key=key,
+        command="publish-source",
+        executor="local",
+        runner_home=args.runner_home,
+        artifact_root=source_dir,
+    )
+    add_metric(conn, run_id, "source_dir", source_dir)
+    update_run(conn, run_id, status="ok", duration_ms=0, summary="source mirror updated")
+    export_runs_csv(conn, args.runner_home)
+    mirror_current_to_latest(args.runner_home)
+    write_runner_status(
+        args.runner_home,
+        state="ok",
+        message="source mirror updated",
+        command="publish-source",
+        extra={"runKey": key, "sourceDir": str(source_dir)},
+    )
+    conn.close()
+    print_kv("source_dir", source_dir)
+    print_kv("ledger", args.runner_home / "chungmaru-runner.sqlite")
+    return 0
+
+
+def collect_command(args: argparse.Namespace) -> int:
+    conn = connect_db(args.runner_home)
+    key = args.run_key or run_key()
+    run_id = create_run(
+        conn,
+        key=key,
+        command="collect",
+        executor="local",
+        runner_home=args.runner_home,
+        artifact_root=args.runner_home / "current",
+    )
+    started = time.monotonic()
+    copied = collect_known_artifacts(args.runner_home, local_work_root=args.local_work_root)
+    add_metric(conn, run_id, "collected_artifacts", copied)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    update_run(
+        conn,
+        run_id,
+        status="ok",
+        duration_ms=duration_ms,
+        summary=f"collected_artifacts={copied}",
+    )
+    csv_path = export_runs_csv(conn, args.runner_home)
+    mirror_current_to_latest(args.runner_home)
+    write_runner_status(
+        args.runner_home,
+        state="ok",
+        message=f"collected_artifacts={copied}",
+        command="collect",
+        extra={"runKey": key, "durationMs": duration_ms, "collectedArtifacts": copied},
+    )
+    conn.close()
+    print_kv("collected_artifacts", copied)
+    print_kv("ledger", args.runner_home / "chungmaru-runner.sqlite")
+    print_kv("runs_csv", csv_path)
+    print_kv("current", args.runner_home / "current")
+    return 0
+
+
+def export_command(args: argparse.Namespace) -> int:
+    conn = connect_db(args.runner_home)
+    csv_path = export_runs_csv(conn, args.runner_home)
+    conn.close()
+    mirror_current_to_latest(args.runner_home)
+    print_kv("runs_csv", csv_path)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Desktop-first Chungmaru Android/Chrome test runner with shared-SSD ledger."
+    )
+    parser.add_argument(
+        "--runner-home",
+        type=Path,
+        default=None,
+        help="Shared runner home. Defaults to shared-ssd when mounted, otherwise /private/tmp.",
+    )
+    parser.add_argument(
+        "--local-work-root",
+        type=Path,
+        default=default_local_work_root(),
+        help="Local scratch root for Android intermediates. Shared SSD is used only for source/status/results.",
+    )
+    parser.add_argument(
+        "--executor",
+        choices=["desktop", "local"],
+        default=os.environ.get("CHUNGMARU_EXECUTOR", "desktop"),
+        help="Where quick/benchmark/demo/chrome-media executes. Default: desktop.",
+    )
+    parser.add_argument("--run-key", default="", help="Optional stable run key.")
+    parser.add_argument(
+        "--desktop-mac",
+        default=default_desktop_mac(),
+        help="Desktop WOL MAC address. Defaults to the shared Desktop runner policy.",
+    )
+    parser.add_argument(
+        "--desktop-ssh",
+        default=default_desktop_ssh(),
+        help="Desktop SSH target. Defaults to the shared Desktop runner policy.",
+    )
+    parser.add_argument(
+        "--desktop-avd",
+        default=default_desktop_avd(),
+        help="Desktop Android Virtual Device name to auto-start when no ADB device is ready.",
+    )
+    parser.add_argument(
+        "--desktop-avd-launch-mode",
+        choices=["interactive-task", "ssh"],
+        default=default_desktop_avd_launch_mode(),
+        help=(
+            "How to launch a Desktop AVD. interactive-task launches from the logged-in "
+            "Windows session and is the default; ssh is an explicit compatibility fallback."
+        ),
+    )
+    parser.add_argument(
+        "--desktop-avd-gpu",
+        choices=DESKTOP_AVD_GPU_MODES,
+        default=default_desktop_avd_gpu_mode(),
+        help="GPU mode for a Desktop AVD started by this runner. Default: auto.",
+    )
+    parser.add_argument(
+        "--desktop-avd-cores",
+        type=int,
+        default=default_desktop_avd_cores(),
+        help="CPU cores for a Desktop AVD started by this runner. Default: 4.",
+    )
+    parser.add_argument(
+        "--desktop-avd-memory-mb",
+        type=int,
+        default=default_desktop_avd_memory_mb(),
+        help="Memory in MiB for a Desktop AVD started by this runner. Default: 4096.",
+    )
+    parser.add_argument(
+        "--desktop-keep-awake-minutes",
+        type=int,
+        default=default_desktop_keep_awake_minutes(),
+        help="Keep the interactive Desktop system and display awake for this many minutes. Default: 240.",
+    )
+    parser.add_argument(
+        "--desktop-runner-home",
+        default=os.environ.get("CHUNGMARU_DESKTOP_RUNNER_HOME", DEFAULT_DESKTOP_RUNNER_HOME),
+        help=(
+            "Desktop view of SMB runner home when --desktop-storage-mode is auto/smb. "
+            "Default: B:\\chungmaru-desktop-runner."
+        ),
+    )
+    parser.add_argument(
+        "--desktop-storage-mode",
+        choices=["local", "auto", "smb"],
+        default=default_desktop_storage_mode(),
+        help=(
+            "Desktop artifact storage policy. local uses AppData plus SSH/SCP and is the "
+            "default because mapped drives are not reliable in SSH sessions."
+        ),
+    )
+    parser.add_argument(
+        "--desktop-local-work-root",
+        default=os.environ.get("CHUNGMARU_DESKTOP_LOCAL_WORK_ROOT", ""),
+        help="Optional Desktop local work root. Defaults to LOCALAPPDATA\\ChungmaruRunner\\work.",
+    )
+    parser.add_argument(
+        "--smb-host",
+        default=os.environ.get("CHUNGMARU_SMB_HOST", DEFAULT_SMB_HOST),
+        help="Shared SSD SMB host used for policy reporting.",
+    )
+    parser.add_argument("--no-wake", action="store_true", help="Skip WOL before desktop work.")
+    parser.add_argument(
+        "--wake-mode",
+        choices=["tailscale-ssh", "magic", "none"],
+        default=default_wake_mode(),
+        help="Desktop wake policy. Defaults to workspace-services/config/chungmaru-desktop-test.json.",
+    )
+    parser.add_argument("--wake-ssh-target", default=default_wake_ssh_target())
+    parser.add_argument("--wake-remote-cwd", default=default_wake_remote_cwd())
+    parser.add_argument("--wake-device-id", default=default_wake_device_id())
+    parser.add_argument("--wake-wait", type=int, default=DEFAULT_WAKE_WAIT_SECONDS)
+    parser.add_argument("--ssh-wait", type=int, default=DEFAULT_SSH_WAIT_SECONDS)
+    parser.add_argument(
+        "--remote-timeout",
+        type=int,
+        default=default_remote_timeout_seconds(),
+        help="Maximum seconds for one remote Desktop bootstrap/test command.",
+    )
+    parser.add_argument("--ssh-known-hosts-file", default=default_ssh_known_hosts_file())
+    parser.add_argument("--wol-broadcast", default=os.environ.get("CHUNGMARU_WOL_BROADCAST", "255.255.255.255"))
+    parser.add_argument("--wol-port", type=int, default=int(os.environ.get("CHUNGMARU_WOL_PORT", "9")))
+    parser.add_argument(
+        "--publish-source",
+        action="store_true",
+        help="Mirror current repo into runner-home/source/current before running. Enabled by default for setup/desktop runs.",
+    )
+    parser.add_argument(
+        "--no-publish-source",
+        action="store_true",
+        help="Skip source mirror refresh for this invocation.",
+    )
+    parser.add_argument(
+        "--source-mirror-timeout",
+        type=int,
+        default=int(
+            os.environ.get(
+                "CHUNGMARU_SOURCE_MIRROR_TIMEOUT",
+                str(DEFAULT_SOURCE_MIRROR_TIMEOUT_SECONDS),
+            )
+        ),
+        help="Maximum seconds allowed for source mirror refresh.",
+    )
+    parser.add_argument(
+        "--collect-after",
+        action="store_true",
+        help="Copy known result files into runner-home/current after the run. Enabled by default for test modes.",
+    )
+    parser.add_argument(
+        "--no-collect-after",
+        action="store_true",
+        help="Skip current/latest artifact collection after a test mode.",
+    )
+    parser.add_argument(
+        "--check-remote",
+        action="store_true",
+        help="For doctor: also verify Desktop SSH readiness.",
+    )
+    parser.add_argument(
+        "--skip-remote-check",
+        action="store_true",
+        help="For doctor: skip Desktop SSH/SMB/ADB checks.",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    for command in [
+        "setup",
+        "doctor",
+        "wake",
+        "publish-source",
+        "quick",
+        "benchmark",
+        "demo",
+        "chrome-media",
+        "chrome-media-start",
+        "chrome-media-status",
+        "chrome-media-reconcile",
+        "chrome-media-job",
+        "collect",
+        "export",
+    ]:
+        subparsers.add_parser(command)
+    return parser
+
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.runner_home is None:
+        args.runner_home = default_runner_home()
+    else:
+        args.runner_home = args.runner_home.expanduser()
+    args.local_work_root = args.local_work_root.expanduser()
+    if args.command in {"setup", "quick", "benchmark", "demo", "chrome-media"} and not args.no_publish_source:
+        args.publish_source = True
+    if args.command in {"quick", "benchmark", "demo", "chrome-media"} and not args.no_collect_after:
+        args.collect_after = True
+
+    try:
+        if args.command == "setup":
+            return setup_command(args)
+        if args.command == "doctor":
+            return doctor(args)
+        if args.command == "wake":
+            wake_desktop(args)
+            return 0
+        if args.command == "publish-source":
+            return publish_source_command(args)
+        if args.command in {"quick", "benchmark", "demo", "chrome-media"}:
+            return run_mode(args, args.command)
+        if args.command == "chrome-media-start":
+            return chrome_media_start_command(args)
+        if args.command == "chrome-media-status":
+            return chrome_media_status_command(args)
+        if args.command == "chrome-media-reconcile":
+            return chrome_media_reconcile_command(args)
+        if args.command == "chrome-media-job":
+            return chrome_media_job_command(args)
+        if args.command == "collect":
+            return collect_command(args)
+        if args.command == "export":
+            return export_command(args)
+    except Exception as exc:
+        print(f"error={exc}", file=sys.stderr)
+        return 1
+    parser.error(f"unsupported command: {args.command}")
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,195 @@
+{
+  "generatedAt": "2026-07-07T12:02:44+09:00",
+  "resultsDir": "evaluation/media-safety/results/current",
+  "inputFiles": [
+    "evaluation/media-safety/results/current/benign-thumbnail/media-safety-live-smoke.csv",
+    "evaluation/media-safety/results/current/media-safety-live-smoke.csv",
+    "evaluation/media-safety/results/current/media-safety-smoke.csv"
+  ],
+  "rawRowCount": 26,
+  "summaryGroupCount": 16,
+  "stageRowCount": 144,
+  "statusCounts": {
+    "benign_negative": 9,
+    "disabled_control": 1,
+    "strong_visual_block": 6
+  },
+  "evidenceTierCounts": {
+    "control_row": 1,
+    "controlled_harmful_regression": 4,
+    "controlled_negative_or_control": 1,
+    "live_benign_negative_evidence": 8,
+    "live_harmful_visual_evidence": 2
+  },
+  "coverageVerdict": "mechanism_proof_only",
+  "coverageAudit": [
+    {
+      "scope": "harmful_visual_total",
+      "category": "adult+gambling",
+      "seed_block_domain_count": 217,
+      "live_smoke_domain_count": 2,
+      "live_harmful_visual_evidence_domain_count": 2,
+      "controlled_harmful_regression_count": 0,
+      "live_benign_negative_domain_count": 6,
+      "coverage_ratio_pct": "0.9",
+      "readiness_status": "mechanism_proof_only",
+      "report_note": "현재 유해 visual live evidence 2개, benign negative 6개다. 최소 목표는 유해 25개 이상, benign 30개 이상이다."
+    },
+    {
+      "scope": "category",
+      "category": "adult",
+      "seed_block_domain_count": 117,
+      "live_smoke_domain_count": 0,
+      "live_harmful_visual_evidence_domain_count": 0,
+      "controlled_harmful_regression_count": 0,
+      "live_benign_negative_domain_count": "",
+      "coverage_ratio_pct": "0.0",
+      "readiness_status": "no_live_visual_evidence",
+      "report_note": "해당 카테고리 live screenshot evidence가 아직 없다. 완성도 주장 금지."
+    },
+    {
+      "scope": "category",
+      "category": "gambling",
+      "seed_block_domain_count": 100,
+      "live_smoke_domain_count": 2,
+      "live_harmful_visual_evidence_domain_count": 2,
+      "controlled_harmful_regression_count": 0,
+      "live_benign_negative_domain_count": "",
+      "coverage_ratio_pct": "2.0",
+      "readiness_status": "mechanism_proof_only",
+      "report_note": "동작 예시는 있으나 10개 도메인 미만이라 coverage proof가 아니다."
+    },
+    {
+      "scope": "category",
+      "category": "malware",
+      "seed_block_domain_count": 80,
+      "live_smoke_domain_count": 0,
+      "live_harmful_visual_evidence_domain_count": 0,
+      "controlled_harmful_regression_count": 0,
+      "live_benign_negative_domain_count": "",
+      "coverage_ratio_pct": "0.0",
+      "readiness_status": "not_media_safety_scope",
+      "report_note": "이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다."
+    },
+    {
+      "scope": "category",
+      "category": "phishing",
+      "seed_block_domain_count": 270,
+      "live_smoke_domain_count": 0,
+      "live_harmful_visual_evidence_domain_count": 0,
+      "controlled_harmful_regression_count": 0,
+      "live_benign_negative_domain_count": "",
+      "coverage_ratio_pct": "0.0",
+      "readiness_status": "not_media_safety_scope",
+      "report_note": "이미지 차단 품질보다 유해사이트 차단/접속 정책 검증에 가까운 카테고리다."
+    }
+  ],
+  "stageBudgetSummary": [
+    {
+      "stage_id": "01_collect",
+      "stage_name": "DOM 후보 수집",
+      "field": "collect_ms",
+      "measured_run_count": 26,
+      "p50_ms": "2",
+      "p95_ms": "10",
+      "max_ms": "10",
+      "budget_p95_ms": 50,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "02_cheap_filter",
+      "stage_name": "cheap filter",
+      "field": "cheap_filter_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "0",
+      "max_ms": "0",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "03_apply",
+      "stage_name": "hide/remove 적용",
+      "field": "apply_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "6",
+      "max_ms": "7",
+      "budget_p95_ms": 80,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "04_dom_to_action",
+      "stage_name": "DOM 추가 후 action",
+      "field": "dom_added_to_action_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "5",
+      "max_ms": "5",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "05_late_load_decision",
+      "stage_name": "late-load decision",
+      "field": "late_decision_ms",
+      "measured_run_count": 26,
+      "p50_ms": "0",
+      "p95_ms": "0",
+      "max_ms": "41",
+      "budget_p95_ms": 120,
+      "budget_status": "within_budget"
+    },
+    {
+      "stage_id": "06_image_fetch_future",
+      "stage_name": "image fetch",
+      "field": "image_fetch_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 80,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "07_bitmap_decode_future",
+      "stage_name": "bitmap decode",
+      "field": "bitmap_decode_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 80,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "08_classifier_future",
+      "stage_name": "NSFW/banner classifier",
+      "field": "classifier_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 120,
+      "budget_status": "not_instrumented"
+    },
+    {
+      "stage_id": "09_ocr_future",
+      "stage_name": "image OCR",
+      "field": "ocr_ms",
+      "measured_run_count": 0,
+      "p50_ms": "",
+      "p95_ms": "",
+      "max_ms": "",
+      "budget_p95_ms": 200,
+      "budget_status": "not_instrumented"
+    }
+  ],
+  "generatedFiles": {
+    "latency_summary_csv": "evaluation/media-safety/results/current/media-safety-latency-summary.csv",
+    "stage_latency_csv": "evaluation/media-safety/results/current/media-safety-stage-latency.csv",
+    "coverage_audit_csv": "evaluation/media-safety/results/current/media-safety-coverage-audit.csv",
+    "report_json": "evaluation/media-safety/results/current/media-safety-report.json",
+    "report_md": "evaluation/media-safety/results/current/media-safety-report.md"
+  }
+}
