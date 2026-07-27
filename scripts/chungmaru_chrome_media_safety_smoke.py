@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any
 
 from chungmaru_chrome_latency_smoke import (
-    CHROME_APP,
     CdpWebSocket,
     ThreadedTCPServer,
     create_tab,
@@ -84,7 +83,11 @@ def detect_chrome_path(explicit_path: Path | None) -> Path:
         if candidate.exists():
           return candidate
 
-    return CHROME_APP
+    raise RuntimeError(
+        "Chrome for Testing was not found. Install it through the Chungmaru runner "
+        "or pass an explicit Chromium-compatible --chrome-path. Standard Google Chrome "
+        "does not provide a reliable --load-extension smoke environment."
+    )
 
 
 def svg_response(label: str, tone: str) -> str:
