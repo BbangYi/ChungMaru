@@ -90,6 +90,11 @@ const WELLBEING_RECENT_DETECTION_WINDOW_MS = 10 * 60 * 1000;
 const WELLBEING_RECENT_DETECTION_LIMIT = 160;
 const WELLBEING_SITE_LIMIT = 60;
 const RUNTIME_EVENT_LOG_LIMIT = 140;
+const NSFW_OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
+const NSFW_OFFSCREEN_TARGET = "chungmaru-nsfw-offscreen";
+const NSFW_CLASSIFIER_BATCH_LIMIT = 4;
+const NSFW_CLASSIFIER_MAX_DATA_URL_CHARS = 1024 * 1024;
+const NSFW_CLASSIFIER_TEST_MODES = new Set(["normal", "off", "fixture", "cpu"]);
 const WELLBEING_USAGE_ALARM_NAME = "wellbeing-active-usage-sample";
 const WELLBEING_USAGE_ALARM_PERIOD_MINUTES = 1;
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([
@@ -112,6 +117,9 @@ let settingsInFlight = null;
 let developerRuntimeLogEnabledCache = false;
 let developerRuntimeLogStateLoaded = false;
 let developerRuntimeLogStateInFlight = null;
+let nsfwOffscreenCreatePromise = null;
+let nsfwClassifierTestOverride = "normal";
+let nsfwClassifierReadyLogSignature = "";
 const BACKEND_REQUEST_PRIORITY = [
   "foreground",
   "reconcile",
@@ -193,6 +201,8 @@ function normalizeRuntimeLogEvent(event) {
     verdict: truncateRuntimeLogValue(event?.verdict || "", 40),
     profile: truncateRuntimeLogValue(event?.profile || "", 64),
     action: truncateRuntimeLogValue(event?.action || "", 40),
+    modelVersion: truncateRuntimeLogValue(event?.modelVersion || "", 80),
+    backend: truncateRuntimeLogValue(event?.backend || "", 40),
     apiBaseUrl: truncateRuntimeLogValue(event?.apiBaseUrl || "", 180),
     durationMs: Math.max(0, Math.round(Number(event?.durationMs || 0))),
     count: Math.max(0, Math.round(Number(event?.count || 0))),
@@ -212,8 +222,84 @@ function normalizeRuntimeLogEvent(event) {
     collectMs: Math.max(0, Math.round(Number(event?.collectMs || 0))),
     cheapFilterMs: Math.max(0, Math.round(Number(event?.cheapFilterMs || 0))),
     classifierMs: Math.max(0, Math.round(Number(event?.classifierMs || 0))),
+    modelLoadMs: Math.max(0, Math.round(Number(event?.modelLoadMs || 0))),
+    warmupMs: Math.max(0, Math.round(Number(event?.warmupMs || 0))),
+    classifierCandidateCount: Math.max(0, Math.round(Number(event?.classifierCandidateCount || 0))),
+    classifierQueuedCount: Math.max(0, Math.round(Number(event?.classifierQueuedCount || 0))),
+    classifierAppliedCount: Math.max(0, Math.round(Number(event?.classifierAppliedCount || 0))),
+    cacheHitCount: Math.max(0, Math.round(Number(event?.cacheHitCount || 0))),
+    blockedCount: Math.max(0, Math.round(Number(event?.blockedCount || 0))),
+    benignCount: Math.max(0, Math.round(Number(event?.benignCount || 0))),
+    ambiguousCount: Math.max(0, Math.round(Number(event?.ambiguousCount || 0))),
+    errorCount: Math.max(0, Math.round(Number(event?.errorCount || 0))),
+    fetchMs: Math.max(0, Math.round(Number(event?.fetchMs || 0))),
+    decodeMs: Math.max(0, Math.round(Number(event?.decodeMs || 0))),
+    inferenceMs: Math.max(0, Math.round(Number(event?.inferenceMs || 0))),
+    queueWaitMs: Math.max(0, Math.round(Number(event?.queueWaitMs || 0))),
+    classifierDecisionMs: Math.max(0, Math.round(Number(event?.classifierDecisionMs || 0))),
+    modelLoadCount: Math.max(0, Math.round(Number(event?.modelLoadCount || 0))),
+    tensorCount: Math.max(0, Math.round(Number(event?.tensorCount || 0))),
+    tensorBytes: Math.max(0, Math.round(Number(event?.tensorBytes || 0))),
+    staleDropCount: Math.max(0, Math.round(Number(event?.staleDropCount || 0))),
     ocrMs: Math.max(0, Math.round(Number(event?.ocrMs || 0))),
     applyMs: Math.max(0, Math.round(Number(event?.applyMs || 0))),
+    mediaSafetyScanRequestCount: Math.max(0, Math.round(Number(event?.mediaSafetyScanRequestCount || 0))),
+    mediaSafetyCoalescedScanRequestCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyCoalescedScanRequestCount || 0))
+    ),
+    mediaSafetyMediaLoadEventCount: Math.max(0, Math.round(Number(event?.mediaSafetyMediaLoadEventCount || 0))),
+    mediaSafetyMutationBatchCount: Math.max(0, Math.round(Number(event?.mediaSafetyMutationBatchCount || 0))),
+    mediaSafetyMutationAddedNodeCount: Math.max(0, Math.round(Number(event?.mediaSafetyMutationAddedNodeCount || 0))),
+    mediaSafetyPotentialMutationBatchCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyPotentialMutationBatchCount || 0))
+    ),
+    mediaSafetyFastPath: event?.mediaSafetyFastPath === undefined ? null : Boolean(event.mediaSafetyFastPath),
+    mediaSafetyFastPathSeedCount: Math.max(0, Math.round(Number(event?.mediaSafetyFastPathSeedCount || 0))),
+    mediaSafetyFastPathRequestCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyFastPathRequestCount || 0))
+    ),
+    mediaSafetyFastPathRunCount: Math.max(0, Math.round(Number(event?.mediaSafetyFastPathRunCount || 0))),
+    mediaSafetyFastPathCandidateCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyFastPathCandidateCount || 0))
+    ),
+    mediaSafetyFastPathActionCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyFastPathActionCount || 0))
+    ),
+    pipelineScheduleCount: Math.max(0, Math.round(Number(event?.pipelineScheduleCount || 0))),
+    pipelineRunCount: Math.max(0, Math.round(Number(event?.pipelineRunCount || 0))),
+    pipelineQueuedCount: Math.max(0, Math.round(Number(event?.pipelineQueuedCount || 0))),
+    pipelineSuppressedCount: Math.max(0, Math.round(Number(event?.pipelineSuppressedCount || 0))),
+    pipelineDurationTotalMs: Math.max(0, Math.round(Number(event?.pipelineDurationTotalMs || 0))),
+    pipelineDurationMaxMs: Math.max(0, Math.round(Number(event?.pipelineDurationMaxMs || 0))),
+    searchResultScheduleCount: Math.max(0, Math.round(Number(event?.searchResultScheduleCount || 0))),
+    googleLightScheduleCount: Math.max(0, Math.round(Number(event?.googleLightScheduleCount || 0))),
+    mediaSafetyScheduleCount: Math.max(0, Math.round(Number(event?.mediaSafetyScheduleCount || 0))),
+    targetedMediaSafetyScheduleCount: Math.max(
+      0,
+      Math.round(Number(event?.targetedMediaSafetyScheduleCount || 0))
+    ),
+    runtimeMessageCount: Math.max(0, Math.round(Number(event?.runtimeMessageCount || 0))),
+    backendMessageCount: Math.max(0, Math.round(Number(event?.backendMessageCount || 0))),
+    mutationBatchCount: Math.max(0, Math.round(Number(event?.mutationBatchCount || 0))),
+    mutationRecordCount: Math.max(0, Math.round(Number(event?.mutationRecordCount || 0))),
+    mutationAddedNodeCount: Math.max(0, Math.round(Number(event?.mutationAddedNodeCount || 0))),
+    mutationPotentialMediaBatchCount: Math.max(
+      0,
+      Math.round(Number(event?.mutationPotentialMediaBatchCount || 0))
+    ),
+    mutationGoogleBatchCount: Math.max(0, Math.round(Number(event?.mutationGoogleBatchCount || 0))),
+    longTaskCount: Math.max(0, Math.round(Number(event?.longTaskCount || 0))),
+    longTaskMaxMs: Math.max(0, Math.round(Number(event?.longTaskMaxMs || 0))),
+    eventLoopLagCount: Math.max(0, Math.round(Number(event?.eventLoopLagCount || 0))),
+    eventLoopLagMaxMs: Math.max(0, Math.round(Number(event?.eventLoopLagMaxMs || 0))),
+    performanceGuardActive: event?.performanceGuardActive === undefined ? null : Boolean(event.performanceGuardActive),
+    performanceGuardReason: truncateRuntimeLogValue(event?.performanceGuardReason || "", 80),
+    performanceGuardRemainingMs: Math.max(0, Math.round(Number(event?.performanceGuardRemainingMs || 0))),
     missedVisibleTileCount: Math.max(0, Math.round(Number(event?.missedVisibleTileCount || 0))),
     positiveCount: Math.max(0, Math.round(Number(event?.positiveCount || 0))),
     skippedCount: Math.max(0, Math.round(Number(event?.skippedCount || 0))),
@@ -3868,6 +3954,253 @@ async function getLastPipelineState() {
   };
 }
 
+function isNsfwLoopbackHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+function isNsfwPrivateAddressLiteral(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (isNsfwLoopbackHost(host)) return true;
+  if (/^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true;
+  const match = host.match(/^172\.(\d{1,3})\./);
+  if (match && Number(match[1]) >= 16 && Number(match[1]) <= 31) return true;
+  return host === "0.0.0.0" || host.endsWith(".local");
+}
+
+function isNsfwLoopbackPage(url) {
+  try {
+    return isNsfwLoopbackHost(new URL(String(url || "")).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeNsfwClassifierSource(value, allowLoopback) {
+  const raw = String(value || "").trim();
+  if (!raw) throw new Error("NSFW_SOURCE_MISSING");
+  if (/^data:image\//i.test(raw)) {
+    if (raw.length > NSFW_CLASSIFIER_MAX_DATA_URL_CHARS) {
+      throw new Error("NSFW_SOURCE_TOO_LARGE");
+    }
+    return raw;
+  }
+  const parsed = new URL(raw);
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("NSFW_SOURCE_UNSUPPORTED");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("NSFW_SOURCE_CREDENTIALS");
+  }
+  if (isNsfwPrivateAddressLiteral(parsed.hostname) && !(allowLoopback && isNsfwLoopbackHost(parsed.hostname))) {
+    throw new Error("NSFW_SOURCE_PRIVATE");
+  }
+  return parsed.href;
+}
+
+async function hasNsfwOffscreenDocument() {
+  const offscreenUrl = chrome.runtime.getURL(NSFW_OFFSCREEN_DOCUMENT_PATH);
+  if (typeof chrome.runtime.getContexts === "function") {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT"],
+      documentUrls: [offscreenUrl]
+    });
+    return contexts.length > 0;
+  }
+  if (globalThis.clients?.matchAll) {
+    const matchedClients = await globalThis.clients.matchAll();
+    return matchedClients.some((client) => client.url === offscreenUrl);
+  }
+  return false;
+}
+
+async function ensureNsfwOffscreenDocument() {
+  if (!chrome.offscreen?.createDocument) {
+    throw new Error("NSFW_OFFSCREEN_UNAVAILABLE");
+  }
+  if (await hasNsfwOffscreenDocument()) return;
+  if (!nsfwOffscreenCreatePromise) {
+    nsfwOffscreenCreatePromise = chrome.offscreen.createDocument({
+      url: NSFW_OFFSCREEN_DOCUMENT_PATH,
+      reasons: ["BLOBS"],
+      justification: "Decode visible image thumbnails and run the bundled local NSFW classifier."
+    }).finally(() => {
+      nsfwOffscreenCreatePromise = null;
+    });
+  }
+  await nsfwOffscreenCreatePromise;
+}
+
+async function closeNsfwOffscreenDocument() {
+  if (!chrome.offscreen?.closeDocument) return;
+  if (!(await hasNsfwOffscreenDocument())) return;
+  await chrome.offscreen.closeDocument();
+  nsfwClassifierReadyLogSignature = "";
+}
+
+async function sendNsfwOffscreenMessage(message) {
+  await ensureNsfwOffscreenDocument();
+  const response = await chrome.runtime.sendMessage({
+    ...message,
+    target: NSFW_OFFSCREEN_TARGET
+  });
+  if (!response) {
+    throw new Error("NSFW_OFFSCREEN_NO_RESPONSE");
+  }
+  return response;
+}
+
+function recordNsfwClassifierReady(response, source = "service-worker") {
+  if (!response?.ok || response?.testOverride === "fixture") return;
+  const signature = [response.modelVersion, response.backend, response.modelLoadCount].join(":");
+  if (!signature || signature === nsfwClassifierReadyLogSignature) return;
+  nsfwClassifierReadyLogSignature = signature;
+  recordRuntimeLogEvent({
+    type: "media-safety-classifier-ready",
+    ok: true,
+    status: response.status || "ready",
+    source,
+    modelVersion: response.modelVersion,
+    backend: response.backend,
+    modelLoadMs: response.modelLoadMs,
+    warmupMs: response.warmupMs,
+    modelLoadCount: response.modelLoadCount,
+    tensorCount: response.tensorCount,
+    tensorBytes: response.tensorBytes,
+    reason: "bundled local NSFW classifier ready"
+  });
+}
+
+async function warmNsfwClassifier(options = {}) {
+  const settings = options.settings || await getSettings();
+  if (settings?.enabled === false || settings?.mediaSafetyEnabled !== true) {
+    return { ok: true, status: "disabled", reason: "MEDIA_SAFETY_DISABLED" };
+  }
+  if (nsfwClassifierTestOverride === "off") {
+    return { ok: true, status: "disabled", reason: "NSFW_TEST_OVERRIDE_OFF" };
+  }
+  if (nsfwClassifierTestOverride === "fixture") {
+    const status = await sendNsfwOffscreenMessage({ type: "OFFSCREEN_NSFW_GET_STATUS" });
+    return { ...status, ok: true, status: "test-fixture", testOverride: "fixture" };
+  }
+  const response = await sendNsfwOffscreenMessage({ type: "OFFSCREEN_NSFW_WARMUP" });
+  if (!response?.ok) {
+    const error = new Error(response?.reason || "NSFW_MODEL_LOAD_FAILED");
+    error.errorCode = response?.errorCode || "NSFW_MODEL_LOAD_FAILED";
+    throw error;
+  }
+  recordNsfwClassifierReady(response, options.source || "service-worker");
+  return response;
+}
+
+async function syncNsfwClassifierLifecycle(settings) {
+  const activeSettings = settings || await getSettings();
+  if (activeSettings?.enabled !== false && activeSettings?.mediaSafetyEnabled === true && nsfwClassifierTestOverride !== "off") {
+    // Keep the GPU/offscreen document idle until a visible unresolved image
+    // actually needs classification. The content scripts request warm-up only
+    // after candidate budgeting and cheap filtering.
+    return { ok: true, status: "idle-until-visible-candidate" };
+  }
+  await closeNsfwOffscreenDocument();
+  return { ok: true, status: "closed" };
+}
+
+async function classifyNsfwImageBatch(message, sender) {
+  const settings = await getSettings();
+  if (settings?.enabled === false || settings?.mediaSafetyEnabled !== true) {
+    return { ok: true, status: "disabled", results: [], reason: "MEDIA_SAFETY_DISABLED" };
+  }
+  if (nsfwClassifierTestOverride === "off") {
+    return { ok: true, status: "disabled", results: [], reason: "NSFW_TEST_OVERRIDE_OFF" };
+  }
+
+  const rawItems = Array.isArray(message?.items) ? message.items : [];
+  if (rawItems.length === 0 || rawItems.length > NSFW_CLASSIFIER_BATCH_LIMIT) {
+    return {
+      ok: false,
+      errorCode: "NSFW_BATCH_SIZE_INVALID",
+      reason: `NSFW batch size must be 1-${NSFW_CLASSIFIER_BATCH_LIMIT}`
+    };
+  }
+  const pageUrl = String(sender?.tab?.url || "");
+  const allowLoopback = isNsfwLoopbackPage(pageUrl);
+  const items = [];
+  const seenKeys = new Set();
+  for (const item of rawItems) {
+    const candidateKey = String(item?.candidateKey || "").trim().slice(0, 96);
+    if (!candidateKey || seenKeys.has(candidateKey)) continue;
+    try {
+      items.push({
+        candidateKey,
+        sourceUrl: normalizeNsfwClassifierSource(item?.sourceUrl, allowLoopback)
+      });
+      seenKeys.add(candidateKey);
+    } catch (error) {
+      return {
+        ok: false,
+        errorCode: String(error?.message || "NSFW_SOURCE_INVALID").slice(0, 80),
+        reason: "NSFW classifier source validation failed"
+      };
+    }
+  }
+  if (items.length === 0) {
+    return { ok: false, errorCode: "NSFW_BATCH_EMPTY", reason: "NSFW batch has no valid items" };
+  }
+
+  const response = await sendNsfwOffscreenMessage({
+    type: "OFFSCREEN_NSFW_CLASSIFY_BATCH",
+    requestId: String(message?.requestId || "").slice(0, 96),
+    contextKey: String(message?.contextKey || "").slice(0, 160),
+    allowLoopback,
+    items
+  });
+  if (response?.ok) recordNsfwClassifierReady(response, "classifier-batch");
+  return response;
+}
+
+async function getNsfwClassifierStatus() {
+  if (!(await hasNsfwOffscreenDocument())) {
+    return {
+      ok: true,
+      status: "closed",
+      testOverride: nsfwClassifierTestOverride,
+      cacheSize: 0,
+      modelLoadCount: 0,
+      tensorCount: 0,
+      tensorBytes: 0
+    };
+  }
+  return sendNsfwOffscreenMessage({ type: "OFFSCREEN_NSFW_GET_STATUS" });
+}
+
+function isTrustedNsfwTestOverrideSender(sender) {
+  if (sender?.id !== chrome.runtime.id) return false;
+  if (!sender?.tab) return true;
+  return String(sender?.url || "").startsWith(chrome.runtime.getURL(""));
+}
+
+async function setNsfwClassifierTestOverride(message, sender) {
+  if (!isTrustedNsfwTestOverrideSender(sender)) {
+    return { ok: false, errorCode: "NSFW_TEST_OVERRIDE_FORBIDDEN", reason: "Extension context required" };
+  }
+  const requested = String(message?.mode || "normal").trim().toLowerCase();
+  const mode = NSFW_CLASSIFIER_TEST_MODES.has(requested) ? requested : "normal";
+  nsfwClassifierTestOverride = mode;
+  nsfwClassifierReadyLogSignature = "";
+  if (mode === "off") {
+    if (await hasNsfwOffscreenDocument()) {
+      await sendNsfwOffscreenMessage({ type: "OFFSCREEN_NSFW_SET_TEST_OVERRIDE", mode });
+      await closeNsfwOffscreenDocument();
+    }
+    return { ok: true, status: "disabled", testOverride: mode };
+  }
+  const response = await sendNsfwOffscreenMessage({
+    type: "OFFSCREEN_NSFW_SET_TEST_OVERRIDE",
+    mode
+  });
+  return { ...response, testOverride: mode };
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   FULL_ANALYSIS_RESPONSE_CACHE.clear();
   FULL_ANALYSIS_IN_FLIGHT_REQUESTS.clear();
@@ -3875,9 +4208,11 @@ chrome.runtime.onInstalled.addListener(() => {
   SITE_POLICY_IN_FLIGHT.clear();
   SITE_POLICY_BY_TAB.clear();
   ensureWellbeingUsageAlarm();
-  ensureSettings().catch((error) => {
-    console.error("[청마루] ensureSettings(onInstalled) failed", error);
-  });
+  ensureSettings()
+    .then((settings) => syncNsfwClassifierLifecycle(settings))
+    .catch((error) => {
+      console.error("[청마루] ensureSettings(onInstalled) failed", error);
+    });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -3887,9 +4222,11 @@ chrome.runtime.onStartup.addListener(() => {
   SITE_POLICY_IN_FLIGHT.clear();
   SITE_POLICY_BY_TAB.clear();
   ensureWellbeingUsageAlarm();
-  ensureSettings().catch((error) => {
-    console.error("[청마루] ensureSettings(onStartup) failed", error);
-  });
+  ensureSettings()
+    .then((settings) => syncNsfwClassifierLifecycle(settings))
+    .catch((error) => {
+      console.error("[청마루] ensureSettings(onStartup) failed", error);
+    });
 });
 
 ensureWellbeingUsageAlarm();
@@ -3942,6 +4279,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
         visibleTileCount: 0,
         actionCount: 0,
         reason: "media safety setting changed"
+      });
+      syncNsfwClassifierLifecycle(settingsCache).catch((error) => {
+        recordRuntimeLogEvent({
+          type: "media-safety-classifier-error",
+          ok: false,
+          status: "lifecycle-failed",
+          source: "settings",
+          errorCode: String(error?.errorCode || error?.message || "NSFW_LIFECYCLE_FAILED").slice(0, 80),
+          reason: String(error?.message || error || "NSFW lifecycle failed").slice(0, 220)
+        });
       });
     }
   }
@@ -4089,6 +4436,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       addRuntimeEventLogFromMessage(message),
       sendResponse,
       "ADD_RUNTIME_EVENT_LOG_FAILED"
+    );
+    return true;
+  }
+
+  if (message?.type === "WARMUP_NSFW_CLASSIFIER") {
+    sendAsyncRuntimeResponse(
+      warmNsfwClassifier({ source: "content-script" }),
+      sendResponse,
+      "NSFW_MODEL_LOAD_FAILED"
+    );
+    return true;
+  }
+
+  if (message?.type === "CLASSIFY_NSFW_IMAGE_BATCH") {
+    sendAsyncRuntimeResponse(
+      classifyNsfwImageBatch(message, sender),
+      sendResponse,
+      "NSFW_CLASSIFIER_FAILED"
+    );
+    return true;
+  }
+
+  if (message?.type === "GET_NSFW_CLASSIFIER_STATUS") {
+    sendAsyncRuntimeResponse(
+      getNsfwClassifierStatus(),
+      sendResponse,
+      "NSFW_STATUS_FAILED"
+    );
+    return true;
+  }
+
+  if (message?.type === "SET_NSFW_CLASSIFIER_TEST_OVERRIDE") {
+    sendAsyncRuntimeResponse(
+      setNsfwClassifierTestOverride(message, sender),
+      sendResponse,
+      "NSFW_TEST_OVERRIDE_FAILED"
     );
     return true;
   }

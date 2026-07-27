@@ -63,25 +63,25 @@ STAGE_SPECS = [
         "meaning": "이미지/영상이 늦게 삽입된 뒤 숨김 처리까지 걸린 시간",
     },
     {
-        "stage_id": "06_image_fetch_future",
+        "stage_id": "06_classifier_fetch",
         "stage_name": "image fetch",
-        "field": "image_fetch_ms",
+        "field": "classifier_real_fetch_ms",
         "budget_p95_ms": 80,
-        "meaning": "향후 classifier/OCR 후보 이미지 fetch 시간",
+        "meaning": "offscreen classifier 후보 이미지 fetch 시간",
     },
     {
-        "stage_id": "07_bitmap_decode_future",
+        "stage_id": "07_classifier_decode",
         "stage_name": "bitmap decode",
-        "field": "bitmap_decode_ms",
+        "field": "classifier_real_decode_ms",
         "budget_p95_ms": 80,
-        "meaning": "향후 classifier/OCR 입력 bitmap decode 시간",
+        "meaning": "offscreen classifier 입력 bitmap decode 시간",
     },
     {
-        "stage_id": "08_classifier_future",
+        "stage_id": "08_classifier_inference",
         "stage_name": "NSFW/banner classifier",
-        "field": "classifier_ms",
+        "field": "classifier_real_inference_ms",
         "budget_p95_ms": 120,
-        "meaning": "향후 이미지 classifier 추론 시간",
+        "meaning": "offscreen NSFW classifier 추론 시간",
     },
     {
         "stage_id": "09_ocr_future",
@@ -123,9 +123,42 @@ SUMMARY_FIELDNAMES = [
     "false_hidden_count_max",
     "hidden_count_max",
     "compact_summary_count_max",
+    "layout_shift_score_max",
+    "layout_shift_entry_count_max",
+    "layout_shift_max_value_max",
+    "layout_shift_supported_count",
     "viewport_coverage_pct_max",
     "runtime_log_count_max",
     "media_runtime_log_count_max",
+    "perf_runtime_log_count_max",
+    "perf_pipeline_schedule_count_max",
+    "perf_pipeline_run_count_max",
+    "perf_pipeline_queued_count_max",
+    "perf_pipeline_suppressed_count_max",
+    "perf_pipeline_duration_total_ms_max",
+    "perf_pipeline_duration_max_ms_max",
+    "perf_search_result_schedule_count_max",
+    "perf_google_light_schedule_count_max",
+    "perf_media_safety_schedule_count_max",
+    "perf_targeted_media_safety_schedule_count_max",
+    "perf_runtime_message_count_max",
+    "perf_backend_message_count_max",
+    "perf_mutation_batch_count_max",
+    "perf_mutation_record_count_max",
+    "perf_mutation_added_node_count_max",
+    "perf_mutation_potential_media_batch_count_max",
+    "perf_mutation_google_batch_count_max",
+    "perf_long_task_count_max",
+    "perf_long_task_max_ms_max",
+    "perf_event_loop_lag_count_max",
+    "perf_event_loop_lag_max_ms_max",
+    "perf_performance_guard_active_count",
+    "perf_performance_guard_remaining_ms_max",
+    "media_safety_fast_path_seed_count_max",
+    "media_safety_fast_path_request_count_max",
+    "media_safety_fast_path_run_count_max",
+    "media_safety_fast_path_candidate_count_max",
+    "media_safety_fast_path_action_count_max",
     "visual_artifact_count",
     "visual_artifact_paths",
     "collect_ms_p50",
@@ -661,9 +694,71 @@ def build_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "false_hidden_count_max": max_int(group_rows, "false_hidden_count"),
             "hidden_count_max": max_int(group_rows, "hidden_count"),
             "compact_summary_count_max": max_int(group_rows, "compact_summary_count"),
+            "layout_shift_score_max": metric([max_float(group_rows, "layout_shift_score")], "max"),
+            "layout_shift_entry_count_max": max_int(group_rows, "layout_shift_entry_count"),
+            "layout_shift_max_value_max": metric([max_float(group_rows, "layout_shift_max_value")], "max"),
+            "layout_shift_supported_count": sum(
+                1 for row in group_rows if read_bool(row.get("layout_shift_supported"))
+            ),
             "viewport_coverage_pct_max": metric([max_float(group_rows, "viewport_coverage_pct")], "max"),
             "runtime_log_count_max": max_int(group_rows, "runtime_log_count"),
             "media_runtime_log_count_max": max_int(group_rows, "media_runtime_log_count"),
+            "perf_runtime_log_count_max": max_int(group_rows, "perf_runtime_log_count"),
+            "perf_pipeline_schedule_count_max": max_int(group_rows, "perf_pipeline_schedule_count"),
+            "perf_pipeline_run_count_max": max_int(group_rows, "perf_pipeline_run_count"),
+            "perf_pipeline_queued_count_max": max_int(group_rows, "perf_pipeline_queued_count"),
+            "perf_pipeline_suppressed_count_max": max_int(group_rows, "perf_pipeline_suppressed_count"),
+            "perf_pipeline_duration_total_ms_max": max_int(group_rows, "perf_pipeline_duration_total_ms"),
+            "perf_pipeline_duration_max_ms_max": max_int(group_rows, "perf_pipeline_duration_max_ms"),
+            "perf_search_result_schedule_count_max": max_int(group_rows, "perf_search_result_schedule_count"),
+            "perf_google_light_schedule_count_max": max_int(group_rows, "perf_google_light_schedule_count"),
+            "perf_media_safety_schedule_count_max": max_int(group_rows, "perf_media_safety_schedule_count"),
+            "perf_targeted_media_safety_schedule_count_max": max_int(
+                group_rows,
+                "perf_targeted_media_safety_schedule_count",
+            ),
+            "perf_runtime_message_count_max": max_int(group_rows, "perf_runtime_message_count"),
+            "perf_backend_message_count_max": max_int(group_rows, "perf_backend_message_count"),
+            "perf_mutation_batch_count_max": max_int(group_rows, "perf_mutation_batch_count"),
+            "perf_mutation_record_count_max": max_int(group_rows, "perf_mutation_record_count"),
+            "perf_mutation_added_node_count_max": max_int(group_rows, "perf_mutation_added_node_count"),
+            "perf_mutation_potential_media_batch_count_max": max_int(
+                group_rows,
+                "perf_mutation_potential_media_batch_count",
+            ),
+            "perf_mutation_google_batch_count_max": max_int(group_rows, "perf_mutation_google_batch_count"),
+            "perf_long_task_count_max": max_int(group_rows, "perf_long_task_count"),
+            "perf_long_task_max_ms_max": max_int(group_rows, "perf_long_task_max_ms"),
+            "perf_event_loop_lag_count_max": max_int(group_rows, "perf_event_loop_lag_count"),
+            "perf_event_loop_lag_max_ms_max": max_int(group_rows, "perf_event_loop_lag_max_ms"),
+            "perf_performance_guard_active_count": sum(
+                1 for row in group_rows
+                if read_bool(row.get("perf_performance_guard_active"))
+            ),
+            "perf_performance_guard_remaining_ms_max": max_int(
+                group_rows,
+                "perf_performance_guard_remaining_ms_max",
+            ),
+            "media_safety_fast_path_seed_count_max": max_int(
+                group_rows,
+                "media_safety_fast_path_seed_count",
+            ),
+            "media_safety_fast_path_request_count_max": max_int(
+                group_rows,
+                "media_safety_fast_path_request_count",
+            ),
+            "media_safety_fast_path_run_count_max": max_int(
+                group_rows,
+                "media_safety_fast_path_run_count",
+            ),
+            "media_safety_fast_path_candidate_count_max": max_int(
+                group_rows,
+                "media_safety_fast_path_candidate_count",
+            ),
+            "media_safety_fast_path_action_count_max": max_int(
+                group_rows,
+                "media_safety_fast_path_action_count",
+            ),
             "visual_artifact_count": artifact_count,
             "visual_artifact_paths": artifact_paths,
         }
@@ -694,6 +789,25 @@ def budget_status(values: list[float], budget_p95_ms: int) -> str:
     if p95 <= budget_p95_ms:
         return "within_budget"
     return "over_budget"
+
+
+def max_budget_status(values: list[float], budget_ms: int) -> str:
+    if not values:
+        return "not_instrumented"
+    if max(values) <= budget_ms:
+        return "within_budget"
+    return "over_budget"
+
+
+def stage_budget_status(spec: dict[str, Any], values: list[float]) -> str:
+    if not values:
+        return "not_instrumented"
+    p95_status = budget_status(values, int(spec["budget_p95_ms"]))
+    if str(spec.get("stage_id") or "") == "05_late_load_decision":
+        max_status = max_budget_status(values, int(spec["budget_p95_ms"]))
+        if max_status == "over_budget":
+            return "over_budget"
+    return p95_status
 
 
 def build_stage_rows(
@@ -758,7 +872,7 @@ def build_stage_rows(
                 "p95_ms": metric(values, "p95"),
                 "max_ms": metric(values, "max"),
                 "budget_p95_ms": spec["budget_p95_ms"],
-                "budget_status": budget_status(values, int(spec["budget_p95_ms"])),
+                "budget_status": stage_budget_status(spec, values),
                 "report_status": summary.get("report_status", ""),
             })
     return stage_rows
@@ -785,7 +899,7 @@ def global_stage_summary(input_rows: list[dict[str, Any]]) -> list[dict[str, Any
             "p95_ms": metric(values, "p95"),
             "max_ms": metric(values, "max"),
             "budget_p95_ms": spec["budget_p95_ms"],
-            "budget_status": budget_status(values, int(spec["budget_p95_ms"])),
+            "budget_status": stage_budget_status(spec, values),
         })
     return rows
 
@@ -892,7 +1006,7 @@ def build_markdown_report(
         "",
         "## Latency Budget Table",
         "",
-        "현재 v1에서 실제 계측된 stage와 향후 classifier/OCR 계측 예정 stage를 한 표에 둔다. `not_instrumented`는 아직 기능을 붙이지 않았다는 뜻이지 통과가 아니다.",
+        "현재 구현 stage와 classifier/OCR 계측 stage를 한 표에 둔다. `not_instrumented`는 해당 raw run에서 유효한 계측값이 없다는 뜻이지 통과가 아니다.",
         "",
     ])
     lines.extend(markdown_table(
@@ -924,7 +1038,9 @@ def build_markdown_report(
             ("run_count", "runs"),
             ("action_run_count", "action runs"),
             ("action_count_max", "action max"),
+            ("media_safety_fast_path_action_count_max", "fast action max"),
             ("false_hidden_count_max", "false hidden max"),
+            ("layout_shift_score_max", "layout shift max"),
             ("collect_ms_p95", "collect p95"),
             ("cheap_filter_ms_p95", "filter p95"),
             ("apply_ms_p95", "apply p95"),
@@ -950,7 +1066,9 @@ def build_markdown_report(
             ("run_count", "runs"),
             ("action_run_count", "action runs"),
             ("action_count_max", "action max"),
+            ("media_safety_fast_path_action_count_max", "fast action max"),
             ("false_hidden_count_max", "false hidden max"),
+            ("layout_shift_score_max", "layout shift max"),
             ("late_decision_ms_max", "late max"),
         ],
     ))
@@ -983,9 +1101,11 @@ def build_markdown_report(
             ("seed_risk_level", "risk"),
             ("run_count", "runs"),
             ("action_count_max", "action max"),
+            ("media_safety_fast_path_action_count_max", "fast action max"),
             ("candidate_sized_visible_media_element_count_max", "visible candidates"),
             ("missed_visible_tile_count_max", "missed max"),
             ("false_hidden_count_max", "false hidden max"),
+            ("layout_shift_score_max", "layout shift max"),
             ("report_note", "note"),
         ],
     ))
@@ -996,12 +1116,13 @@ def build_markdown_report(
         "- `collect_ms`, `cheap_filter_ms`, `apply_ms`는 한 scan cycle 내부 stage latency다.",
         "- `dom_added_to_action_ms`는 DOM/viewport에 후보가 들어온 뒤 action까지의 지연이다. 사용자가 보기 전에 가리는 목표와 가장 직접적으로 연결된다.",
         "- `late_decision_ms`는 늦게 로드된 이미지 fixture에서 삽입 후 숨김까지 걸린 시간이다.",
+        "- `layout_shift_score`는 layout-shift observer가 수집한 누적 shift다. 일반 흐름 배너의 post-render remove 회귀를 탐지한다.",
         "- `candidate_sized_visible_media_element_count`는 30px 아이콘을 제외한 보고서용 잔여 visual 후보 지표다.",
         "- `false_hidden_count`는 controlled/benign fixture에서만 오탐 지표로 해석한다. live 위험 사이트 row의 truth label로 과해석하지 않는다.",
         "",
         "## Known Gaps",
         "",
-        "- v1은 YOLO/NSFW classifier/OCR을 붙이지 않았다. 따라서 classifier/OCR 속도는 아직 `not_instrumented`로 보고한다.",
+        "- v1에는 offscreen NSFW classifier 경로가 포함되어 있다. controlled fixture는 test override를 사용하므로, real-model fetch/decode/inference 수치는 Desktop corpus benchmark가 완료될 때까지 `Validation Needed`다.",
         "- live harmful visual evidence는 현재 주소가이드 계열 2개 도메인에 머문다. Chrome 이미지 차단을 성숙하다고 말하기에는 부족하다.",
         "- live URL seed는 reachable 여부와 visual banner 존재 여부가 섞여 있으므로, `live_page_ok`, visible candidate, screenshot을 통과한 row만 evidence로 승격한다.",
         "- Google Images/YouTube harmful query와 화면 녹화 evidence는 다음 반복에서 추가해야 한다.",

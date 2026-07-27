@@ -1,0 +1,55 @@
+{
+  "assets": [
+    {
+      "bytes": 1105894,
+      "component": "TensorFlow.js ES2017 MV3 bundle",
+      "path": "tf.min.js",
+      "sha256": "a1f9e32fd9b373cf394905050cf0c8c66238b34925846c065db00d2a34d1c040",
+      "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.es2017.min.js",
+      "version": "4.22.0"
+    },
+    {
+      "bytes": 128945,
+      "component": "NSFWJS MobileNetV2 model",
+      "path": "model/model.json",
+      "sha256": "11846416217e68bf1eb7b0e651bcfd305973566453c63275bbd16766ab089979",
+      "url": "https://raw.githubusercontent.com/infinitered/nsfwjs/v4.2.1/models/mobilenet_v2/model.json",
+      "version": "v4.2.1"
+    },
+    {
+      "bytes": 2619461,
+      "component": "NSFWJS MobileNetV2 weights",
+      "path": "model/group1-shard1of1",
+      "sha256": "8e7dddbb16acacc1bf1601b1b8a761e730ff934b7f2d7771312b2f000e5f5f13",
+      "url": "https://raw.githubusercontent.com/infinitered/nsfwjs/v4.2.1/models/mobilenet_v2/group1-shard1of1",
+      "version": "v4.2.1"
+    },
+    {
+      "bytes": 11358,
+      "component": "TensorFlow.js license",
+      "path": "licenses/TENSORFLOW_JS_LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "url": "https://raw.githubusercontent.com/tensorflow/tfjs/tfjs-v4.22.0/LICENSE",
+      "version": "4.22.0"
+    },
+    {
+      "bytes": 1075,
+      "component": "NSFWJS license",
+      "path": "licenses/NSFWJS_LICENSE",
+      "sha256": "2f7fe40b4f0d97020f0a0dc2214d637471f6204e565eb83e9fd414f0e5287d94",
+      "url": "https://raw.githubusercontent.com/infinitered/nsfwjs/v4.2.1/LICENSE",
+      "version": "v4.2.1"
+    }
+  ],
+  "classes": [
+    "Drawing",
+    "Hentai",
+    "Neutral",
+    "Porn",
+    "Sexy"
+  ],
+  "inputSize": 224,
+  "model": "NSFWJS MobileNetV2 v4.2.1",
+  "runtime": "TensorFlow.js 4.22.0",
+  "schemaVersion": 1
+}

@@ -454,6 +454,14 @@ html[data-chungmaru-media-startup-gate="true"] [style*="background-image"] {
   text-align: center !important;
 }
 
+.shieldtext-media-safety-group {
+  align-content: start !important;
+}
+
+.shieldtext-media-safety-group > .shieldtext-media-safety-group-summary {
+  flex: 1 0 100% !important;
+}
+
 .shieldtext-media-safety-hidden > :not(.shieldtext-media-safety-notice) {
   visibility: hidden !important;
   pointer-events: none !important;

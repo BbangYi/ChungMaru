@@ -8,6 +8,7 @@ import html
 import http.server
 import json
 import math
+import os
 import shutil
 import socket
 import sys
@@ -37,6 +38,7 @@ DEFAULT_CHROME_LOG = Path("/tmp/chungmaru-chrome-media-safety.log")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
 DEFAULT_VISUAL_EVIDENCE_DIR = DEFAULT_OUTPUT_DIR / "visual"
 FIXTURE_OUTPUT_PREFIX = "media-safety-smoke"
+COMPOSITE_OUTPUT_PREFIX = "media-safety-composite"
 LIVE_OUTPUT_PREFIX = "media-safety-live-smoke"
 LIVE_SUMMARY_PREFIX = "media-safety-live-summary"
 VISUAL_EVIDENCE_PREFIX = "media-safety-visual-evidence"
@@ -202,6 +204,119 @@ def build_media_page(scenario: str) -> str:
         <span>학교 축제 안내 배너</span>
       </a>
     """
+    visual_explicit_cards = """
+      <article class="media-card" data-chungmaru-media-harmful="true">
+        <img alt="인물 사진 미리보기" src="/media.svg?tone=clean&amp;label=PHOTO%2001&amp;visual=explicit" />
+        <h2>인물 사진 미리보기</h2>
+        <p>시각 분류 경로를 확인하는 중립 문맥 fixture입니다.</p>
+      </article>
+    """
+    visual_safe_cards = """
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="풍경 사진 미리보기" src="/media.svg?tone=clean&amp;label=LANDSCAPE%2001&amp;visual=safe" />
+        <h2>풍경 사진 미리보기</h2>
+        <p>시각 분류기의 정상 이미지 유지 fixture입니다.</p>
+      </article>
+    """
+    medical_adult_cards = """
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="성인 ADHD 자가진단 테스트 안내" src="/media.svg?tone=clean&amp;label=ADULT%20ADHD%20TEST" />
+        <h2>성인 ADHD 자가진단 무료 검사 테스트</h2>
+        <p>성인 ADHD, 집중력, 심리 상담을 안내하는 의료 정보 카드입니다.</p>
+      </article>
+      <article class="media-card" data-chungmaru-media-safe="true">
+        <img alt="성인 심리학 입문 도서 표지" src="/media.svg?tone=clean&amp;label=ADULT%20PSYCHOLOGY" />
+        <h2>성인의 발달 심리학 도서</h2>
+        <p>성인 대상 심리 검사와 건강 정보를 담은 정상 이미지입니다.</p>
+      </article>
+    """
+    sidebar_frame_cards = """
+      <main class="sidebar-layout">
+        <section class="article-copy">
+          <h2>일반 블로그 본문</h2>
+          <p>사이드바와 iframe 광고 후보만 별도로 검증합니다.</p>
+        </section>
+        <aside aria-label="광고 영역" class="sidebar-slot">
+          <iframe id="sidebar-ad-frame" title="광고" src="/frame?scenario=visual-explicit"></iframe>
+        </aside>
+      </main>
+    """
+    composite_cards = """
+      <section class="google-fixture" role="search">
+        <form action="/search" method="get">
+          <input id="composite-search-input" name="q" value="카지노 가입코드 광고 차단 테스트" autocomplete="off" />
+          <button type="submit">Search</button>
+        </form>
+        <div id="search" data-chungmaru-google-fixture="true">
+          <div class="g" data-chungmaru-search-risk="harmful">
+            <a href="https://jusoguide1.com/bbs/bannerhit.php?bn_id=91">카지노 토토 가입코드 첫충 페이백 주소</a>
+            <span>바카라, 슬롯, 스포츠토토, 환전 광고 결과입니다.</span>
+          </div>
+          <div class="g" data-chungmaru-search-risk="safe">
+            <a href="https://school.example/notice">학교 축제 안내</a>
+            <span>정상 검색 결과입니다.</span>
+          </div>
+        </div>
+      </section>
+      <section class="article-copy">
+        <h2>욕설과 유해 사이트가 섞인 본문</h2>
+        <p>씨발 카지노 광고와 토토 가입코드 링크가 동적으로 추가되는 복합 fixture입니다.</p>
+        <a href="https://adult-webtoon-plus.kr/landing" data-chungmaru-site-risk="adult">성인 웹툰 바로가기</a>
+      </section>
+      <section class="media-grid">
+        <article class="media-card" data-chungmaru-media-harmful="true">
+          <img alt="카지노 토토 가입코드 첫충 페이백 배너" src="/media.svg?tone=gambling&amp;label=COMPOSITE%20CASINO" />
+          <h2>카지노 가입코드 배너</h2>
+          <p>cheap filter가 처리할 명시적 도박 배너입니다.</p>
+        </article>
+        <article class="media-card">
+          <img alt="인물 사진 미리보기" src="/media.svg?tone=clean&amp;label=PHOTO%2002&amp;visual=explicit" />
+          <h2>인물 사진 미리보기</h2>
+          <p>분류기 경로를 켜는 중립 문맥 이미지입니다.</p>
+        </article>
+        <article id="composite-late-card" class="media-card" data-chungmaru-media-harmful="true">
+          <h2>지연 로드 광고 영역</h2>
+          <p>스크롤 이후 이미지가 추가됩니다.</p>
+        </article>
+        <article class="media-card" data-chungmaru-media-safe="true">
+          <img alt="도서관 안내 포스터" src="/media.svg?tone=clean&amp;label=LIBRARY" />
+          <h2>도서관 안내</h2>
+          <p>오탐 확인용 정상 카드입니다.</p>
+        </article>
+      </section>
+      <aside class="sidebar-slot">
+        <iframe id="composite-sidebar-ad-frame" title="광고" src="/frame?scenario=visual-explicit"></iframe>
+      </aside>
+      <script>
+        window.__chungmaruLateMediaInsertedAt = 0;
+        window.__chungmaruLateMediaHiddenAt = 0;
+        const compositeMarkLateHidden = () => {
+          if (window.__chungmaruLateMediaHiddenAt) return;
+          const card = document.getElementById("composite-late-card");
+          if (!card) return;
+          const hidden = card.matches('[data-chungmaru-media-hidden="true"]') ||
+            Boolean(card.closest('[data-chungmaru-media-hidden="true"]')) ||
+            Boolean(card.querySelector('[data-chungmaru-media-hidden="true"]'));
+          if (hidden) window.__chungmaruLateMediaHiddenAt = performance.now();
+        };
+        new MutationObserver(compositeMarkLateHidden).observe(document.documentElement, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+          attributeFilter: ["data-chungmaru-media-hidden"]
+        });
+        window.setTimeout(() => {
+          const card = document.getElementById("composite-late-card");
+          if (!card) return;
+          const image = document.createElement("img");
+          image.alt = "지연 카지노 토토 가입코드 페이백 배너";
+          image.src = "/media.svg?tone=gambling&label=LATE%20CASINO";
+          window.__chungmaruLateMediaInsertedAt = performance.now();
+          card.insertBefore(image, card.firstChild);
+          compositeMarkLateHidden();
+        }, 260);
+      </script>
+    """
     cards = clean_cards if scenario == "clean" else harmful_cards
     if scenario == "address-guide-video":
       cards = f"""<section class="jbanner-large-section">
@@ -211,6 +326,16 @@ def build_media_page(scenario: str) -> str:
       cards = late_load_cards
     elif scenario == "background-banner":
       cards = background_cards
+    elif scenario == "visual-explicit":
+      cards = visual_explicit_cards
+    elif scenario == "visual-safe":
+      cards = visual_safe_cards
+    elif scenario == "medical-adult":
+      cards = medical_adult_cards
+    elif scenario == "sidebar-frame":
+      cards = sidebar_frame_cards
+    elif scenario == "composite":
+      cards = composite_cards
     return f"""<!doctype html>
 <html lang="ko">
 <head>
@@ -231,6 +356,32 @@ def build_media_page(scenario: str) -> str:
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 16px;
+    }}
+    .sidebar-layout {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 24px;
+    }}
+    .article-copy {{
+      min-height: 420px;
+      padding: 24px;
+      border: 1px solid #d9dde3;
+      background: #ffffff;
+      border-radius: 8px;
+    }}
+    .sidebar-slot {{
+      display: block;
+      min-height: 300px;
+      border: 1px solid #d9dde3;
+      background: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .sidebar-slot iframe {{
+      display: block;
+      width: 100%;
+      height: 300px;
+      border: 0;
     }}
     .media-card {{
       border: 1px solid #d9dde3;
@@ -323,7 +474,18 @@ class MediaFixtureHandler(http.server.BaseHTTPRequestHandler):
             return
 
         scenario = params.get("scenario", ["harmful"])[0]
-        if scenario not in {"clean", "harmful", "address-guide-video", "late-load", "background-banner"}:
+        if scenario not in {
+            "clean",
+            "harmful",
+            "address-guide-video",
+            "late-load",
+            "background-banner",
+            "visual-explicit",
+            "visual-safe",
+            "medical-adult",
+            "sidebar-frame",
+            "composite",
+        }:
           scenario = "harmful"
         body = build_media_page(scenario).encode("utf-8")
         self.send_response(200)
@@ -365,6 +527,7 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         "--disable-notifications",
         "--enable-unsafe-extension-debugging",
         "--enable-logging=stderr",
+        "--host-resolver-rules=MAP www.google.com 127.0.0.1, MAP images.google.com 127.0.0.1",
         f"--load-extension={extension_dir}",
         "about:blank",
     ]
@@ -443,9 +606,15 @@ def build_extension_settings(
     media_safety_enabled: bool,
     media_intervention_mode: str = "auto",
     startup_gate_enabled: bool = False,
+    *,
+    global_enabled: bool = True,
+    text_masking_enabled: bool = False,
+    site_protection_enabled: bool = False,
+    search_result_protection_enabled: bool = False,
+    backend_enabled: bool = False,
 ) -> dict[str, Any]:
     return {
-        "enabled": True,
+        "enabled": global_enabled,
         "sensitivity": 60,
         "categories": {
             "abuse": True,
@@ -454,15 +623,15 @@ def build_extension_settings(
             "spam": True,
         },
         "interventionMode": "mask",
-        "textMaskingEnabled": False,
-        "siteProtectionEnabled": False,
-        "siteNavigationWarningEnabled": False,
-        "searchResultProtectionEnabled": False,
+        "textMaskingEnabled": text_masking_enabled,
+        "siteProtectionEnabled": site_protection_enabled,
+        "siteNavigationWarningEnabled": site_protection_enabled,
+        "searchResultProtectionEnabled": search_result_protection_enabled,
         "mediaSafetyEnabled": media_safety_enabled,
         "mediaSafetyInterventionMode": media_intervention_mode,
         "mediaSafetyStartupGateEnabled": startup_gate_enabled,
         "showWellbeingWidget": False,
-        "backendEnabled": False,
+        "backendEnabled": backend_enabled,
         "backendApiBaseUrl": "http://127.0.0.1:8000",
         "requestTimeoutMs": 10000,
     }
@@ -475,8 +644,22 @@ def set_extension_state(
     developer_log_enabled: bool,
     media_intervention_mode: str = "auto",
     startup_gate_enabled: bool = False,
+    global_enabled: bool = True,
+    text_masking_enabled: bool = False,
+    site_protection_enabled: bool = False,
+    search_result_protection_enabled: bool = False,
+    backend_enabled: bool = False,
 ) -> dict[str, Any]:
-    settings = build_extension_settings(media_safety_enabled, media_intervention_mode, startup_gate_enabled)
+    settings = build_extension_settings(
+        media_safety_enabled,
+        media_intervention_mode,
+        startup_gate_enabled,
+        global_enabled=global_enabled,
+        text_masking_enabled=text_masking_enabled,
+        site_protection_enabled=site_protection_enabled,
+        search_result_protection_enabled=search_result_protection_enabled,
+        backend_enabled=backend_enabled,
+    )
     expression = (
         "(async () => {"
         "  await chrome.storage.local.remove(['runtimeEventLog', 'lastStats', 'lastPayload', 'lastDecision']);"
@@ -500,6 +683,20 @@ def get_runtime_logs(worker: CdpWebSocket) -> list[dict[str, Any]]:
     return value if isinstance(value, list) else []
 
 
+def set_nsfw_classifier_test_override(worker: CdpWebSocket, mode: str) -> dict[str, Any]:
+    normalized = mode if mode in {"normal", "off", "fixture", "cpu"} else "normal"
+    expression = (
+        "(async () => setNsfwClassifierTestOverride("
+        f"{json.dumps({'type': 'SET_NSFW_CLASSIFIER_TEST_OVERRIDE', 'mode': normalized})},"
+        "{ id: chrome.runtime.id }"
+        "))()"
+    )
+    value = worker.evaluate(expression, timeout_s=10)
+    if not isinstance(value, dict) or not value.get("ok"):
+      raise RuntimeError(f"failed to set NSFW classifier test override: {value!r}")
+    return value
+
+
 def send_to_matched_tab(
     worker: CdpWebSocket,
     page_url: str,
@@ -513,7 +710,7 @@ def send_to_matched_tab(
         f"const pageUrl = {json.dumps(page_url)};"
         f"const message = {json.dumps(message, ensure_ascii=False)};"
         f"const injectOnFailure = {json.dumps(inject_on_failure)};"
-        "const files = ['content-runtime-status.js', 'content-editable-overlay.js', 'content-self-test.js', 'content-wellbeing-widget.js', 'content-script.js'];"
+        "const files = ['content-runtime-status.js', 'content-editable-overlay.js', 'content-self-test.js', 'content-wellbeing-widget.js', 'content-media-classifier.js', 'content-script.js'];"
         "async function send(tab, phase) {"
         "  try {"
         "    const response = await chrome.tabs.sendMessage(tab.id, message);"
@@ -571,6 +768,19 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
             marker.closest('[data-chungmaru-media-hidden="true"]') ||
             marker.querySelector('[data-chungmaru-media-hidden="true"]')
           );
+          const frames = Array.from(document.querySelectorAll('iframe'));
+          const frameStats = frames.reduce((summary, frame) => {
+            const frameDocument = frame.contentDocument;
+            if (!frameDocument) return summary;
+            const harmfulMarkers = Array.from(frameDocument.querySelectorAll('[data-chungmaru-media-harmful="true"]'));
+            const protectedMarkers = harmfulMarkers.filter((marker) => Boolean(
+              marker.closest('[data-chungmaru-frame-media-hidden="true"]') ||
+              marker.querySelector('[data-chungmaru-frame-media-hidden="true"]')
+            ));
+            summary.total += harmfulMarkers.length;
+            summary.hidden += protectedMarkers.length;
+            return summary;
+          }, { total: 0, hidden: 0 });
           return {
             bodyScenario: document.body ? (document.body.getAttribute('data-scenario') || '') : '',
             hiddenCount: hidden.length,
@@ -579,6 +789,8 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
             harmfulHiddenCount: harmful.filter(markerHidden).length,
             safeTotal: safe.length,
             safeHiddenCount: safe.filter(markerHidden).length,
+            frameHarmfulTotal: frameStats.total,
+            frameHarmfulHiddenCount: frameStats.hidden,
             hiddenReasons: hidden.map((node) => ({
               safety: node.getAttribute('data-shieldtext-media-safety') || '',
               reason: node.getAttribute('data-chungmaru-media-reason') || ''
@@ -587,12 +799,43 @@ def inspect_media_dom(page: CdpWebSocket) -> dict[str, Any]:
             lateHiddenAt,
             lateDecisionMs: lateInsertedAt > 0 && lateHiddenAt >= lateInsertedAt
               ? Math.round(lateHiddenAt - lateInsertedAt)
-              : 0
+              : 0,
+            layoutShiftScore: Number(window.__chungmaruLayoutShift?.score || 0),
+            layoutShiftEntryCount: Number(window.__chungmaruLayoutShift?.entryCount || 0),
+            layoutShiftMaxValue: Number(window.__chungmaruLayoutShift?.maxValue || 0),
+            layoutShiftSupported: window.__chungmaruLayoutShift?.supported === true
           };
         })()""",
         timeout_s=5,
     )
     return value if isinstance(value, dict) else {}
+
+
+def start_layout_shift_measurement(page: CdpWebSocket) -> None:
+    page.evaluate(
+        """(() => {
+          const metric = { score: 0, entryCount: 0, maxValue: 0, supported: false };
+          window.__chungmaruLayoutShift = metric;
+          try {
+            if (!('PerformanceObserver' in window)) return false;
+            const observer = new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                if (entry.hadRecentInput) continue;
+                const value = Number(entry.value || 0);
+                metric.score += value;
+                metric.entryCount += 1;
+                metric.maxValue = Math.max(metric.maxValue, value);
+              }
+            });
+            observer.observe({ type: 'layout-shift', buffered: true });
+            metric.supported = true;
+            return true;
+          } catch (_) {
+            return false;
+          }
+        })()""",
+        timeout_s=5,
+    )
 
 
 def inspect_live_dom(page: CdpWebSocket) -> dict[str, Any]:
@@ -708,6 +951,10 @@ def sum_action_log_metric(logs: list[dict[str, Any]], key: str) -> int:
     return sum(int_metric(item.get(key)) for item in action_logs)
 
 
+def sum_log_metric(logs: list[dict[str, Any]], key: str) -> int:
+    return sum(int_metric(item.get(key)) for item in logs)
+
+
 def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
     return {
       "loggedCandidateCount": max_log_metric(logs, "candidateCount"),
@@ -731,7 +978,112 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedCheapFilterMs": max_log_metric(logs, "cheapFilterMs"),
       "loggedApplyMs": max_log_metric(logs, "applyMs"),
       "loggedDomAddedToActionMs": max_log_metric(logs, "domAddedToActionMs"),
+      "loggedMediaSafetyScanRequestCount": max_log_metric(logs, "mediaSafetyScanRequestCount"),
+      "loggedMediaSafetyCoalescedScanRequestCount": max_log_metric(logs, "mediaSafetyCoalescedScanRequestCount"),
+      "loggedMediaSafetyMediaLoadEventCount": max_log_metric(logs, "mediaSafetyMediaLoadEventCount"),
+      "loggedMediaSafetyMutationBatchCount": max_log_metric(logs, "mediaSafetyMutationBatchCount"),
+      "loggedMediaSafetyMutationAddedNodeCount": max_log_metric(logs, "mediaSafetyMutationAddedNodeCount"),
+      "loggedMediaSafetyPotentialMutationBatchCount": max_log_metric(logs, "mediaSafetyPotentialMutationBatchCount"),
+      "loggedMediaSafetyFastPathSeedCount": max_log_metric(logs, "mediaSafetyFastPathSeedCount"),
+      "loggedMediaSafetyFastPathRequestCount": max_log_metric(logs, "mediaSafetyFastPathRequestCount"),
+      "loggedMediaSafetyFastPathRunCount": max_log_metric(logs, "mediaSafetyFastPathRunCount"),
+      "loggedMediaSafetyFastPathCandidateCount": max_log_metric(logs, "mediaSafetyFastPathCandidateCount"),
+      "loggedMediaSafetyFastPathActionCount": max_log_metric(logs, "mediaSafetyFastPathActionCount"),
     }
+
+
+def summarize_classifier_logs(logs: list[dict[str, Any]]) -> dict[str, Any]:
+    classifier_logs = [
+        item for item in logs
+        if str(item.get("type") or "").startswith("media-safety-classifier-")
+    ]
+    batch_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-batch"]
+    error_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-error"]
+    ready_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-ready"]
+    return {
+        "classifier_log_count": len(classifier_logs),
+        "classifier_ready_log_count": len(ready_logs),
+        "classifier_batch_log_count": len(batch_logs),
+        "classifier_error_log_count": len(error_logs),
+        "classifier_candidate_count": sum_log_metric(batch_logs, "classifierCandidateCount"),
+        "classifier_cache_hit_count": sum_log_metric(batch_logs, "cacheHitCount"),
+        "classifier_blocked_count": sum_log_metric(batch_logs, "blockedCount"),
+        "classifier_benign_count": sum_log_metric(batch_logs, "benignCount"),
+        "classifier_ambiguous_count": sum_log_metric(batch_logs, "ambiguousCount"),
+        "classifier_fetch_ms_max": max_log_metric(batch_logs, "fetchMs"),
+        "classifier_decode_ms_max": max_log_metric(batch_logs, "decodeMs"),
+        "classifier_inference_ms_max": max_log_metric(batch_logs, "inferenceMs"),
+        "classifier_queue_wait_ms_max": max_log_metric(batch_logs, "queueWaitMs"),
+        "classifier_decision_ms_max": max_log_metric(batch_logs, "classifierDecisionMs"),
+        "classifier_dom_added_to_action_ms_max": max_log_metric(batch_logs, "domAddedToActionMs"),
+        "classifier_model_load_count_max": max_log_metric(classifier_logs, "modelLoadCount"),
+        "classifier_tensor_count_max": max_log_metric(classifier_logs, "tensorCount"),
+        "classifier_backend": next((str(item.get("backend") or "") for item in reversed(classifier_logs) if item.get("backend")), ""),
+        "classifier_model_version": next((str(item.get("modelVersion") or "") for item in reversed(classifier_logs) if item.get("modelVersion")), ""),
+    }
+
+
+def summarize_perf_logs(logs: list[dict[str, Any]]) -> dict[str, Any]:
+    perf_logs = [item for item in logs if item.get("type") == "chrome-perf-summary"]
+    return {
+      "perf_runtime_log_count": len(perf_logs),
+      "perf_pipeline_schedule_count": sum_log_metric(perf_logs, "pipelineScheduleCount"),
+      "perf_pipeline_run_count": sum_log_metric(perf_logs, "pipelineRunCount"),
+      "perf_pipeline_queued_count": sum_log_metric(perf_logs, "pipelineQueuedCount"),
+      "perf_pipeline_suppressed_count": sum_log_metric(perf_logs, "pipelineSuppressedCount"),
+      "perf_pipeline_duration_total_ms": sum_log_metric(perf_logs, "pipelineDurationTotalMs"),
+      "perf_pipeline_duration_max_ms": max_log_metric(perf_logs, "pipelineDurationMaxMs"),
+      "perf_search_result_schedule_count": sum_log_metric(perf_logs, "searchResultScheduleCount"),
+      "perf_google_light_schedule_count": sum_log_metric(perf_logs, "googleLightScheduleCount"),
+      "perf_media_safety_schedule_count": sum_log_metric(perf_logs, "mediaSafetyScheduleCount"),
+      "perf_targeted_media_safety_schedule_count": sum_log_metric(
+          perf_logs,
+          "targetedMediaSafetyScheduleCount",
+      ),
+      "perf_runtime_message_count": sum_log_metric(perf_logs, "runtimeMessageCount"),
+      "perf_backend_message_count": sum_log_metric(perf_logs, "backendMessageCount"),
+      "perf_mutation_batch_count": sum_log_metric(perf_logs, "mutationBatchCount"),
+      "perf_mutation_record_count": sum_log_metric(perf_logs, "mutationRecordCount"),
+      "perf_mutation_added_node_count": sum_log_metric(perf_logs, "mutationAddedNodeCount"),
+      "perf_mutation_potential_media_batch_count": sum_log_metric(
+          perf_logs,
+          "mutationPotentialMediaBatchCount",
+      ),
+      "perf_mutation_google_batch_count": sum_log_metric(perf_logs, "mutationGoogleBatchCount"),
+      "perf_long_task_count": sum_log_metric(perf_logs, "longTaskCount"),
+      "perf_long_task_max_ms": max_log_metric(perf_logs, "longTaskMaxMs"),
+      "perf_event_loop_lag_count": sum_log_metric(perf_logs, "eventLoopLagCount"),
+      "perf_event_loop_lag_max_ms": max_log_metric(perf_logs, "eventLoopLagMaxMs"),
+      "perf_performance_guard_active": any(bool_metric(item.get("performanceGuardActive")) for item in perf_logs),
+      "perf_performance_guard_remaining_ms_max": max_log_metric(perf_logs, "performanceGuardRemainingMs"),
+    }
+
+
+def apply_cpu_throttle(page: CdpWebSocket, rate: float) -> None:
+    if rate <= 1:
+      return
+    page.call("Emulation.setCPUThrottlingRate", {"rate": rate}, timeout_s=5)
+
+
+def perform_composite_interactions(page: CdpWebSocket) -> None:
+    expression = """
+(() => {
+  const input = document.getElementById('composite-search-input');
+  if (input) {
+    input.focus();
+    input.value = `${input.value} 스크롤 입력`;
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '입력' }));
+  }
+  window.scrollTo(0, Math.max(0, document.body.scrollHeight - window.innerHeight));
+  window.dispatchEvent(new Event('scroll'));
+  window.setTimeout(() => {
+    window.scrollTo(0, 0);
+    window.dispatchEvent(new Event('scroll'));
+  }, 120);
+  return true;
+})()
+"""
+    page.evaluate(expression, timeout_s=5)
 
 
 def describe_action_mode(removed_count: int, placeholder_count: int, action_count: int) -> str:
@@ -772,6 +1124,9 @@ def build_result_row(
     if not isinstance(summary, dict):
       summary = {}
     log_summary = summarize_media_logs(media_logs)
+    classifier_summary = summarize_classifier_logs(logs)
+    has_real_classifier_backend = bool(str(classifier_summary.get("classifier_backend") or "").strip())
+    perf_summary = summarize_perf_logs(logs)
     media_enabled = bool(case["media_safety_enabled"])
     hidden_count = int_metric(dom.get("hiddenCount"))
     removed_count = max(int_metric(summary.get("removedCount")), log_summary["loggedRemovedCount"])
@@ -789,6 +1144,8 @@ def build_result_row(
     )
     harmful_total = int_metric(dom.get("harmfulTotal"))
     harmful_hidden_count = int_metric(dom.get("harmfulHiddenCount"))
+    frame_harmful_total = int_metric(dom.get("frameHarmfulTotal"))
+    frame_harmful_hidden_count = int_metric(dom.get("frameHarmfulHiddenCount"))
     safe_total = int_metric(dom.get("safeTotal"))
     safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
     pre_manual_dom = pre_manual_dom if isinstance(pre_manual_dom, dict) else {}
@@ -826,6 +1183,13 @@ def build_result_row(
         "live_page_ok": live_page_ok,
         "live_page_status": "chrome-error" if is_chrome_error_page else ("loaded" if final_origin else "unknown"),
         "media_safety_enabled": bool(case["media_safety_enabled"]),
+        "protection_profile": str(case.get("protection_profile") or ""),
+        "global_enabled": bool(case.get("global_enabled", True)),
+        "text_masking_enabled": bool(case.get("text_masking_enabled")),
+        "site_protection_enabled": bool(case.get("site_protection_enabled")),
+        "search_result_protection_enabled": bool(case.get("search_result_protection_enabled")),
+        "cpu_backend": str(case.get("cpu_backend") or ""),
+        "cpu_throttle_rate": float_metric(case.get("cpu_throttle_rate") or 1),
         "developer_log_enabled": bool(case["developer_log_enabled"]),
         "startup_gate_enabled": bool(case.get("media_safety_startup_gate_enabled")),
         "repeat_index": int_metric(case.get("repeat_index")),
@@ -839,7 +1203,10 @@ def build_result_row(
         "reason": str(summary.get("reason") or "")[:220],
         "candidate_count": effective_candidate_count,
         "visible_tile_count": effective_visible_tile_count,
-        "cheap_filter_hit_count": max(int_metric(summary.get("cheapFilterHitCount")), log_summary["loggedCheapFilterHitCount"], effective_action_count),
+        "cheap_filter_hit_count": max(
+            int_metric(summary.get("cheapFilterHitCount")),
+            log_summary["loggedCheapFilterHitCount"],
+        ),
         "action_count": effective_action_count,
         "action_mode": describe_action_mode(removed_count, placeholder_count, effective_action_count),
         "removed_count": removed_count,
@@ -855,11 +1222,70 @@ def build_result_row(
         "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
         "apply_ms": max(int_metric(summary.get("applyMs")), log_summary["loggedApplyMs"]),
         "dom_added_to_action_ms": max(int_metric(summary.get("domAddedToActionMs")), log_summary["loggedDomAddedToActionMs"]),
+        "media_safety_scan_request_count": max(
+            int_metric(summary.get("mediaSafetyScanRequestCount")),
+            log_summary["loggedMediaSafetyScanRequestCount"],
+        ),
+        "media_safety_coalesced_scan_request_count": max(
+            int_metric(summary.get("mediaSafetyCoalescedScanRequestCount")),
+            log_summary["loggedMediaSafetyCoalescedScanRequestCount"],
+        ),
+        "media_safety_media_load_event_count": max(
+            int_metric(summary.get("mediaSafetyMediaLoadEventCount")),
+            log_summary["loggedMediaSafetyMediaLoadEventCount"],
+        ),
+        "media_safety_mutation_batch_count": max(
+            int_metric(summary.get("mediaSafetyMutationBatchCount")),
+            log_summary["loggedMediaSafetyMutationBatchCount"],
+        ),
+        "media_safety_mutation_added_node_count": max(
+            int_metric(summary.get("mediaSafetyMutationAddedNodeCount")),
+            log_summary["loggedMediaSafetyMutationAddedNodeCount"],
+        ),
+        "media_safety_potential_mutation_batch_count": max(
+            int_metric(summary.get("mediaSafetyPotentialMutationBatchCount")),
+            log_summary["loggedMediaSafetyPotentialMutationBatchCount"],
+        ),
+        "media_safety_fast_path_seed_count": max(
+            int_metric(summary.get("mediaSafetyFastPathSeedCount")),
+            log_summary["loggedMediaSafetyFastPathSeedCount"],
+        ),
+        "media_safety_fast_path_request_count": max(
+            int_metric(summary.get("mediaSafetyFastPathRequestCount")),
+            log_summary["loggedMediaSafetyFastPathRequestCount"],
+        ),
+        "media_safety_fast_path_run_count": max(
+            int_metric(summary.get("mediaSafetyFastPathRunCount")),
+            log_summary["loggedMediaSafetyFastPathRunCount"],
+        ),
+        "media_safety_fast_path_candidate_count": max(
+            int_metric(summary.get("mediaSafetyFastPathCandidateCount")),
+            log_summary["loggedMediaSafetyFastPathCandidateCount"],
+        ),
+        "media_safety_fast_path_action_count": max(
+            int_metric(summary.get("mediaSafetyFastPathActionCount")),
+            log_summary["loggedMediaSafetyFastPathActionCount"],
+        ),
         "late_decision_ms": max(
             int_metric(dom.get("lateDecisionMs")),
             int_metric(pre_manual_dom.get("lateDecisionMs")),
         ),
+        "layout_shift_score": round(float_metric(dom.get("layoutShiftScore")), 4),
+        "layout_shift_entry_count": int_metric(dom.get("layoutShiftEntryCount")),
+        "layout_shift_max_value": round(float_metric(dom.get("layoutShiftMaxValue")), 4),
+        "layout_shift_supported": bool_metric(dom.get("layoutShiftSupported")),
+        "classifier_real_fetch_ms": (
+            classifier_summary["classifier_fetch_ms_max"] if has_real_classifier_backend else ""
+        ),
+        "classifier_real_decode_ms": (
+            classifier_summary["classifier_decode_ms_max"] if has_real_classifier_backend else ""
+        ),
+        "classifier_real_inference_ms": (
+            classifier_summary["classifier_inference_ms_max"] if has_real_classifier_backend else ""
+        ),
         **log_summary,
+        **classifier_summary,
+        **perf_summary,
         "runtime_log_count": len(logs),
         "media_runtime_log_count": len(media_logs),
         "pre_manual_hidden_count": int_metric(pre_manual_dom.get("hiddenCount")),
@@ -869,6 +1295,8 @@ def build_result_row(
         "compact_summary_count": int_metric(dom.get("compactSummaryCount")),
         "harmful_total": harmful_total,
         "harmful_hidden_count": harmful_hidden_count,
+        "frame_harmful_total": frame_harmful_total,
+        "frame_harmful_hidden_count": frame_harmful_hidden_count,
         "safe_total": safe_total,
         "safe_hidden_count": safe_hidden_count,
         "dom_element_count": int_metric(dom.get("domElementCount")),
@@ -951,27 +1379,65 @@ def send_media_scan_message(
     )
 
 
+def flush_runtime_perf_summary(
+    worker: CdpWebSocket,
+    case_url: str,
+    *,
+    strict_url_match: bool = False,
+) -> None:
+    send_media_scan_message(
+        worker,
+        case_url,
+        {"type": "FLUSH_RUNTIME_PERF_SUMMARY"},
+        strict_url_match=strict_url_match,
+        timeout_s=3,
+    )
+
+
 def run_case(
     worker: CdpWebSocket,
     debugging_port: int,
     fixture_url: str,
     case: dict[str, Any],
 ) -> dict[str, Any]:
+    set_nsfw_classifier_test_override(
+        worker,
+        str(case.get("nsfw_classifier_test_override") or "fixture"),
+    )
     set_extension_state(
         worker,
         media_safety_enabled=bool(case["media_safety_enabled"]),
         developer_log_enabled=bool(case["developer_log_enabled"]),
         media_intervention_mode=str(case.get("media_intervention_mode") or "auto"),
         startup_gate_enabled=bool(case.get("media_safety_startup_gate_enabled")),
+        global_enabled=bool(case.get("global_enabled", True)),
+        text_masking_enabled=bool(case.get("text_masking_enabled")),
+        site_protection_enabled=bool(case.get("site_protection_enabled")),
+        search_result_protection_enabled=bool(case.get("search_result_protection_enabled")),
+        backend_enabled=bool(case.get("backend_enabled")),
     )
     time.sleep(0.25)
-    case_url = f"{fixture_url}?scenario={case['scenario']}&case={case['case_id']}"
+    case_url = str(case.get("fixture_url") or f"{fixture_url}?scenario={case['scenario']}&case={case['case_id']}")
     target = create_tab(debugging_port, case_url)
     page = CdpWebSocket(str(target["webSocketDebuggerUrl"]))
     try:
+      apply_cpu_throttle(page, float(case.get("cpu_throttle_rate") or 1))
       wait_for_page_ready(page, timeout_s=10)
+      start_layout_shift_measurement(page)
       time.sleep(0.45)
+      if case["scenario"] == "composite":
+        perform_composite_interactions(page)
+        time.sleep(0.45)
       pre_manual_dom = inspect_media_dom(page)
+      if case["scenario"] == "late-load" and bool(case["media_safety_enabled"]):
+        # The full scan is intentionally settle-coalesced. Give its bounded
+        # automatic path time to apply before issuing the manual smoke scan.
+        deadline = time.monotonic() + 0.8
+        while time.monotonic() < deadline:
+          if int_metric(pre_manual_dom.get("harmfulHiddenCount")) >= 1:
+            break
+          time.sleep(0.05)
+          pre_manual_dom = inspect_media_dom(page)
       settings = build_extension_settings(
           bool(case["media_safety_enabled"]),
           str(case.get("media_intervention_mode") or "auto"),
@@ -987,8 +1453,31 @@ def run_case(
           },
           timeout_s=10,
       )
-      time.sleep(0.2)
+      if case["scenario"] in {"visual-explicit", "visual-safe", "sidebar-frame"}:
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+          current_dom = inspect_media_dom(page)
+          current_logs = get_runtime_logs(worker)
+          classifier_batch_seen = any(
+              item.get("type") == "media-safety-classifier-batch"
+              for item in current_logs
+          )
+          if case["scenario"] == "visual-explicit" and bool(case["media_safety_enabled"]):
+            if int_metric(current_dom.get("harmfulHiddenCount")) >= 1:
+              break
+          elif case["scenario"] == "sidebar-frame" and bool(case["media_safety_enabled"]):
+            if int_metric(current_dom.get("frameHarmfulHiddenCount")) >= 1:
+              break
+          elif case["scenario"] == "visual-safe" and classifier_batch_seen:
+            break
+          else:
+            break
+          time.sleep(0.05)
+      else:
+        time.sleep(0.2)
       dom = inspect_media_dom(page)
+      flush_runtime_perf_summary(worker, case_url)
+      time.sleep(0.1)
       logs = get_runtime_logs(worker)
       return build_result_row(case=case, response=response, dom=dom, logs=logs, pre_manual_dom=pre_manual_dom)
     finally:
@@ -1221,6 +1710,8 @@ def run_live_case(
       )
       time.sleep(0.3)
       dom = inspect_live_dom(page)
+      flush_runtime_perf_summary(worker, current_page_url, strict_url_match=True)
+      time.sleep(0.1)
       logs = get_runtime_logs(worker)
       row = build_result_row(case=case, response=response, dom=dom, logs=logs, url=live_url)
       row["visual_artifact_path"] = ""
@@ -1262,6 +1753,145 @@ def write_outputs(output_dir: Path, rows: list[dict[str, Any]], prefix: str) -> 
       writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
       writer.writeheader()
       writer.writerows(rows)
+
+
+def build_composite_cases(args: argparse.Namespace, fixture_port: int) -> list[dict[str, Any]]:
+    classifier_backend = str(args.composite_classifier_backend or "cpu")
+    repeat_count = max(1, int(args.composite_repeat or 1))
+    local_fixture = f"http://127.0.0.1:{fixture_port}/?scenario=composite"
+    google_search_fixture = f"http://www.google.com:{fixture_port}/search?scenario=composite&q=casino"
+    google_images_fixture = f"http://www.google.com:{fixture_port}/search?scenario=composite&tbm=isch&q=casino"
+    profiles = [
+        {
+            "profile": "off",
+            "fixture_url": local_fixture,
+            "global_enabled": False,
+            "text_masking_enabled": False,
+            "site_protection_enabled": False,
+            "search_result_protection_enabled": False,
+            "media_safety_enabled": False,
+            "classifier_override": "off",
+        },
+        {
+            "profile": "text_site",
+            "fixture_url": google_search_fixture,
+            "global_enabled": True,
+            "text_masking_enabled": True,
+            "site_protection_enabled": True,
+            "search_result_protection_enabled": True,
+            "media_safety_enabled": False,
+            "classifier_override": "off",
+        },
+        {
+            "profile": "media_cheap",
+            "fixture_url": local_fixture,
+            "global_enabled": True,
+            "text_masking_enabled": False,
+            "site_protection_enabled": False,
+            "search_result_protection_enabled": False,
+            "media_safety_enabled": True,
+            "classifier_override": "off",
+        },
+        {
+            "profile": "media_classifier",
+            "fixture_url": local_fixture,
+            "global_enabled": True,
+            "text_masking_enabled": False,
+            "site_protection_enabled": False,
+            "search_result_protection_enabled": False,
+            "media_safety_enabled": True,
+            "classifier_override": classifier_backend,
+        },
+        {
+            "profile": "all_features_on",
+            "fixture_url": local_fixture,
+            "global_enabled": True,
+            "text_masking_enabled": True,
+            "site_protection_enabled": True,
+            "search_result_protection_enabled": True,
+            "media_safety_enabled": True,
+            "classifier_override": classifier_backend,
+        },
+    ]
+    cases: list[dict[str, Any]] = []
+    for repeat_index in range(1, repeat_count + 1):
+      for profile in profiles:
+        cases.append({
+            "case_id": f"composite_{profile['profile']}_r{repeat_index}",
+            "scenario": "composite",
+            "developer_log_enabled": True,
+            "media_intervention_mode": args.media_intervention_mode,
+            "media_safety_startup_gate_enabled": False,
+            "protection_profile": profile["profile"],
+            "repeat_index": repeat_index,
+            "cpu_backend": classifier_backend,
+            "cpu_throttle_rate": float(args.cpu_throttle_rate or 1),
+            "backend_enabled": False,
+            "nsfw_classifier_test_override": profile["classifier_override"],
+            **profile,
+        })
+    return cases
+
+
+def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+      groups.setdefault(str(row.get("protection_profile") or row.get("case_id") or ""), []).append(row)
+
+    summary_rows: list[dict[str, Any]] = []
+    for profile, group in sorted(groups.items()):
+      summary_rows.append({
+          "protection_profile": profile,
+          "run_count": len(group),
+          "scan_ok_count": sum(bool(row.get("scan_ok")) for row in group),
+          "action_count_max": max((int_metric(row.get("action_count")) for row in group), default=0),
+          "false_hidden_count_max": max((int_metric(row.get("false_hidden_count")) for row in group), default=0),
+          "collect_ms_p95": percentile((int_metric(row.get("collect_ms")) for row in group), 95),
+          "apply_ms_p95": percentile((int_metric(row.get("apply_ms")) for row in group), 95),
+          "dom_added_to_action_ms_p95": percentile((int_metric(row.get("dom_added_to_action_ms")) for row in group), 95),
+          "classifier_queue_wait_ms_p95": percentile((int_metric(row.get("classifier_queue_wait_ms_max")) for row in group), 95),
+          "classifier_inference_ms_p95": percentile((int_metric(row.get("classifier_real_inference_ms") or row.get("classifier_inference_ms_max")) for row in group), 95),
+          "cache_hit_count": sum(int_metric(row.get("classifier_cache_hit_count")) for row in group),
+          "long_task_count": sum(int_metric(row.get("perf_long_task_count")) for row in group),
+          "long_task_max_ms": max((int_metric(row.get("perf_long_task_max_ms")) for row in group), default=0),
+          "event_loop_lag_count": sum(int_metric(row.get("perf_event_loop_lag_count")) for row in group),
+          "event_loop_lag_max_ms": max((int_metric(row.get("perf_event_loop_lag_max_ms")) for row in group), default=0),
+      })
+    write_outputs(output_dir, summary_rows, "media-safety-composite-summary")
+
+    report_lines = [
+        "# Chungmaru CPU Composite Traversal Evidence",
+        "",
+        f"- Captured at: `{now_iso()}`",
+        f"- Classifier backend requested: `{args.composite_classifier_backend}`",
+        f"- CPU throttle rate: `{float(args.cpu_throttle_rate or 1)}` (supplementary only)",
+        f"- Local logical cores: `{os.cpu_count() or 'unknown'}`",
+        "- Reference profile: CPU backend, GPU disabled in headless Chrome, single classifier queue, 4 logical cores / 8GB RAM target; local machine constraints are recorded but not a low-spec proof.",
+        "- Image bytes: fixture/generated local assets only for composite smoke; NSFW corpus bytes remain in Desktop/local scratch when classifier benchmark is run.",
+        "",
+        "## Profile Summary",
+        "",
+        "| Profile | Runs | OK | Actions max | False hides max | collect p95 | apply p95 | domAdded p95 | classifier queue p95 | classifier inference p95 | long tasks | event-loop lag max |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in summary_rows:
+      report_lines.append(
+          "| {protection_profile} | {run_count} | {scan_ok_count} | {action_count_max} | "
+          "{false_hidden_count_max} | {collect_ms_p95} | {apply_ms_p95} | "
+          "{dom_added_to_action_ms_p95} | {classifier_queue_wait_ms_p95} | "
+          "{classifier_inference_ms_p95} | {long_task_count} | {event_loop_lag_max_ms} |".format(**row)
+      )
+    report_lines.extend([
+        "",
+        "## Evidence Boundaries",
+        "",
+        "- Passed behavior is limited to controlled Chrome fixture traversal and developer runtime logs.",
+        "- Google Search/Images rules are exercised through a local fixture served with a Google host mapping, not live Google.",
+        "- Model quality and user-before-exposure claims remain Validation Needed until a reviewed CPU corpus run and live Desktop traversal complete.",
+        "- No GPU or low-spec performance claim is made from this report.",
+        "",
+    ])
+    (output_dir / "media-safety-composite-report.md").write_text("\n".join(report_lines), encoding="utf-8")
 
 
 def percentile(values: list[int], pct: float) -> int:
@@ -1348,6 +1978,10 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
       compact_values = metric_values(group_rows, "compact_summary_count", successful_only=False)
       remaining_values = metric_values(group_rows, "remaining_visible_tile_count", successful_only=False)
       false_hidden_values = metric_values(group_rows, "false_hidden_count", successful_only=False)
+      fast_path_request_values = metric_values(group_rows, "media_safety_fast_path_request_count", successful_only=False)
+      fast_path_run_values = metric_values(group_rows, "media_safety_fast_path_run_count", successful_only=False)
+      fast_path_candidate_values = metric_values(group_rows, "media_safety_fast_path_candidate_count", successful_only=False)
+      fast_path_action_values = metric_values(group_rows, "media_safety_fast_path_action_count", successful_only=False)
       coverage_values = float_metric_values(group_rows, "viewport_coverage_pct", successful_only=False)
       summary_rows.append({
           "timestamp": now_iso(),
@@ -1372,6 +2006,10 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
           "false_hidden_count_max": max(false_hidden_values, default=0),
           "hidden_count_max": max(hidden_values, default=0),
           "compact_summary_count_max": max(compact_values, default=0),
+          "media_safety_fast_path_request_count_max": max(fast_path_request_values, default=0),
+          "media_safety_fast_path_run_count_max": max(fast_path_run_values, default=0),
+          "media_safety_fast_path_candidate_count_max": max(fast_path_candidate_values, default=0),
+          "media_safety_fast_path_action_count_max": max(fast_path_action_values, default=0),
           "viewport_coverage_pct_max": round(max(coverage_values, default=0.0), 1),
           "collect_ms_p50": percentile(collect_values, 50),
           "collect_ms_p95": percentile(collect_values, 95),
@@ -1442,6 +2080,12 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
     address_guide = by_case.get("log_on_address_guide_video")
     late_load = by_case.get("log_on_late_load")
     background_banner = by_case.get("log_on_background_banner")
+    classifier_off = by_case.get("classifier_off_visual_explicit")
+    classifier_log_off = by_case.get("classifier_log_off_visual_explicit")
+    classifier_explicit = by_case.get("classifier_log_on_visual_explicit")
+    classifier_safe = by_case.get("classifier_log_on_visual_safe")
+    medical_adult = by_case.get("log_on_medical_adult")
+    sidebar_frame = by_case.get("log_on_sidebar_frame")
 
     failures = []
     if media_off["hidden_count"] != 0 or media_off["action_count"] != 0:
@@ -1456,10 +2100,16 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_harmful should write aggregate media logs")
     if clean["safe_hidden_count"] != 0 or clean["false_hidden_count"] != 0:
       failures.append("log_on_clean should not hide clean fixtures")
+    if medical_adult and (medical_adult["safe_hidden_count"] != 0 or medical_adult["false_hidden_count"] != 0):
+      failures.append("log_on_medical_adult should not hide adult ADHD or medical information fixtures")
+    if sidebar_frame and sidebar_frame["frame_harmful_hidden_count"] < 1:
+      failures.append("log_on_sidebar_frame should hide explicit visual media inside an iframe")
     if address_guide and address_guide["harmful_hidden_count"] < 6:
       failures.append("log_on_address_guide_video should hide source-backed video banners")
     if address_guide and address_guide["remaining_visible_tile_count"] != 0:
       failures.append("log_on_address_guide_video should not leave visible video banner tiles")
+    if address_guide and float_metric(address_guide.get("layout_shift_score")) > 0.1:
+      failures.append("log_on_address_guide_video should keep layout shift under 0.1")
     if late_load and late_load["pre_manual_harmful_hidden_count"] < 1:
       failures.append("log_on_late_load should auto-hide delayed media before manual smoke scan")
     if late_load and late_load["safe_hidden_count"] != 0:
@@ -1470,6 +2120,29 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_background_banner should hide CSS background-image harmful banners")
     if background_banner and background_banner["safe_hidden_count"] != 0:
       failures.append("log_on_background_banner should not hide safe CSS background-image banner")
+    if classifier_off and classifier_off["hidden_count"] != 0:
+      failures.append("classifier_off_visual_explicit should not hide media")
+    if classifier_off and classifier_off["classifier_batch_log_count"] != 0:
+      failures.append("classifier_off_visual_explicit should not issue classifier batches")
+    if classifier_log_off and classifier_log_off["harmful_hidden_count"] < 1:
+      failures.append("classifier_log_off_visual_explicit should hide the visual-only harmful fixture")
+    if classifier_log_off and (
+        classifier_log_off["media_runtime_log_count"] != 0
+        or classifier_log_off["classifier_batch_log_count"] != 0
+    ):
+      failures.append("classifier_log_off_visual_explicit should not write media/classifier developer logs")
+    if classifier_explicit and classifier_explicit["harmful_hidden_count"] < 1:
+      failures.append("classifier_log_on_visual_explicit should hide the visual-only harmful fixture")
+    if classifier_explicit and classifier_explicit["classifier_batch_log_count"] < 1:
+      failures.append("classifier_log_on_visual_explicit should write one aggregate classifier batch log")
+    if classifier_explicit and classifier_explicit["classifier_blocked_count"] < 1:
+      failures.append("classifier_log_on_visual_explicit should record a classifier block")
+    if classifier_safe and (classifier_safe["safe_hidden_count"] != 0 or classifier_safe["false_hidden_count"] != 0):
+      failures.append("classifier_log_on_visual_safe should keep safe media visible")
+    if classifier_safe and classifier_safe["classifier_batch_log_count"] < 1:
+      failures.append("classifier_log_on_visual_safe should write one aggregate classifier batch log")
+    if classifier_safe and classifier_safe["classifier_benign_count"] < 1:
+      failures.append("classifier_log_on_visual_safe should record a benign classifier decision")
     if failures:
       raise RuntimeError("; ".join(failures))
 
@@ -1513,6 +2186,24 @@ def parse_args() -> argparse.Namespace:
         help="Capture only this live repeat index. Use 0 to capture every repeat.",
     )
     parser.add_argument("--media-intervention-mode", choices=["auto", "placeholder", "remove"], default="auto")
+    parser.add_argument(
+        "--composite-profile",
+        action="store_true",
+        help="Run the CPU-oriented OFF/text-site/cheap/classifier/all-features composite traversal matrix.",
+    )
+    parser.add_argument("--composite-repeat", type=int, default=1)
+    parser.add_argument(
+        "--composite-classifier-backend",
+        choices=["cpu", "fixture", "off"],
+        default="cpu",
+        help="Classifier backend used for composite media_classifier/all_features_on profiles.",
+    )
+    parser.add_argument(
+        "--cpu-throttle-rate",
+        type=float,
+        default=1.0,
+        help="Optional Chrome CPU throttling rate for supplementary stress only.",
+    )
     display_group = parser.add_mutually_exclusive_group()
     display_group.add_argument(
         "--headless",
@@ -1529,6 +2220,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--clean-profile", action="store_true", default=True)
     parser.add_argument("--keep-chrome", action="store_true")
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Write full CSV/JSONL artifacts but print only a compact completion summary.",
+    )
     return parser.parse_args()
 
 
@@ -1581,6 +2277,23 @@ def main() -> int:
               "media_safety_startup_gate_enabled": False,
           },
           {
+              "case_id": "log_on_medical_adult",
+              "scenario": "medical-adult",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+          },
+          {
+              "case_id": "log_on_sidebar_frame",
+              "scenario": "sidebar-frame",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "fixture",
+          },
+          {
               "case_id": "log_on_address_guide_video",
               "scenario": "address-guide-video",
               "media_safety_enabled": True,
@@ -1604,12 +2317,59 @@ def main() -> int:
               "media_intervention_mode": args.media_intervention_mode,
               "media_safety_startup_gate_enabled": False,
           },
+          {
+              "case_id": "classifier_off_visual_explicit",
+              "scenario": "visual-explicit",
+              "media_safety_enabled": False,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "off",
+          },
+          {
+              "case_id": "classifier_log_off_visual_explicit",
+              "scenario": "visual-explicit",
+              "media_safety_enabled": True,
+              "developer_log_enabled": False,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "fixture",
+          },
+          {
+              "case_id": "classifier_log_on_visual_explicit",
+              "scenario": "visual-explicit",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "fixture",
+          },
+          {
+              "case_id": "classifier_log_on_visual_safe",
+              "scenario": "visual-safe",
+              "media_safety_enabled": True,
+              "developer_log_enabled": True,
+              "media_intervention_mode": args.media_intervention_mode,
+              "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "fixture",
+          },
       ]
       live_requested = bool(args.live_url or args.live_url_file or args.live_seed_file)
       live_targets = build_live_targets(args)
       if live_requested and not live_targets:
         raise RuntimeError("live smoke requested but no live targets were selected")
-      if live_targets:
+      if args.composite_profile:
+        for case in build_composite_cases(args, fixture_port):
+          worker = connect_service_worker(args.debugging_port)
+          try:
+            rows.append(run_case(worker, args.debugging_port, fixture_url, case))
+          except Exception as error:  # noqa: BLE001 - composite matrix should keep later profiles
+            rows.append(build_error_result_row(case, str(case.get("fixture_url") or fixture_url), error))
+          finally:
+            worker.close()
+        write_outputs(args.output_dir, rows, COMPOSITE_OUTPUT_PREFIX)
+        write_composite_summary(args.output_dir, rows, args)
+      elif live_targets:
         repeat_count = max(1, int(args.live_repeat or 1))
         startup_modes = startup_gate_values(args.live_startup_mode)
         for index, target in enumerate(live_targets, start=1):
@@ -1663,7 +2423,10 @@ def main() -> int:
             worker.close()
         write_outputs(args.output_dir, rows, FIXTURE_OUTPUT_PREFIX)
         assert_acceptance(rows)
-      print(json.dumps({"ok": True, "rows": rows, "output_dir": str(args.output_dir)}, ensure_ascii=False, indent=2))
+      payload = {"ok": True, "case_count": len(rows), "output_dir": str(args.output_dir)}
+      if not args.summary_only:
+        payload["rows"] = rows
+      print(json.dumps(payload, ensure_ascii=False, indent=2))
       return 0
     except Exception as error:  # noqa: BLE001 - smoke output should preserve failure reason
       if rows:
@@ -1675,6 +2438,8 @@ def main() -> int:
           if args.capture_visual_evidence:
             write_visual_evidence_outputs(args.output_dir, rows)
       payload = {"ok": False, "error": str(error), "rows": rows}
+      if args.summary_only:
+        payload = {"ok": False, "error": str(error), "case_count": len(rows)}
       hint = read_chrome_log_hint(args.chrome_log)
       if hint:
         payload["hint"] = hint
