@@ -1452,12 +1452,13 @@ Write-Output "desktop_source_mirror=ready"
 if ($Mode) {{
   Set-Location $LocalRepo
   $PythonExe = $PythonCommand.Source
-  $RunnerArgs = @(
+$RunnerArgs = @(
     "scripts/chungmaru-android-run",
     "--executor", "local",
     "--no-wake",
     "--runner-home", $RunnerHome,
     "--local-work-root", $env:CHUNGMARU_LOCAL_WORK_ROOT,
+    "--run-key", {ps_quote(args.run_key or "")},
     "--no-publish-source",
     "--collect-after",
     $Mode
@@ -2093,6 +2094,7 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
     runner_home = args.runner_home
     conn = connect_db(runner_home)
     key = args.run_key or run_key()
+    args.run_key = key
     run_id = create_run(
         conn,
         key=key,
@@ -2269,8 +2271,29 @@ def chrome_media_start_command(args: argparse.Namespace) -> int:
 
 def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
     ensure_runner_home(args.runner_home)
+    pulled_desktop_state = False
+    if args.executor == "desktop":
+        wake_desktop(args)
+        if not wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait):
+            raise RuntimeError(f"desktop SSH did not become ready for chrome-media reconcile: {args.desktop_ssh}")
+        # Desktop-local runs do not write directly to the shared SSD. A dropped
+        # SSH session can therefore leave a completed remote run invisible
+        # until reconciliation explicitly pulls its local runner state.
+        pulled_desktop_state = pull_desktop_fallback_state(args, args.runner_home)
     status_path = chrome_media_status_path(args.runner_home)
     status = read_status(status_path)
+    if not status:
+        latest_status = read_status(args.runner_home / "status" / "latest.json")
+        if str(latest_status.get("command") or "") == "chrome-media":
+            latest_state = str(latest_status.get("state") or "stale")
+            write_chrome_media_status(
+                args.runner_home,
+                state=latest_state,
+                message=str(latest_status.get("message") or "reconciled desktop chrome-media run"),
+                run_key_value=str(latest_status.get("runKey") or ""),
+                exit_code=0 if latest_state == "ok" else 1,
+            )
+            status = read_status(status_path)
     pid = int(status.get("pid") or 0)
     state = str(status.get("state") or "")
     if state == "running" and pid and not pid_is_running(pid):
@@ -2284,12 +2307,57 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
             log_path=Path(str(status.get("launcherLog") or "")) if status.get("launcherLog") else None,
         )
         status = read_status(status_path)
-    copied = collect_known_artifacts(args.runner_home, mode="chrome-media", local_work_root=args.local_work_root)
+    # A Desktop-local run already collected into its own `current/` before the
+    # fallback pull. Running the local collector here would clear that freshly
+    # pulled directory while looking for artifacts that do not exist on macOS.
+    copied = 0
+    if args.executor != "desktop":
+        copied = collect_known_artifacts(
+            args.runner_home,
+            mode="chrome-media",
+            local_work_root=args.local_work_root,
+        )
+    reconciled_run_key = ""
     conn = connect_db(args.runner_home)
+    remote_run_key = str(status.get("runKey") or "")
+    if remote_run_key:
+        rows = conn.execute(
+            """
+            SELECT id, run_key FROM runs
+            WHERE command = 'chrome-media' AND executor = 'desktop'
+              AND status IN ('running', 'failed')
+              AND (run_key = ? OR run_key = '')
+            ORDER BY id DESC
+            """,
+            (remote_run_key,),
+        ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                """
+                SELECT id, run_key FROM runs
+                WHERE command = 'chrome-media' AND executor = 'desktop'
+                  AND status IN ('running', 'failed')
+                  AND created_at >= datetime('now', '-6 hours')
+                ORDER BY id DESC
+                """
+            ).fetchall()
+        if len(rows) == 1:
+            run_id, reconciled_run_key = int(rows[0][0]), str(rows[0][1])
+            reconciled_state = "ok" if str(status.get("state") or "") == "ok" else "failed"
+            update_run(
+                conn,
+                run_id,
+                status=reconciled_state,
+                duration_ms=int(status.get("durationMs") or -1),
+                summary=f"reconciled from Desktop local run {remote_run_key}",
+            )
+            add_event(conn, run_id, "info", f"reconciled from Desktop local run {remote_run_key}")
     csv_path = export_runs_csv(conn, args.runner_home)
     conn.close()
     print_kv("status", status.get("state") or "")
     print_kv("pid_running", "yes" if pid_is_running(pid) else "no")
+    print_kv("desktop_state_pulled", "yes" if pulled_desktop_state else "no")
+    print_kv("ledger_reconciled_run_key", reconciled_run_key)
     print_kv("collected_artifacts", copied)
     print_kv("runs_csv", csv_path)
     print_kv("status_file", status_path)
