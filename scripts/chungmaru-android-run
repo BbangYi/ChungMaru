@@ -389,6 +389,7 @@ def write_chrome_media_status(
     run_key_value: str,
     pid: int = 0,
     exit_code: int | None = None,
+    duration_ms: int | None = None,
     local_work_root: Path | None = None,
     log_path: Path | None = None,
 ) -> Path:
@@ -405,6 +406,8 @@ def write_chrome_media_status(
     }
     if exit_code is not None:
         payload["exitCode"] = exit_code
+    if duration_ms is not None:
+        payload["durationMs"] = duration_ms
     if local_work_root is not None:
         payload["localWorkRoot"] = str(local_work_root)
         payload["localArtifactRoot"] = str(managed_artifact_root(local_work_root, "chrome-media"))
@@ -2147,6 +2150,15 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
                 "artifactRoot": str(runner_home / "current"),
             },
         )
+        if mode == "chrome-media":
+            write_chrome_media_status(
+                runner_home,
+                state="ok",
+                message="chrome-media completed",
+                run_key_value=key,
+                exit_code=0,
+                duration_ms=duration_ms,
+            )
         print_kv("run_key", key)
         print_kv("status", "ok")
         print_kv("duration_ms", duration_ms)
@@ -2177,6 +2189,15 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
             command=mode,
             extra={"runKey": key, "durationMs": duration_ms, "executor": args.executor},
         )
+        if mode == "chrome-media":
+            write_chrome_media_status(
+                runner_home,
+                state="failed",
+                message=str(exc),
+                run_key_value=key,
+                exit_code=1,
+                duration_ms=duration_ms,
+            )
         print_kv("run_key", key)
         print_kv("status", "failed")
         print_kv("error", exc)
