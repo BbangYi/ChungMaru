@@ -1063,7 +1063,14 @@ if ($ConfiguredLocalWorkRoot) {{
 }} else {{
   $LocalWorkRoot = Join-Path $env:LOCALAPPDATA "ChungmaruRunner\\work"
 }}
-$LocalRepo = Join-Path $LocalWorkRoot "Chungmaru"
+$RunKey = {ps_quote(args.run_key or "")}
+$SafeRunKey = [regex]::Replace($RunKey, "[^A-Za-z0-9._-]", "_")
+if ([string]::IsNullOrWhiteSpace($SafeRunKey)) {{
+  $SafeRunKey = "manual"
+}}
+# Keep every Desktop execution in its own local source tree.  A Gradle process
+# from an earlier run must not block or contaminate a later run.
+$LocalRepo = Join-Path $LocalWorkRoot ("Chungmaru-" + $SafeRunKey)
 New-Item -ItemType Directory -Path $LocalWorkRoot -Force | Out-Null
 $GradleUserHome = Join-Path $LocalWorkRoot ".gradle"
 New-Item -ItemType Directory -Path $GradleUserHome -Force | Out-Null
