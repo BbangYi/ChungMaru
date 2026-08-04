@@ -987,6 +987,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedMediaSafetyMutationBatchCount": max_log_metric(logs, "mediaSafetyMutationBatchCount"),
       "loggedMediaSafetyMutationAddedNodeCount": max_log_metric(logs, "mediaSafetyMutationAddedNodeCount"),
       "loggedMediaSafetyPotentialMutationBatchCount": max_log_metric(logs, "mediaSafetyPotentialMutationBatchCount"),
+      "loggedMediaSafetyPageContextRefreshCount": max_log_metric(logs, "mediaSafetyPageContextRefreshCount"),
       "loggedMediaSafetyFastPathSeedCount": max_log_metric(logs, "mediaSafetyFastPathSeedCount"),
       "loggedMediaSafetyFastPathRequestCount": max_log_metric(logs, "mediaSafetyFastPathRequestCount"),
       "loggedMediaSafetyFastPathRunCount": max_log_metric(logs, "mediaSafetyFastPathRunCount"),
@@ -1261,6 +1262,10 @@ def build_result_row(
         "media_safety_potential_mutation_batch_count": max(
             int_metric(summary.get("mediaSafetyPotentialMutationBatchCount")),
             log_summary["loggedMediaSafetyPotentialMutationBatchCount"],
+        ),
+        "media_safety_page_context_refresh_count": max(
+            int_metric(summary.get("mediaSafetyPageContextRefreshCount")),
+            log_summary["loggedMediaSafetyPageContextRefreshCount"],
         ),
         "media_safety_fast_path_seed_count": max(
             int_metric(summary.get("mediaSafetyFastPathSeedCount")),
@@ -2006,6 +2011,7 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
       fast_path_run_values = metric_values(group_rows, "media_safety_fast_path_run_count", successful_only=False)
       fast_path_candidate_values = metric_values(group_rows, "media_safety_fast_path_candidate_count", successful_only=False)
       fast_path_action_values = metric_values(group_rows, "media_safety_fast_path_action_count", successful_only=False)
+      context_refresh_values = metric_values(group_rows, "media_safety_page_context_refresh_count", successful_only=False)
       coverage_values = float_metric_values(group_rows, "viewport_coverage_pct", successful_only=False)
       summary_rows.append({
           "timestamp": now_iso(),
@@ -2034,6 +2040,7 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
           "media_safety_fast_path_run_count_max": max(fast_path_run_values, default=0),
           "media_safety_fast_path_candidate_count_max": max(fast_path_candidate_values, default=0),
           "media_safety_fast_path_action_count_max": max(fast_path_action_values, default=0),
+          "media_safety_page_context_refresh_count_max": max(context_refresh_values, default=0),
           "viewport_coverage_pct_max": round(max(coverage_values, default=0.0), 1),
           "collect_ms_p50": percentile(collect_values, 50),
           "collect_ms_p95": percentile(collect_values, 95),

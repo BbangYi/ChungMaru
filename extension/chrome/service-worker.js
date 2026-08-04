@@ -255,6 +255,10 @@ function normalizeRuntimeLogEvent(event) {
       0,
       Math.round(Number(event?.mediaSafetyPotentialMutationBatchCount || 0))
     ),
+    mediaSafetyPageContextRefreshCount: Math.max(
+      0,
+      Math.round(Number(event?.mediaSafetyPageContextRefreshCount || 0))
+    ),
     mediaSafetyFastPath: event?.mediaSafetyFastPath === undefined ? null : Boolean(event.mediaSafetyFastPath),
     mediaSafetyFastPathSeedCount: Math.max(0, Math.round(Number(event?.mediaSafetyFastPathSeedCount || 0))),
     mediaSafetyFastPathRequestCount: Math.max(

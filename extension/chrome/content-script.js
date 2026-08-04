@@ -556,6 +556,7 @@ let mediaSafetyGroupId = 0;
 let mediaSafetyLastScanAt = 0;
 let mediaSafetyPageContextGeneration = 1;
 let mediaSafetyPageContextCache = null;
+let mediaSafetyPageContextDirty = false;
 let mediaSafetyLoadListenersInitialized = false;
 let mediaSafetyStartupGateTimerId = null;
 let mediaSafetyHasProtectedElements = false;
@@ -574,6 +575,7 @@ const MEDIA_SAFETY_SCHEDULER_STATS = {
   mutationBatchCount: 0,
   mutationAddedNodeCount: 0,
   potentialMutationBatchCount: 0,
+  pageContextRefreshCount: 0,
   fastPathSeedCount: 0,
   fastPathRequestCount: 0,
   fastPathRunCount: 0,
@@ -2356,6 +2358,7 @@ function resetMediaSafetySchedulerStats() {
   MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount = 0;
   MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount = 0;
   MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount = 0;
+  MEDIA_SAFETY_SCHEDULER_STATS.pageContextRefreshCount = 0;
   MEDIA_SAFETY_SCHEDULER_STATS.fastPathSeedCount = 0;
   MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount = 0;
   MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount = 0;
@@ -2371,6 +2374,7 @@ function consumeMediaSafetySchedulerStats() {
     mediaSafetyMutationBatchCount: MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount,
     mediaSafetyMutationAddedNodeCount: MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount,
     mediaSafetyPotentialMutationBatchCount: MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount,
+    mediaSafetyPageContextRefreshCount: MEDIA_SAFETY_SCHEDULER_STATS.pageContextRefreshCount,
     mediaSafetyFastPathSeedCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathSeedCount,
     mediaSafetyFastPathRequestCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRequestCount,
     mediaSafetyFastPathRunCount: MEDIA_SAFETY_SCHEDULER_STATS.fastPathRunCount,
@@ -2388,7 +2392,7 @@ function recordMediaSafetyMutationStats(mutationList, hasPotentialMediaMutation)
   MEDIA_SAFETY_SCHEDULER_STATS.mutationBatchCount += 1;
   if (hasPotentialMediaMutation) {
     MEDIA_SAFETY_SCHEDULER_STATS.potentialMutationBatchCount += 1;
-    invalidateMediaSafetyPageContext();
+    markMediaSafetyPageContextDirty();
   }
   let addedNodeCount = 0;
   for (const mutation of mutationList) {
@@ -2397,9 +2401,23 @@ function recordMediaSafetyMutationStats(mutationList, hasPotentialMediaMutation)
   MEDIA_SAFETY_SCHEDULER_STATS.mutationAddedNodeCount += addedNodeCount;
 }
 
+function markMediaSafetyPageContextDirty() {
+  mediaSafetyPageContextDirty = true;
+}
+
 function invalidateMediaSafetyPageContext() {
   mediaSafetyPageContextGeneration += 1;
   mediaSafetyPageContextCache = null;
+  mediaSafetyPageContextDirty = false;
+}
+
+function refreshDirtyMediaSafetyPageContext() {
+  if (!mediaSafetyPageContextDirty) {
+    return false;
+  }
+  invalidateMediaSafetyPageContext();
+  MEDIA_SAFETY_SCHEDULER_STATS.pageContextRefreshCount += 1;
+  return true;
 }
 
 function getCachedMediaSafetyPageContext(profile, buildContext) {
@@ -4329,6 +4347,10 @@ function runMediaSafetyScan(settings = cachedSettings, options = {}) {
     };
   }
   mediaSafetyLastScanAt = Date.now();
+  // Dynamic media commonly arrives in many mutation batches. The targeted
+  // path handles those nodes immediately; rebuild global context once when
+  // this full scan drains the accumulated dirty state.
+  refreshDirtyMediaSafetyPageContext();
   const schedulerStats = consumeMediaSafetySchedulerStats();
   const pageContext = getMediaSafetyPageContext(profile);
   const collectStartedAt = performance.now();
