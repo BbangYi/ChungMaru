@@ -45,6 +45,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
             "com.microsoft.emmx",
             "com.sec.android.app.sbrowser"
         )
+        private val OBSERVABLE_PACKAGES = BROWSER_PACKAGES + setOf(
+            YOUTUBE_PACKAGE,
+            INSTAGRAM_PACKAGE,
+            TIKTOK_PACKAGE,
+            TIKTOK_ALT_PACKAGE,
+            "com.instagram.barcelona",
+            "com.twitter.android"
+        )
         private const val MIN_UPLOAD_INTERVAL_MS = 1000L
         private const val PARSE_DELAY_TEXT_MS = 12L
         private const val PARSE_DELAY_SCROLL_MS = 32L
@@ -65,7 +73,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val FAST_PROVISIONAL_MAX_RESULTS = 3
         private const val FAST_PROVISIONAL_MIN_WIDTH_PX = 18
         private const val FAST_PROVISIONAL_MIN_HEIGHT_PX = 14
-        private const val FAST_PROVISIONAL_MAX_TEXT_LENGTH = 180
         private const val FAST_PROVISIONAL_MAX_SCREEN_WIDTH_RATIO = 0.96f
         private const val FAST_PROVISIONAL_MAX_SCREEN_HEIGHT_RATIO = 0.38f
         private const val FAST_BROWSER_ROOT_MIN_INTERVAL_MS = 48L
@@ -74,10 +81,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val FAST_BROWSER_ROOT_MAX_DEPTH = 5
         private const val FAST_BROWSER_ROOT_MAX_NODES = 48
         private const val FAST_BROWSER_ROOT_MAX_RESULTS = 3
-        private const val FAST_BROWSER_ROOT_MAX_TEXT_LENGTH = 220
         private const val FAST_BROWSER_ROOT_COMPACT_MIN_TOP_PX = 180
         private const val FAST_BROWSER_ROOT_COMPACT_MAX_WIDTH_PX = 520
         private const val FAST_BROWSER_ROOT_COMPACT_MAX_HEIGHT_PX = 110
+        private const val FAST_COMMENT_GATE_MAX_DEPTH = 4
+        private const val FAST_COMMENT_GATE_MAX_NODES = 32
+        private const val FAST_YOUTUBE_SEMANTIC_MAX_DEPTH = 4
+        private const val FAST_YOUTUBE_SEMANTIC_MAX_NODES = 24
+        private const val YOUTUBE_COMMENT_ROOT_FALLBACK_MIN_INTERVAL_MS = 450L
+        private const val YOUTUBE_COMMENT_ROW_DECISION_DELAY_MS = 16L
+        private const val YOUTUBE_COMMENT_SLOW_RECONCILE_DELAY_MS = 420L
+        private const val FAST_DECISION_CACHE_TTL_MS = 350L
+        private const val FAST_DECISION_CACHE_MAX_SIZE = 64
         private val FAST_PROVISIONAL_WHITESPACE_PATTERN = Regex("\\s+")
         private const val RISK_GATE_MIN_SENSITIVITY = 70
         private const val RISK_GATE_TTL_MS = 1200L
@@ -108,18 +123,35 @@ class YoutubeAccessibilityService : AccessibilityService() {
             "android",
             "com.android.systemui",
             "com.google.android.inputmethod.latin",
+            "com.android.inputmethod.latin",
             "com.samsung.android.honeyboard",
             "com.sec.android.inputmethod",
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
             "com.android.launcher",
             "com.android.launcher3",
             "com.google.android.apps.nexuslauncher",
             "com.android.settings"
         )
         private val OVERLAY_EXIT_PACKAGES = setOf(
+            "com.android.systemui",
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
             "com.android.launcher",
             "com.android.launcher3",
             "com.google.android.apps.nexuslauncher",
             "com.android.settings"
+        )
+        private val OVERLAY_PRESERVE_IGNORED_PACKAGES = setOf(
+            "android",
+            "com.google.android.inputmethod.latin",
+            "com.android.inputmethod.latin",
+            "com.samsung.android.honeyboard",
+            "com.sec.android.inputmethod"
         )
     }
 
@@ -161,6 +193,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var preservedRecentAnalysisFailure = false
     private var provisionalVisualMaskActive = false
     private var provisionalAccessibilityMaskActive = false
+    private var commentPanelGateActive = false
+    private var youtubeCommentDecisionRunId = 0L
+    private var lastYoutubeCommentDecisionSignature: String? = null
+    private var lastYoutubeCommentRootFallbackAtMs = 0L
     private var riskGateActive = false
     private var riskGateRevision = 0L
     private var lastRiskGateAtMs = 0L
@@ -174,6 +210,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
     @Volatile private var lastFastProvisionalOverlayMs: Long = -1L
     @Volatile private var lastFastProvisionalReceiveToMaskMs: Long = -1L
     @Volatile private var lastFastProvisionalAtMs: Long = 0L
+    private val fastDecisionCache = AndroidFastDecisionCache(
+        ttlMs = FAST_DECISION_CACHE_TTL_MS,
+        maxSize = FAST_DECISION_CACHE_MAX_SIZE
+    )
     private val sensitivityPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (
@@ -221,6 +261,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private data class TimedScreenCandidates(
         val candidates: List<ScreenTextCandidate>,
         val elapsedMs: Long
+    )
+
+    private data class FastTextNodeCollection(
+        val nodes: List<ParsedTextNode>,
+        val visitedCount: Int
+    )
+
+    private data class YoutubeFastCommentSnapshot(
+        val source: String,
+        val nodes: List<ParsedTextNode>,
+        val visitedCount: Int,
+        val nodeCollectionMs: Long,
+        val gateSpecs: List<MaskOverlaySpec>,
+        val gatePlanningMs: Long
     )
 
     private data class ScrollTranslationResult(
@@ -293,6 +347,28 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         lastObservedPackage = packageName
 
+        val source = event.source
+        val sourceClassName = source?.className?.toString() ?: event.className?.toString()
+        val sourceViewId = source?.viewIdResourceName
+        if (
+            MaskOverlayEventPolicy.shouldDropBeforeRealtimeMasking(
+                eventType = event.eventType,
+                sourceClassName = sourceClassName,
+                sourceViewId = sourceViewId
+            )
+        ) {
+            Log.d(
+                TAG,
+                "drop realtime mask event before analysis package=$packageName eventType=${event.eventType} " +
+                    "class=${sourceClassName.orEmpty()} viewId=${sourceViewId.orEmpty()}"
+            )
+            cancelScheduledParse()
+            if (maskOverlayController.hasActiveMasks()) {
+                markOverlayRevisionStale()
+            }
+            return
+        }
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_TOUCH_INTERACTION_START,
             AccessibilityEvent.TYPE_TOUCH_INTERACTION_END -> {
@@ -354,7 +430,74 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     markVisualSceneChanged(event.eventType)
                 }
 
-                val riskGateMaskMs = if (!overlaySelfContentChange) {
+                val youtubeObservationStartedAtMs = SystemClock.uptimeMillis()
+                val earlyYoutubeScrollTranslation = if (
+                    packageName == YOUTUBE_PACKAGE &&
+                    event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+                    hasActiveMasks &&
+                    !overlaySelfContentChange
+                ) {
+                    translateMaskOverlayForScroll(event)
+                } else {
+                    null
+                }
+                val youtubeFastObservationAction = YoutubeFastObservationPolicy.decide(
+                    packageName = packageName,
+                    eventType = event.eventType,
+                    overlaySelfContentChange = overlaySelfContentChange,
+                    hasActiveMasks = hasActiveMasks,
+                    commentPanelGateActive = commentPanelGateActive,
+                    isScrollStabilizing = isInScrollStabilizationWindow(),
+                    scrollTranslationStatus = earlyYoutubeScrollTranslation?.status
+                )
+                val youtubeObservationMs =
+                    SystemClock.uptimeMillis() - youtubeObservationStartedAtMs
+                if (packageName == YOUTUBE_PACKAGE) {
+                    Log.d(
+                        TAG,
+                        "youtube fast observation action=${youtubeFastObservationAction.name.lowercase()} " +
+                            "observation_ms=$youtubeObservationMs hasActiveMasks=$hasActiveMasks " +
+                            "translation_status=${earlyYoutubeScrollTranslation?.status} " +
+                            "eventType=${event.eventType}"
+                    )
+                }
+
+                val youtubeFastCommentSnapshot = if (
+                    youtubeFastObservationAction == YoutubeFastObservationAction.SNAPSHOT
+                ) {
+                    collectYoutubeFastCommentSnapshot(
+                        event = event,
+                        packageName = packageName
+                    )
+                } else {
+                    null
+                }
+
+                val youtubeCommentGateMaskMs = if (!overlaySelfContentChange) {
+                    renderYoutubeCommentPanelGateFromEvent(
+                        event = event,
+                        packageName = packageName,
+                        eventTimeMs = event.eventTime,
+                        serviceReceivedAtMs = callbackReceivedAtMs,
+                        fastSnapshot = youtubeFastCommentSnapshot
+                    )
+                } else {
+                    -1L
+                }
+
+                if (youtubeCommentGateMaskMs >= 0L && youtubeFastCommentSnapshot != null) {
+                    scheduleYoutubeCommentRowDecision(
+                        eventType = event.eventType,
+                        eventTimeMs = event.eventTime,
+                        serviceReceivedAtMs = callbackReceivedAtMs,
+                        snapshot = youtubeFastCommentSnapshot
+                    )
+                }
+
+                val riskGateMaskMs = if (
+                    !overlaySelfContentChange &&
+                    youtubeCommentGateMaskMs < 0L
+                ) {
                     renderRiskGateForEvent(
                         event = event,
                         packageName = packageName,
@@ -365,7 +508,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     -1L
                 }
 
-                val fastProvisionalMaskMs = if (!overlaySelfContentChange && riskGateMaskMs < 0L) {
+                val fastProvisionalMaskMs = if (
+                    !overlaySelfContentChange &&
+                    youtubeCommentGateMaskMs < 0L &&
+                    riskGateMaskMs < 0L
+                ) {
                     renderFastProvisionalMaskFromEventSource(
                         event = event,
                         packageName = packageName,
@@ -378,6 +525,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 val browserRootFastMaskMs =
                     if (
                         !overlaySelfContentChange &&
+                        youtubeCommentGateMaskMs < 0L &&
                         riskGateMaskMs < 0L &&
                         fastProvisionalMaskMs < 0L &&
                         event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED
@@ -392,10 +540,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         -1L
                     }
                 val anyFastProvisionalMaskMs =
-                    if (fastProvisionalMaskMs >= 0L) fastProvisionalMaskMs else browserRootFastMaskMs
+                    when {
+                        youtubeCommentGateMaskMs >= 0L -> youtubeCommentGateMaskMs
+                        fastProvisionalMaskMs >= 0L -> fastProvisionalMaskMs
+                        else -> browserRootFastMaskMs
+                    }
 
                 if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                     lastScrollEventAtMs = SystemClock.uptimeMillis()
+                    if (commentPanelGateActive) {
+                        // A delayed row decision is only valid for the viewport
+                        // that opened the gate. Let the translated gate protect
+                        // the fling and wait for the stable reconciliation.
+                        invalidateYoutubeCommentRowDecision()
+                    }
                     if (usesViewportStableBrowserOverlay(packageName)) {
                         if (hasActiveMasks) {
                             Log.d(TAG, "hide browser mask overlay during scroll; waiting for stable recapture")
@@ -407,23 +565,63 @@ class YoutubeAccessibilityService : AccessibilityService() {
                         )
                         scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                     } else {
-                        val scrollTranslation = translateMaskOverlayForScroll(event)
-                        var shouldPromoteCachedMasks = true
+                        val scrollTranslation = earlyYoutubeScrollTranslation
+                            ?: translateMaskOverlayForScroll(event)
+                        val overlayUpdatedRecently = maskOverlayController.wasUpdatedWithin(
+                            SCROLL_CONTENT_CHANGE_PRESERVE_MS
+                        )
+                        var shouldPromoteCachedMasks =
+                            youtubeFastObservationAction !=
+                                YoutubeFastObservationAction.TRANSLATE_AND_DEFER
                         if (scrollTranslation.translated) {
                             markOverlayRevisionStale()
+                            if (
+                                youtubeFastObservationAction ==
+                                    YoutubeFastObservationAction.TRANSLATE_AND_DEFER
+                            ) {
+                                Log.d(
+                                    TAG,
+                                    "defer youtube snapshot after translated scroll; " +
+                                        "overlay follows current bounds"
+                                )
+                            }
+                        } else if (
+                            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                                eventType = event.eventType,
+                                hasActiveMasks = hasActiveMasks,
+                                hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta,
+                                isScrollStabilizing = isInScrollStabilizationWindow(),
+                                overlayUpdatedRecently = overlayUpdatedRecently
+                            )
+                        ) {
+                            Log.d(TAG, "preserve mask overlay until scroll recapture: unresolved delta")
+                            markOverlayRevisionStale()
+                            shouldPromoteCachedMasks = false
+                            scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                         } else if (
                             MaskOverlayEventPolicy.shouldHideOnUnresolvedScrollDelta(
                                 eventType = event.eventType,
                                 hasActiveMasks = hasActiveMasks,
                                 hasResolvedScrollDelta = scrollTranslation.hasResolvedScrollDelta,
-                                overlayUpdatedRecently = maskOverlayController.wasUpdatedWithin(
-                                    SCROLL_CONTENT_CHANGE_PRESERVE_MS
-                                )
+                                overlayUpdatedRecently = overlayUpdatedRecently
                             )
                         ) {
                             Log.d(TAG, "hide mask overlay until scroll recapture: unresolved delta")
                             clearMaskOverlay()
                             scheduleDeferredFollowUpParse()
+                        } else if (
+                            MaskOverlayEventPolicy.shouldPreserveOnUntranslatableScroll(
+                                eventType = event.eventType,
+                                hasActiveMasks = hasActiveMasks,
+                                translationStatus = scrollTranslation.status,
+                                isScrollStabilizing = isInScrollStabilizationWindow(),
+                                overlayUpdatedRecently = overlayUpdatedRecently
+                            )
+                        ) {
+                            Log.d(TAG, "preserve mask overlay until scroll recapture status=${scrollTranslation.status}")
+                            markOverlayRevisionStale()
+                            shouldPromoteCachedMasks = false
+                            scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
                         } else if (scrollTranslation.shouldHideUntilRecapture && hasActiveMasks) {
                             Log.d(TAG, "hide mask overlay until scroll recapture status=${scrollTranslation.status}")
                             clearMaskOverlay()
@@ -479,11 +677,27 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     else -> PARSE_DELAY_CONTENT_MS
                 }
 
-                scheduleParse(
-                    delayMs = delayMs,
-                    eventType = event.eventType,
-                    replaceExisting = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
-                )
+                if (youtubeCommentGateMaskMs >= 0L) {
+                    // The fast local row decision owns the immediate comment
+                    // transition. Keep the full parser as a later correction
+                    // path so backend/OCR work cannot delay the first reveal.
+                    scheduleParse(
+                        delayMs = YOUTUBE_COMMENT_SLOW_RECONCILE_DELAY_MS,
+                        eventType = event.eventType,
+                        replaceExisting = true
+                    )
+                } else if (
+                    youtubeFastObservationAction == YoutubeFastObservationAction.TRANSLATE_AND_DEFER ||
+                    youtubeFastObservationAction == YoutubeFastObservationAction.DEFER_UNTIL_STABLE
+                ) {
+                    scheduleDeferredFollowUpParse(waitForScrollStabilization = true)
+                } else {
+                    scheduleParse(
+                        delayMs = delayMs,
+                        eventType = event.eventType,
+                        replaceExisting = event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+                    )
+                }
             }
         }
     }
@@ -637,6 +851,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val comments = screenCandidates.map { it.toParsedComment() }
         val candidatePostProcessingMs = SystemClock.uptimeMillis() - candidatePostProcessingStartedAtMs
         val candidateExtractionMs = SystemClock.uptimeMillis() - parseStartedAtMs
+        val commentPanelGateMaskMs =
+            if (experimentMode.overlayStageEnabled) {
+                renderYoutubeCommentPanelGateOverlay(
+                    currentPackage = currentPackage,
+                    visualRoiPlan = visualRoiPlan,
+                    screenCandidates = screenCandidates,
+                    parseStartedAtMs = parseStartedAtMs,
+                    candidateExtractionMs = candidateExtractionMs
+                )
+            } else {
+                -1L
+            }
 
         Log.d(
             TAG,
@@ -650,6 +876,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "visualRoiPlanningMs=${candidateComputation.visualRoiPlanningMs} " +
                 "screenCandidateExtractionMs=${candidateComputation.screenCandidateExtractionMs} " +
                 "candidatePostProcessingMs=$candidatePostProcessingMs " +
+                "commentPanelGateMaskMs=$commentPanelGateMaskMs " +
                 "candidateParallelWaitMs=${candidateComputation.parallelWaitMs} " +
                 "routes=${candidateRouteSamples.joinToString(";")}"
         )
@@ -1189,6 +1416,179 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }.start()
     }
 
+    private fun renderYoutubeCommentPanelGateOverlay(
+        currentPackage: String,
+        visualRoiPlan: VisualTextRoiPlan,
+        screenCandidates: List<ScreenTextCandidate>,
+        parseStartedAtMs: Long,
+        candidateExtractionMs: Long
+    ): Long {
+        if (currentPackage != YOUTUBE_PACKAGE) return -1L
+        if (!supportsMaskOverlay(currentPackage)) return -1L
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return -1L
+
+        val metrics = resources.displayMetrics
+        val specs = YoutubeCommentGateOverlayPlanner.buildSpecs(
+            visualRoiPlan = visualRoiPlan,
+            screenCandidates = screenCandidates,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+        if (specs.isEmpty()) return -1L
+
+        val beforeOverlayMs = SystemClock.uptimeMillis()
+        val rendered = maskOverlayController.renderDirect(
+            specs = specs,
+            reason = "youtube-comment-panel-gate"
+        )
+        if (!rendered) return -1L
+
+        val afterOverlayMs = SystemClock.uptimeMillis()
+        val elapsedMs = afterOverlayMs - parseStartedAtMs
+        val overlayMs = afterOverlayMs - beforeOverlayMs
+        provisionalVisualMaskActive = true
+        provisionalAccessibilityMaskActive = false
+        commentPanelGateActive = true
+        riskGateActive = false
+        preservedRecentAnalysisFailure = false
+        preservedRecentVisualMiss = false
+        rememberFastProvisionalMask(
+            elapsedMs = elapsedMs,
+            eventAgeMs = -1L,
+            buildMs = candidateExtractionMs,
+            overlayMs = overlayMs,
+            receiveToMaskMs = elapsedMs
+        )
+        Log.d(
+            TAG,
+            "render youtube comment panel gate count=${specs.size} " +
+                "elapsedMs=$elapsedMs buildMs=$candidateExtractionMs overlayMs=$overlayMs"
+        )
+        return elapsedMs
+    }
+
+    private fun renderYoutubeCommentPanelGateFromEvent(
+        event: AccessibilityEvent,
+        packageName: String,
+        eventTimeMs: Long,
+        serviceReceivedAtMs: Long,
+        fastSnapshot: YoutubeFastCommentSnapshot?
+    ): Long {
+        if (packageName != YOUTUBE_PACKAGE) return -1L
+        if (!supportsMaskOverlay(packageName)) return -1L
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return -1L
+        if (!currentExperimentMode().overlayStageEnabled) return -1L
+        if (
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            return -1L
+        }
+
+        val snapshot = fastSnapshot ?: return -1L
+        val decisionSignature = youtubeCommentSnapshotSignature(snapshot)
+        if (commentPanelGateActive || decisionSignature == lastYoutubeCommentDecisionSignature) {
+            return -1L
+        }
+        val buildMs = snapshot.nodeCollectionMs + snapshot.gatePlanningMs
+        if (snapshot.gateSpecs.isEmpty()) {
+            Log.d(
+                TAG,
+                "youtube comment gate fast skip source=${snapshot.source} visited=${snapshot.visitedCount} " +
+                    "nodeCollectionMs=${snapshot.nodeCollectionMs} gatePlanningMs=${snapshot.gatePlanningMs} " +
+                    "eventType=${event.eventType}"
+            )
+            return -1L
+        }
+
+        val beforeOverlayMs = SystemClock.uptimeMillis()
+        if (!maskOverlayController.renderDirect(snapshot.gateSpecs, reason = "youtube-comment-gate-fast")) {
+            return -1L
+        }
+
+        val afterOverlayMs = SystemClock.uptimeMillis()
+        val overlayMs = afterOverlayMs - beforeOverlayMs
+        val receiveToMaskMs = afterOverlayMs - serviceReceivedAtMs
+        val elapsedMs = if (eventTimeMs > 0L) {
+            afterOverlayMs - eventTimeMs
+        } else {
+            receiveToMaskMs
+        }
+        val eventAgeMs = if (eventTimeMs > 0L) {
+            (serviceReceivedAtMs - eventTimeMs).coerceAtLeast(0L)
+        } else {
+            -1L
+        }
+
+        provisionalVisualMaskActive = true
+        provisionalAccessibilityMaskActive = false
+        commentPanelGateActive = true
+        riskGateActive = false
+        preservedRecentAnalysisFailure = false
+        preservedRecentVisualMiss = false
+        rememberFastProvisionalMask(
+            elapsedMs = elapsedMs,
+            eventAgeMs = eventAgeMs,
+            buildMs = buildMs,
+            overlayMs = overlayMs,
+            receiveToMaskMs = receiveToMaskMs
+        )
+        AnalysisDiagnosticsStore.saveAttempt(
+            applicationContext,
+            AndroidAnalysisAttempt(
+                ok = true,
+                packageName = packageName,
+                url = "youtube-comment-gate-fast",
+                sensitivity = AnalysisSensitivityStore.get(applicationContext),
+                latencyMs = 0L,
+                parseDelayMs = 0L,
+                candidateExtractionMs = buildMs,
+                nodeCollectionMs = buildMs,
+                accessibilityMaskLatencyMs = elapsedMs,
+                fastProvisionalMaskMs = elapsedMs,
+                fastProvisionalEventAgeMs = eventAgeMs,
+                fastProvisionalBuildMs = buildMs,
+                fastProvisionalOverlayMs = overlayMs,
+                fastProvisionalReceiveToMaskMs = receiveToMaskMs,
+                commentCount = snapshot.gateSpecs.size,
+                offensiveCount = 0,
+                filteredCount = 0,
+                overlayCandidateCount = snapshot.gateSpecs.size,
+                overlayRenderedCount = snapshot.gateSpecs.size,
+                overlayRenderedSamples = snapshot.gateSpecs.mapNotNull { spec ->
+                    spec.debugSource.takeIf { it.isNotBlank() }
+                },
+                visualCaptureSupported = visualCaptureState.supported,
+                visualCaptureReason = visualCaptureState.reason,
+                candidateRouteSamples = listOf(
+                    "youtube_comment_gate_fast/source=${snapshot.source}",
+                    "youtube_comment_gate_fast/visited=${snapshot.visitedCount}",
+                    "youtube_comment_gate_fast/specs=${snapshot.gateSpecs.size}"
+                )
+            ).withPipelineDiagnostics(
+                experimentMode = currentExperimentMode(),
+                nodeCount = snapshot.visitedCount,
+                screenCandidateCount = snapshot.gateSpecs.size,
+                charLocationNodeCount = 0,
+                charRangeCandidateCount = 0,
+                candidateParallelWaitMs = -1L,
+                nodeCollectionMs = snapshot.nodeCollectionMs,
+                screenCandidateExtractionMs = snapshot.gatePlanningMs
+            )
+        )
+        Log.d(
+            TAG,
+            "youtube comment gate fast mask count=${snapshot.gateSpecs.size} source=${snapshot.source} " +
+                "visited=${snapshot.visitedCount} elapsedMs=$elapsedMs eventAgeMs=$eventAgeMs " +
+                "nodeCollectionMs=${snapshot.nodeCollectionMs} gatePlanningMs=${snapshot.gatePlanningMs} " +
+                "overlayMs=$overlayMs receiveToMaskMs=$receiveToMaskMs " +
+                "eventType=${event.eventType}"
+        )
+        return elapsedMs
+    }
+
     private fun renderProvisionalAccessibilityMaskOverlay(
         packageName: String,
         screenCandidates: List<ScreenTextCandidate>,
@@ -1371,48 +1771,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             null
         }
         if (hintedSourceSpec != null) return listOf(hintedSourceSpec)
-        if (usesViewportStableBrowserOverlay(packageName)) return emptyList()
-
-        val metrics = resources.displayMetrics
-        val screenWidth = metrics.widthPixels
-        val screenHeight = metrics.heightPixels
-        if (screenWidth <= 0 || screenHeight <= 0) return emptyList()
-
-        val sideMargin = (screenWidth * RISK_GATE_SIDE_MARGIN_RATIO).toInt()
-        val left = sideMargin.coerceAtLeast(0)
-        val width = (screenWidth - sideMargin * 2).coerceAtLeast(RISK_GATE_MIN_WIDTH_PX)
-        val topRatio: Float
-        val heightRatio: Float
-        when (packageName) {
-            CHROME_PACKAGE -> {
-                topRatio = 0.11f
-                heightRatio = 0.44f
-            }
-            YOUTUBE_PACKAGE -> {
-                topRatio = 0.34f
-                heightRatio = 0.36f
-            }
-            INSTAGRAM_PACKAGE,
-            TIKTOK_PACKAGE,
-            TIKTOK_ALT_PACKAGE -> {
-                topRatio = 0.56f
-                heightRatio = 0.30f
-            }
-            else -> return emptyList()
-        }
-
-        val top = (screenHeight * topRatio).toInt()
-        val height = (screenHeight * heightRatio).toInt()
-            .coerceAtLeast(RISK_GATE_MIN_HEIGHT_PX)
-        return listOf(
-            constrainedRiskGateSpec(
-                left = left,
-                top = top,
-                right = left + width,
-                bottom = top + height,
-                source = "risk-gate-band:$packageName:${event.eventType}"
-            )
-        )
+        return emptyList()
     }
 
     private fun buildRiskGateSourceSpec(
@@ -1463,7 +1822,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun supportsRiskGatePackage(packageName: String): Boolean {
         return packageName == CHROME_PACKAGE ||
-            packageName == YOUTUBE_PACKAGE ||
             packageName == INSTAGRAM_PACKAGE ||
             packageName == TIKTOK_PACKAGE ||
             packageName == TIKTOK_ALT_PACKAGE
@@ -1517,6 +1875,327 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun scheduleYoutubeCommentRowDecision(
+        eventType: Int,
+        eventTimeMs: Long,
+        serviceReceivedAtMs: Long,
+        snapshot: YoutubeFastCommentSnapshot
+    ) {
+        if (!commentPanelGateActive || snapshot.gateSpecs.isEmpty()) return
+
+        val signature = youtubeCommentSnapshotSignature(snapshot)
+        if (signature == lastYoutubeCommentDecisionSignature) return
+
+        lastYoutubeCommentDecisionSignature = signature
+        val runId = ++youtubeCommentDecisionRunId
+        val snapshotOverlayRevision = overlayRevision
+        handler.postDelayed(
+            {
+                if (
+                    runId != youtubeCommentDecisionRunId ||
+                    !commentPanelGateActive ||
+                    snapshotOverlayRevision != overlayRevision
+                ) {
+                    return@postDelayed
+                }
+                renderYoutubeCommentRowDecision(
+                    runId = runId,
+                    eventType = eventType,
+                    eventTimeMs = eventTimeMs,
+                    serviceReceivedAtMs = serviceReceivedAtMs,
+                    snapshotOverlayRevision = snapshotOverlayRevision,
+                    snapshot = snapshot
+                )
+            },
+            YOUTUBE_COMMENT_ROW_DECISION_DELAY_MS
+        )
+    }
+
+    private fun renderYoutubeCommentRowDecision(
+        runId: Long,
+        eventType: Int,
+        eventTimeMs: Long,
+        serviceReceivedAtMs: Long,
+        snapshotOverlayRevision: Long,
+        snapshot: YoutubeFastCommentSnapshot
+    ) {
+        if (runId != youtubeCommentDecisionRunId || !commentPanelGateActive) return
+        if (snapshotOverlayRevision != overlayRevision) return
+        if (!supportsMaskOverlay(YOUTUBE_PACKAGE)) return
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return
+
+        val startedAtMs = SystemClock.uptimeMillis()
+        val eventAgeMs = if (eventTimeMs > 0L) {
+            (startedAtMs - eventTimeMs).coerceAtLeast(0L)
+        } else {
+            -1L
+        }
+        val metrics = resources.displayMetrics
+        val result = YoutubeSemanticFastMasker.buildFromNodes(
+            nodes = snapshot.nodes,
+            source = snapshot.source,
+            visitedNodeCount = snapshot.visitedCount,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels,
+            timestamp = System.currentTimeMillis()
+        )
+        val semanticDecisionMs = SystemClock.uptimeMillis() - startedAtMs
+        val eventToDecisionMs = if (eventTimeMs > 0L) {
+            SystemClock.uptimeMillis() - eventTimeMs
+        } else {
+            SystemClock.uptimeMillis() - serviceReceivedAtMs
+        }
+        val buildMs = snapshot.nodeCollectionMs + semanticDecisionMs
+        val response = result.response
+
+        if (response == null) {
+            if (runId != youtubeCommentDecisionRunId || snapshotOverlayRevision != overlayRevision) return
+            maskOverlayController.clear()
+            provisionalVisualMaskActive = false
+            provisionalAccessibilityMaskActive = false
+            commentPanelGateActive = false
+            val elapsedMs = if (eventTimeMs > 0L) {
+                SystemClock.uptimeMillis() - eventTimeMs
+            } else {
+                SystemClock.uptimeMillis() - serviceReceivedAtMs
+            }
+            Log.d(
+                TAG,
+                    "youtube comment row decision route_action=release_safe source=${result.source} " +
+                    "visited=${result.visitedNodeCount} candidates=${result.semanticCandidateCount} " +
+                    "event_to_decision_ms=$eventToDecisionMs " +
+                    "event_to_mask_ms=$elapsedMs nodeCollectionMs=${snapshot.nodeCollectionMs} " +
+                    "semanticDecisionMs=$semanticDecisionMs eventType=$eventType"
+            )
+            return
+        }
+
+        val blockedCommentSpecs = YoutubeCommentGateOverlayPlanner.buildBlockedCommentSpecs(
+            results = response.results,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+        if (blockedCommentSpecs.isEmpty()) {
+            Log.d(
+                TAG,
+                "youtube comment row decision route_action=hold_analysis_only " +
+                    "reason=no_trusted_row_bounds source=${result.source} " +
+                    "event_to_decision_ms=$eventToDecisionMs eventType=$eventType"
+            )
+            return
+        }
+
+        val beforeOverlayMs = SystemClock.uptimeMillis()
+        val analysis = AndroidAnalysisAttempt(
+            ok = true,
+            packageName = YOUTUBE_PACKAGE,
+            url = "youtube-comment-row-fast",
+            sensitivity = AnalysisSensitivityStore.get(applicationContext),
+            latencyMs = 0L,
+            parseDelayMs = YOUTUBE_COMMENT_ROW_DECISION_DELAY_MS,
+            candidateExtractionMs = buildMs,
+            nodeCollectionMs = buildMs,
+            accessibilityMaskLatencyMs = if (eventTimeMs > 0L) {
+                beforeOverlayMs - eventTimeMs
+            } else {
+                beforeOverlayMs - serviceReceivedAtMs
+            },
+            riskGateMaskMs = recentRiskGateMaskMs(startedAtMs),
+            riskGateEventAgeMs = recentRiskGateEventAgeMs(startedAtMs),
+            riskGateReceiveToMaskMs = recentRiskGateReceiveToMaskMs(startedAtMs),
+            fastProvisionalMaskMs = if (eventTimeMs > 0L) {
+                beforeOverlayMs - eventTimeMs
+            } else {
+                beforeOverlayMs - serviceReceivedAtMs
+            },
+            fastProvisionalEventAgeMs = eventAgeMs,
+            fastProvisionalBuildMs = buildMs,
+            commentCount = response.results.size,
+            offensiveCount = response.results.size,
+            filteredCount = response.filteredCount,
+            overlayCandidateCount = blockedCommentSpecs.size,
+            overlayRenderedCount = blockedCommentSpecs.size,
+            overlayRenderedSamples = blockedCommentSpecs.mapNotNull { spec ->
+                spec.debugSource.takeIf { source -> source.isNotBlank() }
+            },
+            response = response,
+            candidateRouteSamples = result.routeSamples + "youtube_comment/phase=row_decision"
+        )
+
+        if (!maskOverlayController.renderDirect(
+                specs = blockedCommentSpecs,
+                reason = "youtube-comment-row-fast"
+            )
+        ) {
+            return
+        }
+        provisionalVisualMaskActive = false
+        provisionalAccessibilityMaskActive = true
+        commentPanelGateActive = false
+        riskGateActive = false
+        preservedRecentVisualMiss = false
+        preservedRecentAnalysisFailure = false
+
+        val afterOverlayMs = SystemClock.uptimeMillis()
+        val overlayMs = afterOverlayMs - beforeOverlayMs
+        val receiveToMaskMs = afterOverlayMs - serviceReceivedAtMs
+        val elapsedMs = if (eventTimeMs > 0L) {
+            afterOverlayMs - eventTimeMs
+        } else {
+            receiveToMaskMs
+        }
+        rememberFastProvisionalMask(
+            elapsedMs = elapsedMs,
+            eventAgeMs = eventAgeMs,
+            buildMs = buildMs,
+            overlayMs = overlayMs,
+            receiveToMaskMs = receiveToMaskMs
+        )
+        AnalysisDiagnosticsStore.saveAttempt(
+            applicationContext,
+            analysis.copy(
+                accessibilityMaskLatencyMs = elapsedMs,
+                riskGateMaskMs = recentRiskGateMaskMs(startedAtMs),
+                riskGateEventAgeMs = recentRiskGateEventAgeMs(startedAtMs),
+                riskGateReceiveToMaskMs = recentRiskGateReceiveToMaskMs(startedAtMs),
+                fastProvisionalMaskMs = elapsedMs,
+                fastProvisionalOverlayMs = overlayMs,
+                fastProvisionalReceiveToMaskMs = receiveToMaskMs
+            ).withPipelineDiagnostics(
+                experimentMode = currentExperimentMode(),
+                nodeCount = result.visitedNodeCount,
+                screenCandidateCount = result.semanticCandidateCount,
+                charLocationNodeCount = 0,
+                charRangeCandidateCount = 0,
+                candidateParallelWaitMs = -1L,
+                nodeCollectionMs = snapshot.nodeCollectionMs,
+                screenCandidateExtractionMs = semanticDecisionMs
+            ).withOverlayDiagnostics(YOUTUBE_PACKAGE, VisualTextRoiPlan(rois = emptyList(), candidateCount = 0))
+        )
+        Log.d(
+            TAG,
+                "youtube comment row decision route_action=direct_overlay results=${response.results.size} " +
+                "source=${result.source} visited=${result.visitedNodeCount} " +
+                "candidates=${result.semanticCandidateCount} event_to_decision_ms=$eventToDecisionMs " +
+                "event_to_mask_ms=$elapsedMs nodeCollectionMs=${snapshot.nodeCollectionMs} " +
+                "semanticDecisionMs=$semanticDecisionMs overlayMs=$overlayMs " +
+                "receiveToMaskMs=$receiveToMaskMs eventType=$eventType"
+        )
+    }
+
+    private fun youtubeCommentSnapshotSignature(snapshot: YoutubeFastCommentSnapshot): String {
+        return snapshot.nodes
+            .take(FAST_YOUTUBE_SEMANTIC_MAX_NODES)
+            .joinToString(separator = "|") { node ->
+                "${node.displayText}:${node.left}:${node.top}:${node.right}:${node.bottom}"
+            }
+    }
+
+    private fun collectYoutubeFastCommentSnapshot(
+        event: AccessibilityEvent,
+        packageName: String
+    ): YoutubeFastCommentSnapshot? {
+        if (packageName != YOUTUBE_PACKAGE) return null
+        if (!supportsMaskOverlay(packageName)) return null
+        if (AnalysisSensitivityStore.get(applicationContext) <= 0) return null
+        if (
+            event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            return null
+        }
+
+        val metrics = resources.displayMetrics
+        var nodeCollectionMs = 0L
+        var gatePlanningMs = 0L
+        val supportsCommentGate =
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        val maxDepth = if (supportsCommentGate) {
+            FAST_COMMENT_GATE_MAX_DEPTH
+        } else {
+            FAST_YOUTUBE_SEMANTIC_MAX_DEPTH
+        }
+        val maxNodes = if (supportsCommentGate) {
+            FAST_COMMENT_GATE_MAX_NODES
+        } else {
+            FAST_YOUTUBE_SEMANTIC_MAX_NODES
+        }
+
+        fun snapshotFor(
+            source: String,
+            root: AccessibilityNodeInfo?
+        ): YoutubeFastCommentSnapshot {
+            val collectionStartedAtMs = SystemClock.uptimeMillis()
+            val collected = collectFastTextNodes(
+                root = root,
+                maxDepth = maxDepth,
+                maxNodes = maxNodes,
+                defaultPackageName = packageName
+            )
+            nodeCollectionMs += SystemClock.uptimeMillis() - collectionStartedAtMs
+
+            val gateSpecs = if (supportsCommentGate) {
+                val planningStartedAtMs = SystemClock.uptimeMillis()
+                YoutubeCommentGateOverlayPlanner.buildSpecsFromNodes(
+                    nodes = collected.nodes,
+                    screenWidth = metrics.widthPixels,
+                    screenHeight = metrics.heightPixels
+                ).also {
+                    gatePlanningMs += SystemClock.uptimeMillis() - planningStartedAtMs
+                }
+            } else {
+                emptyList()
+            }
+
+            return YoutubeFastCommentSnapshot(
+                source = source,
+                nodes = collected.nodes,
+                visitedCount = collected.visitedCount,
+                nodeCollectionMs = nodeCollectionMs,
+                gateSpecs = gateSpecs,
+                gatePlanningMs = gatePlanningMs
+            )
+        }
+
+        val eventSourceSnapshot = snapshotFor(
+            source = "event-source",
+            root = event.source
+        )
+        if (
+            !supportsCommentGate ||
+            eventSourceSnapshot.gateSpecs.isNotEmpty() ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
+        ) {
+            return eventSourceSnapshot
+        }
+
+        val nowMs = SystemClock.uptimeMillis()
+        val canProbeCommentOpening =
+            !commentPanelGateActive &&
+                (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
+                nowMs - lastYoutubeCommentRootFallbackAtMs >=
+                YOUTUBE_COMMENT_ROOT_FALLBACK_MIN_INTERVAL_MS
+        if (!canProbeCommentOpening) {
+            return eventSourceSnapshot
+        }
+
+        // Some YouTube versions send a small button as the opening event. Probe
+        // the active root once for that transition, but never on a content burst.
+        lastYoutubeCommentRootFallbackAtMs = nowMs
+        return snapshotFor(
+            source = "root-fallback-opening",
+            root = rootInActiveWindow
+        )
+    }
+
     private fun renderFastProvisionalMaskFromEventSource(
         event: AccessibilityEvent,
         packageName: String,
@@ -1524,6 +2203,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         serviceReceivedAtMs: Long
     ): Long {
         if (!supportsMaskOverlay(packageName)) return -1L
+        if (packageName == YOUTUBE_PACKAGE) return -1L
         if (AnalysisSensitivityStore.get(applicationContext) <= 0) return -1L
         if (
             event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
@@ -1539,11 +2219,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
         } else {
             -1L
         }
-        val response = buildFastProvisionalResponseFromEventSource(
+        val buildResult = buildFastProvisionalResponseFromEventSource(
             event = event,
             packageName = packageName,
             timestamp = System.currentTimeMillis()
-        ) ?: return -1L
+        )
+        val response = buildResult.response ?: run {
+            val decisionMs = SystemClock.uptimeMillis() - startedAtMs
+            Log.d(
+                TAG,
+                "fast provisional skip event_to_decision_ms=$decisionMs " +
+                    buildResult.routeSamples.joinToString(" | ")
+            )
+            return -1L
+        }
 
         val buildMs = SystemClock.uptimeMillis() - startedAtMs
         val beforeOverlayMs = SystemClock.uptimeMillis()
@@ -1572,7 +2261,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
             offensiveCount = response.results.size,
             filteredCount = response.filteredCount,
             response = response,
-            candidateRouteSamples = listOf("event-source-fast-provisional")
+            candidateRouteSamples = buildResult.routeSamples.ifEmpty {
+                listOf("event-source-fast-provisional")
+            }
         )
 
         updateMaskOverlay(
@@ -1612,7 +2303,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 fastProvisionalReceiveToMaskMs = receiveToMaskMs
             ).withPipelineDiagnostics(
                 experimentMode = currentExperimentMode(),
-                nodeCount = 0,
+                nodeCount = buildResult.visitedNodeCount,
                 screenCandidateCount = response.results.size,
                 charLocationNodeCount = 0,
                 charRangeCandidateCount = 0,
@@ -1623,11 +2314,85 @@ class YoutubeAccessibilityService : AccessibilityService() {
         )
         Log.d(
             TAG,
-            "fast provisional mask results=${response.results.size} elapsedMs=$elapsedMs " +
+            "fast provisional mask results=${response.results.size} " +
+                "event_to_decision_ms=$buildMs event_to_mask_ms=$elapsedMs " +
                 "eventAgeMs=$eventAgeMs buildMs=$buildMs overlayMs=$overlayMs " +
-                "receiveToMaskMs=$receiveToMaskMs eventType=${event.eventType}"
+                "receiveToMaskMs=$receiveToMaskMs eventType=${event.eventType} " +
+                "routes=${buildResult.routeSamples.joinToString(" | ")}"
         )
         return elapsedMs
+    }
+
+    private fun collectFastTextNodes(
+        root: AccessibilityNodeInfo?,
+        maxDepth: Int,
+        maxNodes: Int,
+        defaultPackageName: String
+    ): FastTextNodeCollection {
+        if (root == null || maxDepth < 0 || maxNodes <= 0) {
+            return FastTextNodeCollection(nodes = emptyList(), visitedCount = 0)
+        }
+
+        val nodes = mutableListOf<ParsedTextNode>()
+        var visitedCount = 0
+
+        fun dfs(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null) return
+            if (depth > maxDepth) return
+            if (visitedCount >= maxNodes) return
+            if (!node.isVisibleToUser) return
+
+            visitedCount += 1
+            node.toFastParsedTextNode(defaultPackageName)?.let { parsed ->
+                nodes += parsed
+            }
+
+            for (index in 0 until node.childCount) {
+                dfs(node.getChild(index), depth + 1)
+                if (visitedCount >= maxNodes) return
+            }
+        }
+
+        dfs(root, 0)
+        return FastTextNodeCollection(
+            nodes = nodes.distinctBy { node ->
+                "${node.displayText}|${node.left}|${node.top}|${node.right}|${node.bottom}"
+            },
+            visitedCount = visitedCount
+        )
+    }
+
+    private fun AccessibilityNodeInfo.toFastParsedTextNode(defaultPackageName: String): ParsedTextNode? {
+        val text = this.text?.toString()
+        val contentDescription = this.contentDescription?.toString()
+        val displayText = when {
+            !text.isNullOrBlank() -> text.trim()
+            !contentDescription.isNullOrBlank() -> contentDescription.trim()
+            else -> null
+        } ?: return null
+
+        val rect = Rect().also { getBoundsInScreen(it) }
+        if (rect.width() < FAST_PROVISIONAL_MIN_WIDTH_PX ||
+            rect.height() < FAST_PROVISIONAL_MIN_HEIGHT_PX
+        ) {
+            return null
+        }
+
+        return ParsedTextNode(
+            packageName = packageName?.toString().orEmpty().ifBlank { defaultPackageName },
+            text = text,
+            contentDescription = contentDescription,
+            displayText = displayText,
+            className = className?.toString(),
+            viewIdResourceName = viewIdResourceName,
+            left = rect.left,
+            top = rect.top,
+            right = rect.right,
+            bottom = rect.bottom,
+            approxTop = rect.top,
+            isVisibleToUser = isVisibleToUser,
+            charBoxes = emptyList()
+        )
     }
 
     private fun renderFastProvisionalMaskFromActiveBrowserWindow(
@@ -1661,11 +2426,20 @@ class YoutubeAccessibilityService : AccessibilityService() {
         } else {
             -1L
         }
-        val response = buildFastBrowserRootResponse(
+        val buildResult = buildFastBrowserRootResponse(
             root = root,
             packageName = packageName,
             timestamp = System.currentTimeMillis()
-        ) ?: return -1L
+        )
+        val response = buildResult.response ?: run {
+            val decisionMs = SystemClock.uptimeMillis() - startedAtMs
+            Log.d(
+                TAG,
+                "browser root fast provisional skip event_to_decision_ms=$decisionMs " +
+                    buildResult.routeSamples.joinToString(" | ")
+            )
+            return -1L
+        }
 
         val buildMs = SystemClock.uptimeMillis() - startedAtMs
         val beforeOverlayMs = SystemClock.uptimeMillis()
@@ -1694,7 +2468,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
             offensiveCount = response.results.size,
             filteredCount = response.filteredCount,
             response = response,
-            candidateRouteSamples = listOf("browser-root-fast-provisional")
+            candidateRouteSamples = buildResult.routeSamples.ifEmpty {
+                listOf("browser-root-fast-provisional")
+            }
         )
 
         updateMaskOverlay(
@@ -1734,7 +2510,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 fastProvisionalReceiveToMaskMs = receiveToMaskMs
             ).withPipelineDiagnostics(
                 experimentMode = currentExperimentMode(),
-                nodeCount = 0,
+                nodeCount = buildResult.visitedNodeCount,
                 screenCandidateCount = response.results.size,
                 charLocationNodeCount = response.results.count { item ->
                     item.authorId.orEmpty().startsWith("android-accessibility-char-range:browser:")
@@ -1749,31 +2525,70 @@ class YoutubeAccessibilityService : AccessibilityService() {
         )
         Log.d(
             TAG,
-            "browser root fast provisional results=${response.results.size} elapsedMs=$elapsedMs " +
+            "browser root fast provisional results=${response.results.size} " +
+                "event_to_decision_ms=$buildMs event_to_mask_ms=$elapsedMs " +
                 "eventAgeMs=$eventAgeMs buildMs=$buildMs overlayMs=$overlayMs " +
-                "receiveToMaskMs=$receiveToMaskMs eventType=$triggerEventType"
+                "receiveToMaskMs=$receiveToMaskMs eventType=$triggerEventType " +
+                "routes=${buildResult.routeSamples.joinToString(" | ")}"
         )
         return elapsedMs
     }
+
+    private data class FastProvisionalBuildResult(
+        val response: AndroidAnalysisResponse?,
+        val visitedNodeCount: Int,
+        val routeSamples: List<String>
+    )
 
     private fun buildFastBrowserRootResponse(
         root: AccessibilityNodeInfo,
         packageName: String,
         timestamp: Long
-    ): AndroidAnalysisResponse? {
+    ): FastProvisionalBuildResult {
         val results = mutableListOf<AndroidAnalysisResultItem>()
         val seen = mutableSetOf<String>()
+        val routeSamples = mutableListOf<String>()
+        val metrics = resources.displayMetrics
         var visited = 0
+
+        fun rememberDecision(prefix: String, decision: AndroidRouteDecision) {
+            if (routeSamples.size < 8) {
+                routeSamples += decision.toSample(prefix)
+            }
+        }
 
         fun maybeAddBrowserText(node: AccessibilityNodeInfo, text: String?, bounds: BoundsRect, sourceId: String) {
             val rawText = text
                 ?.replace(FAST_PROVISIONAL_WHITESPACE_PATTERN, " ")
                 ?.trim()
                 .orEmpty()
-            if (rawText.length < 2 || rawText.length > FAST_BROWSER_ROOT_MAX_TEXT_LENGTH) return
-            if (isFastBrowserUrlLikeText(rawText)) return
-            if (!mayContainFastProvisionalHit(rawText)) return
-            val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(rawText)
+            val preflightFingerprint = fastDecisionFingerprint(
+                scope = "browser-root-preflight",
+                text = rawText,
+                bounds = bounds
+            )
+            val decidedAtMs = SystemClock.uptimeMillis()
+            val preflightDecision = AndroidDecisionPolicy.decideFastCandidate(
+                rawText = rawText,
+                bounds = bounds,
+                screenWidth = metrics.widthPixels,
+                screenHeight = metrics.heightPixels,
+                source = AndroidFastCandidateSource.BROWSER_ROOT,
+                recentFingerprintMatched = isRecentFastDecisionFingerprint(
+                    fingerprint = preflightFingerprint,
+                    nowMs = decidedAtMs
+                )
+            )
+            rememberDecision("android_decision/browser_root_preflight", preflightDecision)
+            if (
+                preflightDecision.action == AndroidRouteAction.DROP ||
+                preflightDecision.action == AndroidRouteAction.CACHE_ONLY ||
+                preflightDecision.action == AndroidRouteAction.OCR_REQUIRED ||
+                preflightDecision.action == AndroidRouteAction.BACKEND_ANALYZE
+            ) {
+                return
+            }
+            val ranges = preflightDecision.ranges
             if (ranges.isEmpty()) return
 
             var addedExactRange = false
@@ -1782,6 +2597,25 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 val exactBounds = fastBrowserExactRangeBounds(node, rawText, range) ?: return@forEach
                 val exactText = range.analysisText.trim().ifBlank { range.visualText.trim() }
                 if (exactText.isBlank()) return@forEach
+                val exactFingerprint = fastDecisionFingerprint(
+                    scope = "browser-root-exact",
+                    text = exactText,
+                    bounds = exactBounds
+                )
+                val exactDecidedAtMs = SystemClock.uptimeMillis()
+                val exactDecision = AndroidDecisionPolicy.decideFastCandidate(
+                    rawText = exactText,
+                    bounds = exactBounds,
+                    screenWidth = metrics.widthPixels,
+                    screenHeight = metrics.heightPixels,
+                    source = AndroidFastCandidateSource.BROWSER_EXACT_RANGE,
+                    recentFingerprintMatched = isRecentFastDecisionFingerprint(
+                        fingerprint = exactFingerprint,
+                        nowMs = exactDecidedAtMs
+                    )
+                )
+                rememberDecision("android_decision/browser_root_exact", exactDecision)
+                if (exactDecision.action != AndroidRouteAction.DIRECT_OVERLAY) return@forEach
                 val exactLength = exactText.codePointCount(0, exactText.length)
                 if (exactLength <= 0) return@forEach
                 val exactKey = "exact|$exactText|${exactBounds.left}|${exactBounds.top}|${exactBounds.right}|${exactBounds.bottom}"
@@ -1805,18 +2639,41 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     )
                 )
                 addedExactRange = true
+                rememberFastDecisionFingerprint(preflightFingerprint, exactDecidedAtMs)
+                rememberFastDecisionFingerprint(exactFingerprint, exactDecidedAtMs)
             }
             if (addedExactRange || results.size >= FAST_BROWSER_ROOT_MAX_RESULTS) return
             if (!isFastBrowserCompactBounds(bounds)) return
+            val compactFingerprint = fastDecisionFingerprint(
+                scope = "browser-root-compact",
+                text = rawText,
+                bounds = bounds
+            )
+            val compactDecidedAtMs = SystemClock.uptimeMillis()
+            val compactDecision = AndroidDecisionPolicy.decideFastCandidate(
+                rawText = rawText,
+                bounds = bounds,
+                screenWidth = metrics.widthPixels,
+                screenHeight = metrics.heightPixels,
+                source = AndroidFastCandidateSource.BROWSER_COMPACT,
+                recentFingerprintMatched = isRecentFastDecisionFingerprint(
+                    fingerprint = compactFingerprint,
+                    nowMs = compactDecidedAtMs
+                )
+            )
+            rememberDecision("android_decision/browser_root_compact", compactDecision)
+            if (compactDecision.action != AndroidRouteAction.DIRECT_OVERLAY) return
 
             val compactKey = "compact|$rawText|${bounds.left}|${bounds.top}|${bounds.right}|${bounds.bottom}"
             if (!seen.add(compactKey)) return
-            val spans = ranges.mapNotNull { range ->
-                val start = rawText.codePointCount(0, range.start.coerceIn(0, rawText.length))
-                val end = rawText.codePointCount(0, range.end.coerceIn(range.start, rawText.length))
+            val spans = compactDecision.ranges.mapNotNull { range ->
+                val startChar = range.start.coerceIn(0, rawText.length)
+                val endChar = range.end.coerceIn(startChar, rawText.length)
+                val start = rawText.codePointCount(0, startChar)
+                val end = rawText.codePointCount(0, endChar)
                 if (end <= start) return@mapNotNull null
                 EvidenceSpan(
-                    text = range.analysisText,
+                    text = range.visualText.ifBlank { range.analysisText },
                     start = start,
                     end = end,
                     score = 1.0
@@ -1834,6 +2691,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 scores = HarmScores(profanity = 1.0, toxicity = 0.0, hate = 0.0),
                 evidenceSpans = spans
             )
+            rememberFastDecisionFingerprint(preflightFingerprint, compactDecidedAtMs)
+            rememberFastDecisionFingerprint(compactFingerprint, compactDecidedAtMs)
         }
 
         fun nodeBounds(node: AccessibilityNodeInfo): BoundsRect? {
@@ -1872,11 +2731,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         dfs(root, 0)
-        if (results.isEmpty()) return null
-        return AndroidAnalysisResponse(
-            timestamp = timestamp,
-            filteredCount = 0,
-            results = results.take(FAST_BROWSER_ROOT_MAX_RESULTS)
+        return FastProvisionalBuildResult(
+            response = if (results.isEmpty()) {
+                null
+            } else {
+                AndroidAnalysisResponse(
+                    timestamp = timestamp,
+                    filteredCount = 0,
+                    results = results.take(FAST_BROWSER_ROOT_MAX_RESULTS)
+                )
+            },
+            visitedNodeCount = visited,
+            routeSamples = routeSamples
         )
     }
 
@@ -1921,17 +2787,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
             height in FAST_PROVISIONAL_MIN_HEIGHT_PX..FAST_BROWSER_ROOT_COMPACT_MAX_HEIGHT_PX
     }
 
-    private fun isFastBrowserUrlLikeText(text: String): Boolean {
-        val lower = text.lowercase()
-        return lower.startsWith("http://") ||
-            lower.startsWith("https://") ||
-            lower.startsWith("www.") ||
-            lower.contains("://") ||
-            lower.contains("/search?q=") ||
-            lower.contains("?q=") ||
-            lower.contains("&q=")
-    }
-
     private fun rememberFastProvisionalMask(
         elapsedMs: Long,
         eventAgeMs: Long,
@@ -1946,6 +2801,26 @@ class YoutubeAccessibilityService : AccessibilityService() {
         lastFastProvisionalOverlayMs = overlayMs
         lastFastProvisionalReceiveToMaskMs = receiveToMaskMs
         lastFastProvisionalAtMs = SystemClock.uptimeMillis()
+    }
+
+    private fun fastDecisionFingerprint(scope: String, text: String, bounds: BoundsRect): String {
+        val normalizedText = text
+            .replace(FAST_PROVISIONAL_WHITESPACE_PATTERN, " ")
+            .trim()
+            .lowercase()
+        return "$scope|$normalizedText|${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+    }
+
+    private fun isRecentFastDecisionFingerprint(fingerprint: String, nowMs: Long): Boolean {
+        return fastDecisionCache.isRecent(
+            fingerprint = fingerprint,
+            nowMs = nowMs,
+            hasActiveMasks = maskOverlayController.hasActiveMasks()
+        )
+    }
+
+    private fun rememberFastDecisionFingerprint(fingerprint: String, nowMs: Long) {
+        fastDecisionCache.remember(fingerprint = fingerprint, nowMs = nowMs)
     }
 
     private fun recentFastProvisionalMaskMs(parseStartedAtMs: Long): Long {
@@ -1987,30 +2862,54 @@ class YoutubeAccessibilityService : AccessibilityService() {
         event: AccessibilityEvent,
         packageName: String,
         timestamp: Long
-    ): AndroidAnalysisResponse? {
+    ): FastProvisionalBuildResult {
         val metrics = resources.displayMetrics
         val results = mutableListOf<AndroidAnalysisResultItem>()
         val seen = mutableSetOf<String>()
+        val routeSamples = mutableListOf<String>()
         var visited = 0
+
+        fun rememberDecision(prefix: String, decision: AndroidRouteDecision) {
+            if (routeSamples.size < 8) {
+                routeSamples += decision.toSample(prefix)
+            }
+        }
 
         fun maybeAddText(text: String?, bounds: BoundsRect, sourceId: String) {
             val rawText = text
                 ?.replace(FAST_PROVISIONAL_WHITESPACE_PATTERN, " ")
                 ?.trim()
                 .orEmpty()
-            if (rawText.length < 2 || rawText.length > FAST_PROVISIONAL_MAX_TEXT_LENGTH) return
-            if (!mayContainFastProvisionalHit(rawText)) return
-            val ranges = VisualTextOcrCandidateFilter.findAnalysisRanges(rawText)
-            if (ranges.isEmpty()) return
+            val fingerprint = fastDecisionFingerprint(
+                scope = "event-source",
+                text = rawText,
+                bounds = bounds
+            )
+            val decidedAtMs = SystemClock.uptimeMillis()
+            val decision = AndroidDecisionPolicy.decideFastCandidate(
+                rawText = rawText,
+                bounds = bounds,
+                screenWidth = metrics.widthPixels,
+                screenHeight = metrics.heightPixels,
+                source = AndroidFastCandidateSource.EVENT_SOURCE,
+                recentFingerprintMatched = isRecentFastDecisionFingerprint(
+                    fingerprint = fingerprint,
+                    nowMs = decidedAtMs
+                )
+            )
+            rememberDecision("android_decision/event_source", decision)
+            if (decision.action != AndroidRouteAction.DIRECT_OVERLAY) return
             val key = "$rawText|${bounds.left}|${bounds.top}|${bounds.right}|${bounds.bottom}"
             if (!seen.add(key)) return
 
-            val spans = ranges.mapNotNull { range ->
-                val start = rawText.codePointCount(0, range.start.coerceIn(0, rawText.length))
-                val end = rawText.codePointCount(0, range.end.coerceIn(0, rawText.length))
+            val spans = decision.ranges.mapNotNull { range ->
+                val startChar = range.start.coerceIn(0, rawText.length)
+                val endChar = range.end.coerceIn(startChar, rawText.length)
+                val start = rawText.codePointCount(0, startChar)
+                val end = rawText.codePointCount(0, endChar)
                 if (end <= start) return@mapNotNull null
                 EvidenceSpan(
-                    text = range.analysisText,
+                    text = range.visualText.ifBlank { range.analysisText },
                     start = start,
                     end = end,
                     score = 1.0
@@ -2029,6 +2928,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 scores = HarmScores(profanity = 1.0, toxicity = 0.0, hate = 0.0),
                 evidenceSpans = spans
             )
+            rememberFastDecisionFingerprint(fingerprint, decidedAtMs)
         }
 
         fun nodeBounds(node: AccessibilityNodeInfo): BoundsRect? {
@@ -2057,10 +2957,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 )
             }
             if (results.isNotEmpty()) {
-                return AndroidAnalysisResponse(
-                    timestamp = timestamp,
-                    filteredCount = 0,
-                    results = results.take(FAST_PROVISIONAL_MAX_RESULTS)
+                return FastProvisionalBuildResult(
+                    response = AndroidAnalysisResponse(
+                        timestamp = timestamp,
+                        filteredCount = 0,
+                        results = results.take(FAST_PROVISIONAL_MAX_RESULTS)
+                    ),
+                    visitedNodeCount = visited,
+                    routeSamples = routeSamples
                 )
             }
         }
@@ -2089,44 +2993,23 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
         dfs(source, 0)
 
-        if (results.isEmpty()) return null
-        return AndroidAnalysisResponse(
-            timestamp = timestamp,
-            filteredCount = 0,
-            results = results.take(FAST_PROVISIONAL_MAX_RESULTS)
+        return FastProvisionalBuildResult(
+            response = if (results.isEmpty()) {
+                null
+            } else {
+                AndroidAnalysisResponse(
+                    timestamp = timestamp,
+                    filteredCount = 0,
+                    results = results.take(FAST_PROVISIONAL_MAX_RESULTS)
+                )
+            },
+            visitedNodeCount = visited,
+            routeSamples = routeSamples
         )
     }
 
     private fun mayContainFastProvisionalHit(text: String): Boolean {
-        if (text.any { char ->
-                char == '시' || char == '씨' || char == 'ㅅ' || char == 'ㅆ' ||
-                    char == '발' || char == '병' || char == 'ㅂ' || char == '비' ||
-                    char == '개' || char == '새' ||
-                    char == '존' || char == 'ㅈ' || char == '지' || char == '좆' ||
-                    char == '미' || char == 'ㅁ' || char == '뒤' || char == '뒈' ||
-                    char == '죽' || char == '닥' || char == 'ㄷ' || char == '꺼' ||
-                    char == 'ㄲ' || char == '엿'
-            }) {
-            return true
-        }
-
-        val lower = text.lowercase()
-        if (
-            lower.contains("fuck") ||
-            lower.contains("shit") ||
-            lower.contains("bitch") ||
-            lower.contains("sibal") ||
-            lower.contains("qudtls") ||
-            lower.contains("wlfkf") ||
-            lower.contains("whssk") ||
-            lower.contains("alcls") ||
-            lower.contains("rjwu")
-        ) {
-            return true
-        }
-
-        return lower.contains('t') &&
-            (lower.contains('q') || lower.contains('k') || lower.contains('f') || lower.contains('1'))
+        return AndroidDecisionPolicy.hasCheapHarmfulSignal(text)
     }
 
     private fun updateMaskOverlay(
@@ -2209,6 +3092,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 preserveExistingPreciseVisualMasks = preserveExistingPreciseVisualMasks
             )
             riskGateActive = false
+            commentPanelGateActive = false
             preservedRecentVisualMiss = false
             preservedRecentAnalysisFailure = false
             val hasActiveMasksAfterRender = maskOverlayController.hasActiveMasks()
@@ -2226,6 +3110,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
                     isProvisionalAccessibilityMask && hasActiveMasksAfterRender
                 }
         } else {
+            if (commentPanelGateActive && !visualAnalysisInFlight) {
+                Log.d(TAG, "clear youtube comment panel gate after analysis failure")
+                clearMaskOverlay()
+                return
+            }
             if (
                 supportsMaskOverlay(currentPackage) &&
                 !MaskOverlayEventPolicy.shouldClearAfterAnalysisFailure(
@@ -2249,12 +3138,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun clearMaskOverlay() {
         overlayRevision += 1
+        invalidateYoutubeCommentRowDecision(clearSignature = true)
         lastSnapshotSignature = null
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
         provisionalVisualMaskActive = false
         provisionalAccessibilityMaskActive = false
+        commentPanelGateActive = false
+        lastYoutubeCommentRootFallbackAtMs = 0L
         riskGateActive = false
+        fastDecisionCache.clear()
         lastVisualRefreshSignature = null
         lastVisualRefreshCompletedAtMs = 0L
         invalidateVisualAnalysis(reason = "clear-overlay", requestFollowUp = false)
@@ -2264,12 +3157,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun releaseMaskOverlay() {
         overlayRevision += 1
+        invalidateYoutubeCommentRowDecision(clearSignature = true)
         lastSnapshotSignature = null
         preservedRecentVisualMiss = false
         preservedRecentAnalysisFailure = false
         provisionalVisualMaskActive = false
         provisionalAccessibilityMaskActive = false
+        commentPanelGateActive = false
+        lastYoutubeCommentRootFallbackAtMs = 0L
         riskGateActive = false
+        fastDecisionCache.clear()
         lastVisualRefreshSignature = null
         lastVisualRefreshCompletedAtMs = 0L
         invalidateVisualAnalysis(reason = "release-overlay", requestFollowUp = false)
@@ -2280,6 +3177,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun markOverlayRevisionStale() {
         overlayRevision += 1
         lastSnapshotSignature = null
+    }
+
+    private fun invalidateYoutubeCommentRowDecision(clearSignature: Boolean = false) {
+        youtubeCommentDecisionRunId += 1
+        if (clearSignature) {
+            lastYoutubeCommentDecisionSignature = null
+        }
     }
 
     private fun markVisualSceneChanged(eventType: Int) {
@@ -2743,8 +3647,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun shouldObservePackage(packageName: String): Boolean {
         if (packageName.isBlank()) return false
         if (packageName == applicationContext.packageName) return false
+        if (packageName in OBSERVATION_EXCLUDED_PACKAGES) return false
 
-        return packageName !in OBSERVATION_EXCLUDED_PACKAGES
+        return packageName in OBSERVABLE_PACKAGES
     }
 
     private fun supportsMaskOverlay(packageName: String): Boolean {
@@ -2756,7 +3661,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun clearOverlayForExitPackageIfNeeded(packageName: String) {
-        if (packageName !in OVERLAY_EXIT_PACKAGES) return
+        if (packageName in OVERLAY_PRESERVE_IGNORED_PACKAGES) {
+            cancelScheduledParse()
+            return
+        }
 
         val hasActiveMasks = maskOverlayController.hasActiveMasks()
         if (!hasActiveMasks && lastObservedPackage == null) return

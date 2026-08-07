@@ -30,9 +30,9 @@ object CandidateRoutingPolicy {
         if (baseSourceId == YOUTUBE_USER_INPUT_AUTHOR_ID) {
             return CandidateRoute(
                 surface = CandidateSurface.YOUTUBE_SEARCH_INPUT,
-                geometryPolicy = CandidateGeometryPolicy.ACCESSIBILITY_EXACT,
-                renderPolicy = CandidateRenderPolicy.DIRECT_OVERLAY,
-                reason = "youtube-search-input-bounds"
+                geometryPolicy = CandidateGeometryPolicy.ANALYSIS_ONLY,
+                renderPolicy = CandidateRenderPolicy.ANALYSIS_ONLY,
+                reason = "youtube-search-input-analysis-only"
             )
         }
 
@@ -120,9 +120,9 @@ object CandidateRoutingPolicy {
         if (baseSourceId == "android-accessibility-browser:user_input") {
             return CandidateRoute(
                 surface = CandidateSurface.BROWSER_RESULT,
-                geometryPolicy = CandidateGeometryPolicy.ACCESSIBILITY_EXACT,
-                renderPolicy = CandidateRenderPolicy.DIRECT_OVERLAY,
-                reason = "browser-search-input-bounds"
+                geometryPolicy = CandidateGeometryPolicy.ANALYSIS_ONLY,
+                renderPolicy = CandidateRenderPolicy.ANALYSIS_ONLY,
+                reason = "browser-search-input-analysis-only"
             )
         }
 

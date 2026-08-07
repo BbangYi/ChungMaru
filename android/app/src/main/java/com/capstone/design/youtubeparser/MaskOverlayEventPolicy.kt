@@ -20,6 +20,45 @@ internal object MaskOverlayEventPolicy {
     private const val VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS = 180L
     private const val VISUAL_SCROLL_INVALIDATION_GRACE_MS = 450L
     private const val VISUAL_REFRESH_COOLDOWN_MS = 1200L
+    private val USER_INPUT_VIEW_ID_TOKENS = listOf(
+        "edit_text",
+        "edittext",
+        "search",
+        "query",
+        "input",
+        "compose",
+        "composer",
+        "comment_editor"
+    )
+
+    fun isUserInputLikeSource(
+        sourceClassName: String?,
+        sourceViewId: String?
+    ): Boolean {
+        val className = sourceClassName.orEmpty()
+        if (className.contains("EditText", ignoreCase = true)) return true
+
+        val viewId = sourceViewId.orEmpty()
+        return USER_INPUT_VIEW_ID_TOKENS.any { token ->
+            viewId.contains(token, ignoreCase = true)
+        }
+    }
+
+    fun shouldDropBeforeRealtimeMasking(
+        eventType: Int,
+        sourceClassName: String?,
+        sourceViewId: String?
+    ): Boolean {
+        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return true
+        return isUserInputLikeSource(
+            sourceClassName = sourceClassName,
+            sourceViewId = sourceViewId
+        ) && (
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            )
+    }
 
     fun resolveScrollTranslationDelta(
         eventType: Int,
@@ -106,6 +145,34 @@ internal object MaskOverlayEventPolicy {
             hasActiveMasks &&
             !hasResolvedScrollDelta &&
             !overlayUpdatedRecently
+    }
+
+    fun shouldPreserveOnUnresolvedScrollDelta(
+        eventType: Int,
+        hasActiveMasks: Boolean,
+        hasResolvedScrollDelta: Boolean,
+        isScrollStabilizing: Boolean,
+        overlayUpdatedRecently: Boolean = false
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            hasActiveMasks &&
+            !hasResolvedScrollDelta &&
+            (isScrollStabilizing || overlayUpdatedRecently)
+    }
+
+    fun shouldPreserveOnUntranslatableScroll(
+        eventType: Int,
+        hasActiveMasks: Boolean,
+        translationStatus: MaskOverlayTranslationStatus?,
+        isScrollStabilizing: Boolean,
+        overlayUpdatedRecently: Boolean = false
+    ): Boolean {
+        val recaptureOnlyStatus = translationStatus == MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS ||
+            translationStatus == MaskOverlayTranslationStatus.ALL_OFFSCREEN
+        return eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED &&
+            hasActiveMasks &&
+            recaptureOnlyStatus &&
+            (isScrollStabilizing || overlayUpdatedRecently)
     }
 
     fun shouldDeferClearForVisualOnlyAnalysis(
