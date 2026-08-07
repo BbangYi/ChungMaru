@@ -123,7 +123,7 @@ class ScreenTextCandidateExtractorTest {
     }
 
     @Test
-    fun extractCandidates_keepsBrowserSearchEditTextWhenItContainsHarmfulText() {
+    fun extractCandidates_keepsBrowserSearchEditTextAsAnalysisOnlyContext() {
         val candidates = ScreenTextCandidateExtractor.extractCandidates(
             packageName = CHROME_PACKAGE,
             nodes = listOf(
@@ -142,7 +142,7 @@ class ScreenTextCandidateExtractorTest {
         assertTrue(candidates.any {
             it.rawText == "시발" &&
                 it.role == CandidateRole.USER_INPUT &&
-                it.route.renderPolicy == CandidateRenderPolicy.DIRECT_OVERLAY
+                it.route.renderPolicy == CandidateRenderPolicy.ANALYSIS_ONLY
         })
         assertTrue(candidates.any { it.rawText == "시발 진짜 심한 욕 아니야? : r/korea" })
     }
@@ -513,8 +513,8 @@ class ScreenTextCandidateExtractorTest {
         assertEquals(CandidateRole.USER_INPUT, candidate.role)
         assertEquals("android-accessibility:youtube_user_input", candidate.backendSourceId)
         assertEquals(CandidateSurface.YOUTUBE_SEARCH_INPUT, candidate.route.surface)
-        assertEquals(CandidateGeometryPolicy.ACCESSIBILITY_EXACT, candidate.route.geometryPolicy)
-        assertEquals(CandidateRenderPolicy.DIRECT_OVERLAY, candidate.route.renderPolicy)
+        assertEquals(CandidateGeometryPolicy.ANALYSIS_ONLY, candidate.route.geometryPolicy)
+        assertEquals(CandidateRenderPolicy.ANALYSIS_ONLY, candidate.route.renderPolicy)
     }
 
     @Test
@@ -637,7 +637,7 @@ class ScreenTextCandidateExtractorTest {
 
         val summary = CandidateRoutingPolicy.summarize(candidates)
 
-        assertTrue(summary.any { it.startsWith("youtube_search_input/accessibility_exact/direct_overlay=") })
+        assertTrue(summary.any { it.startsWith("youtube_search_input/analysis_only/analysis_only=") })
         assertTrue(summary.any { it.startsWith("youtube_title/accessibility_lookahead/cache_only=") })
     }
 

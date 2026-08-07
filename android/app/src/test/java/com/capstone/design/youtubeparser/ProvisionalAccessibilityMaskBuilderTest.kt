@@ -29,7 +29,7 @@ class ProvisionalAccessibilityMaskBuilderTest {
     }
 
     @Test
-    fun buildResponse_createsMaskForDirectYoutubeSearchInputCandidate() {
+    fun buildResponse_skipsYoutubeSearchInputCandidate() {
         val response = ProvisionalAccessibilityMaskBuilder.buildResponse(
             candidates = listOf(
                 candidate(
@@ -42,10 +42,7 @@ class ProvisionalAccessibilityMaskBuilderTest {
             timestamp = 123L
         )
 
-        assertNotNull(response)
-        val result = response!!.results.single()
-        assertEquals("android-accessibility:youtube_user_input", result.authorId)
-        assertEquals(listOf("tlqkf"), result.evidenceSpans.map { it.text })
+        assertNull(response)
     }
 
     @Test

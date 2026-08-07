@@ -207,6 +207,31 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
+    fun buildSpecs_masksWholeYoutubeCommentWhenEvidenceSpanIsPartial() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(127, 1363, 1006, 1677),
+                spans = listOf(
+                    EvidenceSpan("씨발", 4, 6, 0.99),
+                    EvidenceSpan("존나", 23, 25, 0.99)
+                ),
+                original = "하...씨발..또 다시 보여줘야돼? 이게 존나 야마있네",
+                authorId = "android-accessibility-comment:youtube:@cloudd9619:line:1363"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertEquals(127, specs.single().left)
+        assertEquals(1363, specs.single().top)
+        assertEquals(879, specs.single().width)
+        assertEquals(314, specs.single().height)
+        assertTrue(specs.single().allowScrollTranslation)
+    }
+
+    @Test
     fun buildSpecs_rejectsBrowserRowsWithoutExactGeometry() {
         val response = responseOf(
             resultOf(
@@ -252,7 +277,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_keepsBrowserSearchInputDirectMask() {
+    fun buildSpecs_skipsBrowserSearchInputMask() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -265,12 +290,7 @@ class MaskOverlayPlannerTest {
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 720, screenHeight = 1280)
 
-        assertEquals(1, specs.size)
-        val spec = specs.single()
-        assertEquals(80, spec.left)
-        assertEquals(80, spec.top)
-        assertTrue(spec.width <= 120)
-        assertFalse(spec.allowScrollTranslation)
+        assertTrue(specs.isEmpty())
     }
 
     @Test
@@ -648,6 +668,33 @@ class MaskOverlayPlannerTest {
 
         assertEquals(1, specs.size)
         assertTrue(specs.single().debugSource.startsWith("android-accessibility-char-range:"))
+    }
+
+    @Test
+    fun buildSpecs_prefersWholeYoutubeCommentOverInnerCharacterRange() {
+        val response = responseOf(
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(127, 1363, 1006, 1677),
+                spans = listOf(EvidenceSpan("씨발", 4, 6, 0.99)),
+                original = "하...씨발..또 다시 보여줘야돼? 이게 존나 야마있네",
+                authorId = "android-accessibility-comment:youtube:@cloudd9619:line:1363"
+            ),
+            resultOf(
+                offensive = true,
+                bounds = BoundsRect(198, 1418, 276, 1468),
+                spans = listOf(EvidenceSpan("씨발", 0, 2, 0.99)),
+                original = "씨발",
+                authorId = "android-accessibility-char-range:씨발"
+            )
+        )
+
+        val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
+
+        assertEquals(1, specs.size)
+        assertTrue(specs.single().debugSource.startsWith("android-accessibility-comment:"))
+        assertEquals(127, specs.single().left)
+        assertEquals(879, specs.single().width)
     }
 
     @Test
@@ -1353,7 +1400,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun buildSpecs_keepsTopYoutubeSearchInputMask() {
+    fun buildSpecs_skipsTopYoutubeSearchInputMask() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -1366,10 +1413,7 @@ class MaskOverlayPlannerTest {
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 656, screenHeight = 1454)
 
-        assertEquals(1, specs.size)
-        assertEquals(100, specs.single().left)
-        assertTrue("spec=${specs.single()}", specs.single().width in 180..196)
-        assertTrue(specs.single().allowScrollTranslation)
+        assertTrue(specs.isEmpty())
     }
 
     @Test
@@ -1593,7 +1637,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_keepsLowerUserInputMasksDuringScroll() {
+    fun buildSpecs_skipsLowerUserInputMasks() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -1606,19 +1650,7 @@ class MaskOverlayPlannerTest {
 
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
-        assertEquals(1, specs.size)
-        assertTrue(specs.single().allowScrollTranslation)
-
-        val translated = AndroidMaskOverlayPlanner.translateSpecs(
-            specs = specs,
-            deltaX = 0,
-            deltaY = -24,
-            screenWidth = 1080,
-            screenHeight = 2400
-        )
-
-        assertEquals(1, translated.size)
-        assertEquals(specs.single().top - 24, translated.single().top)
+        assertTrue(specs.isEmpty())
     }
 
     @Test

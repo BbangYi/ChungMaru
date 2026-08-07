@@ -9,6 +9,31 @@ import org.junit.Test
 class MaskOverlayEventPolicyTest {
 
     @Test
+    fun shouldDropBeforeRealtimeMasking_blocksTextInputEvents() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldDropBeforeRealtimeMasking(
+                eventType = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+                sourceClassName = "android.widget.TextView",
+                sourceViewId = null
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldDropBeforeRealtimeMasking(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                sourceClassName = "android.widget.EditText",
+                sourceViewId = "com.google.android.youtube:id/search_edit_text"
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldDropBeforeRealtimeMasking(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                sourceClassName = "android.widget.TextView",
+                sourceViewId = "com.google.android.youtube:id/comment_text"
+            )
+        )
+    }
+
+    @Test
     fun resolveScrollTranslationDelta_prefersExplicitScrollDeltaWhenAvailable() {
         val delta = MaskOverlayEventPolicy.resolveScrollTranslationDelta(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
@@ -277,6 +302,80 @@ class MaskOverlayEventPolicyTest {
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = false,
                 hasResolvedScrollDelta = false
+            )
+        )
+    }
+
+    @Test
+    fun shouldPreserveOnUnresolvedScrollDelta_keepsMasksDuringScrollBurst() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = false,
+                isScrollStabilizing = true
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = false,
+                isScrollStabilizing = false,
+                overlayUpdatedRecently = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                hasResolvedScrollDelta = true,
+                isScrollStabilizing = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUnresolvedScrollDelta(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = false,
+                hasResolvedScrollDelta = false,
+                isScrollStabilizing = true
+            )
+        )
+    }
+
+    @Test
+    fun shouldPreserveOnUntranslatableScroll_keepsMasksUntilRecaptureForSoftStatuses() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnUntranslatableScroll(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                translationStatus = MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS,
+                isScrollStabilizing = true
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPreserveOnUntranslatableScroll(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                translationStatus = MaskOverlayTranslationStatus.ALL_OFFSCREEN,
+                isScrollStabilizing = false,
+                overlayUpdatedRecently = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUntranslatableScroll(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                hasActiveMasks = true,
+                translationStatus = MaskOverlayTranslationStatus.REJECTED_DELTA,
+                isScrollStabilizing = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPreserveOnUntranslatableScroll(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                hasActiveMasks = true,
+                translationStatus = MaskOverlayTranslationStatus.NO_TRANSLATABLE_MASKS,
+                isScrollStabilizing = true
             )
         )
     }

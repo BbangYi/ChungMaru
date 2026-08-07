@@ -65,6 +65,10 @@ object VisualTextRoiPlanner {
     private const val BROWSER_VISUAL_ROI_MIN_WIDTH_PX = 220
     private const val BROWSER_VISUAL_ROI_MIN_HEIGHT_PX = 140
     private const val BROWSER_VISUAL_ROI_MAX_COUNT = 2
+    private const val BROWSER_YOUTUBE_BAND_TOP_RATIO = 0.14f
+    private const val BROWSER_YOUTUBE_BAND_HEIGHT_RATIO = 0.28f
+    private const val BROWSER_YOUTUBE_BAND_OVERLAP_PX = 72
+    private const val BROWSER_YOUTUBE_BAND_MAX_COUNT = 3
 
     fun planFromNodes(
         nodes: List<ParsedTextNode>,
@@ -88,10 +92,12 @@ object VisualTextRoiPlanner {
         }
         val browserTextNodeRois = buildBrowserTextNodeRois(nodes, screenWidth, screenHeight)
         val browserVisualNodeRois = buildBrowserVisualNodeRois(nodes, screenWidth, screenHeight)
+        val browserYoutubeVisibleBandRois = buildBrowserYoutubeVisibleBandRois(nodes, screenWidth, screenHeight)
         val commentPanelRois = buildYoutubeCommentPanelRois(nodes, screenWidth, screenHeight)
         val fallbackCandidates =
             browserTextNodeRois +
                 browserVisualNodeRois +
+                browserYoutubeVisibleBandRois +
                 commentPanelRois +
                 buildYoutubeExpandedShortCompositeRois(nodes, screenWidth, screenHeight, rawCandidates) +
                 buildYoutubeShortCardThumbnailRois(rawCandidates, screenWidth, screenHeight) +
@@ -222,6 +228,81 @@ object VisualTextRoiPlanner {
             )
             .take(BROWSER_VISUAL_ROI_MAX_COUNT)
             .toList()
+    }
+
+    private fun buildBrowserYoutubeVisibleBandRois(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): List<VisualTextRoi> {
+        if (!looksLikeBrowserYoutubePage(nodes)) return emptyList()
+
+        val startTop = (screenHeight * BROWSER_YOUTUBE_BAND_TOP_RATIO)
+            .toInt()
+            .coerceIn(0, screenHeight)
+        val bandHeight = (screenHeight * BROWSER_YOUTUBE_BAND_HEIGHT_RATIO)
+            .toInt()
+            .coerceAtLeast(BROWSER_VISUAL_ROI_MIN_HEIGHT_PX)
+        val step = (bandHeight - BROWSER_YOUTUBE_BAND_OVERLAP_PX).coerceAtLeast(MIN_HEIGHT_PX)
+        val maxVisibleTop = (screenHeight * MAX_VISIBLE_TOP_RATIO).toInt()
+        val rois = mutableListOf<VisualTextRoi>()
+        var top = startTop
+
+        while (rois.size < BROWSER_YOUTUBE_BAND_MAX_COUNT && top < maxVisibleTop) {
+            val bottom = min(screenHeight, top + bandHeight)
+            if (bottom - top < BROWSER_VISUAL_ROI_MIN_HEIGHT_PX) break
+
+            rois += VisualTextRoi(
+                boundsInScreen = BoundsRect(
+                    left = 0,
+                    top = top,
+                    right = screenWidth,
+                    bottom = bottom
+                ),
+                source = BROWSER_VISUAL_NODE_SOURCE,
+                priority = 3,
+                reason = "browser-youtube-visible-band",
+                sourceText = "browser-youtube-visible-band"
+            )
+            top += step
+        }
+
+        return rois
+    }
+
+    private fun looksLikeBrowserYoutubePage(nodes: List<ParsedTextNode>): Boolean {
+        var hasBrowserNode = false
+        var hasYoutubeUrlOrTitle = false
+        var youtubeNavMarkerCount = 0
+
+        nodes.forEach { node ->
+            if (node.packageName !in ACCESSIBILITY_FIRST_PACKAGES) return@forEach
+            hasBrowserNode = true
+
+            val text = visibleNodeText(node).lowercase()
+            if (text.isBlank()) return@forEach
+
+            if (
+                text.contains("youtube.com") ||
+                text.contains("m.youtube.com") ||
+                text.contains("youtube") ||
+                text.contains("유튜브")
+            ) {
+                hasYoutubeUrlOrTitle = true
+            }
+
+            if (text in BROWSER_YOUTUBE_NAV_MARKERS) {
+                youtubeNavMarkerCount += 1
+            }
+        }
+
+        return hasBrowserNode && (hasYoutubeUrlOrTitle || youtubeNavMarkerCount >= 2)
+    }
+
+    private fun visibleNodeText(node: ParsedTextNode): String {
+        return (node.displayText ?: node.contentDescription ?: node.text).orEmpty()
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     private fun hasExactCharBoxCoverage(
@@ -961,5 +1042,16 @@ object VisualTextRoiPlanner {
         "전체",
         "쇼츠",
         "동영상"
+    )
+
+    private val BROWSER_YOUTUBE_NAV_MARKERS = setOf(
+        "home",
+        "shorts",
+        "subscriptions",
+        "you",
+        "홈",
+        "쇼츠",
+        "구독",
+        "나"
     )
 }
