@@ -298,7 +298,7 @@ def build_corpus_manifest(corpus_dir: Path) -> dict[str, Any]:
             })
 
     manifest = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "createdAt": now_iso(),
         "source": "Wikimedia Commons category-derived candidate corpus",
         "reviewStatus": "category_seed_needs_human_review",
@@ -313,18 +313,118 @@ def build_corpus_manifest(corpus_dir: Path) -> dict[str, Any]:
     return manifest
 
 
+REVIEW_DECISIONS = {"harmful", "benign"}
+
+
+def review_queue_path(corpus_dir: Path) -> Path:
+    return corpus_dir / "review-queue.json"
+
+
+def write_review_queue(corpus_dir: Path, manifest: dict[str, Any]) -> Path:
+    """Write metadata-only review work; image bytes remain in Desktop scratch."""
+    samples = list(manifest.get("samples") or [])
+    queue = {
+        "schemaVersion": 1,
+        "createdAt": now_iso(),
+        "sourceManifestCreatedAt": manifest.get("createdAt"),
+        "reviewInstructions": (
+            "Review each source page independently. Set decision to harmful or benign; "
+            "do not mark a sample complete from category/title alone."
+        ),
+        "reviews": [
+            {
+                "sampleId": sample.get("sampleId"),
+                "seedLabel": sample.get("label"),
+                "bucket": sample.get("bucket"),
+                "split": sample.get("split"),
+                "sourcePage": sample.get("sourcePage"),
+                "sha256": sample.get("sha256"),
+                "decision": "",
+                "reviewer": "",
+                "reviewedAt": "",
+            }
+            for sample in samples
+        ],
+    }
+    output = review_queue_path(corpus_dir)
+    output.write_text(json.dumps(queue, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return output
+
+
+def load_human_reviews(review_file: Path, manifest: dict[str, Any]) -> dict[str, dict[str, str]]:
+    try:
+        payload = json.loads(review_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"review file is unreadable: {review_file}: {exc}") from exc
+    records = payload.get("reviews") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        raise RuntimeError("review file must contain a reviews array")
+
+    expected_ids = {str(sample.get("sampleId") or "") for sample in manifest.get("samples") or []}
+    reviews: dict[str, dict[str, str]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise RuntimeError("review file contains a non-object review")
+        sample_id = str(record.get("sampleId") or "").strip()
+        decision = str(record.get("decision") or "").strip().lower()
+        reviewer = str(record.get("reviewer") or "").strip()
+        reviewed_at = str(record.get("reviewedAt") or "").strip()
+        if sample_id not in expected_ids:
+            raise RuntimeError(f"review references unknown sample: {sample_id or '<empty>'}")
+        if sample_id in reviews:
+            raise RuntimeError(f"review contains duplicate sample: {sample_id}")
+        if decision not in REVIEW_DECISIONS or not reviewer or not reviewed_at:
+            raise RuntimeError(f"review is incomplete: {sample_id}")
+        reviews[sample_id] = {
+            "decision": decision,
+            "reviewer": reviewer,
+            "reviewedAt": reviewed_at,
+        }
+    missing = sorted(expected_ids - set(reviews))
+    if missing:
+        raise RuntimeError(f"review file is incomplete: missing={len(missing)}")
+    return reviews
+
+
+def apply_human_reviews(manifest: dict[str, Any], review_file: Path | None) -> dict[str, Any]:
+    if review_file is None:
+        return manifest
+    reviews = load_human_reviews(review_file, manifest)
+    reviewed_manifest = {**manifest, "samples": []}
+    disagreement_count = 0
+    for sample in manifest.get("samples") or []:
+        reviewed = dict(sample)
+        review = reviews[str(sample.get("sampleId") or "")]
+        reviewed["seedLabel"] = str(sample.get("label") or "")
+        reviewed["label"] = review["decision"]
+        reviewed["reviewedAt"] = review["reviewedAt"]
+        if reviewed["seedLabel"] != reviewed["label"]:
+            disagreement_count += 1
+        reviewed_manifest["samples"].append(reviewed)
+    reviewed_manifest.update({
+        "reviewStatus": "human_reviewed",
+        "reviewFile": review_file.name,
+        "reviewedSampleCount": len(reviews),
+        "reviewDisagreementCount": disagreement_count,
+        "labelPolicy": "independent human review overlay applied to a fixed source manifest",
+    })
+    return reviewed_manifest
+
+
 def load_or_prepare_corpus(corpus_dir: Path, refresh: bool) -> dict[str, Any]:
     manifest_path = corpus_dir / "manifest.json"
     if refresh or not manifest_path.exists():
-        return build_corpus_manifest(corpus_dir)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    for sample in manifest.get("samples", []):
-        image_path = corpus_dir / "images" / str(sample["localName"])
-        if not image_path.exists():
-            raise RuntimeError(f"corpus image missing: {image_path}")
-        digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
-        if digest != sample.get("sha256"):
-            raise RuntimeError(f"corpus checksum mismatch: {sample.get('sampleId')}")
+        manifest = build_corpus_manifest(corpus_dir)
+    else:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for sample in manifest.get("samples", []):
+            image_path = corpus_dir / "images" / str(sample["localName"])
+            if not image_path.exists():
+                raise RuntimeError(f"corpus image missing: {image_path}")
+            digest = hashlib.sha256(image_path.read_bytes()).hexdigest()
+            if digest != sample.get("sha256"):
+                raise RuntimeError(f"corpus checksum mismatch: {sample.get('sampleId')}")
+    write_review_queue(corpus_dir, manifest)
     return manifest
 
 
@@ -739,7 +839,11 @@ def write_report(
     warm_total_p95 = max((float(row.get("offscreen_total_ms_p95") or 0) for row in warm_rows), default=0)
     cached_rows = [row for row in summary_rows if row.get("record_type") == "performance" and row.get("phase") == "full-corpus-cache"]
     cache_hit_rate = max((float(row.get("cache_hit_rate") or 0) for row in cached_rows), default=0)
-    reviewed = manifest.get("reviewStatus") == "human_reviewed"
+    reviewed_count = int(manifest.get("reviewedSampleCount") or 0)
+    reviewed = (
+        manifest.get("reviewStatus") == "human_reviewed"
+        and reviewed_count == int(manifest.get("sampleCount") or 0)
+    )
     criteria = {
         "corpus_count_100": int(manifest.get("sampleCount") or 0) == 100,
         "labels_human_reviewed": reviewed,
@@ -770,6 +874,8 @@ def write_report(
         "## Acceptance",
         "",
     ]
+    if manifest.get("reviewStatus") == "human_reviewed":
+        lines.insert(13, f"- Human-reviewed samples: {reviewed_count}; seed-label disagreements: {int(manifest.get('reviewDisagreementCount') or 0)}")
     lines.extend(f"- [{'x' if passed else ' '}] `{name}`" for name, passed in criteria.items())
     lines.extend([
         "",
@@ -792,6 +898,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chrome-path", type=Path, default=None)
     parser.add_argument("--profile-root", type=Path, default=None)
     parser.add_argument("--refresh-corpus", action="store_true")
+    parser.add_argument(
+        "--review-file",
+        type=Path,
+        default=None,
+        help="Complete metadata-only human review JSON. Keeps image bytes in Desktop scratch.",
+    )
     parser.add_argument("--cold-runs", type=int, default=3)
     parser.add_argument("--warm-runs", type=int, default=3)
     parser.add_argument(
@@ -816,6 +928,7 @@ def main() -> int:
     args.output_dir = args.output_dir.resolve()
     args.corpus_dir = args.corpus_dir.resolve()
     args.extension_dir = args.extension_dir.resolve()
+    args.review_file = args.review_file.resolve() if args.review_file else None
     args.profile_root = (args.profile_root or args.corpus_dir.parent / "chrome-profiles").resolve()
     args.checkpoint = (args.checkpoint or args.output_dir / "nsfw-classifier-checkpoint.json").resolve()
     chrome_path = detect_chrome_path(args.chrome_path)
@@ -839,7 +952,8 @@ def main() -> int:
             worker.close()
             stop_process(process)
 
-    manifest = load_or_prepare_corpus(args.corpus_dir, args.refresh_corpus)
+    seed_manifest = load_or_prepare_corpus(args.corpus_dir, args.refresh_corpus)
+    manifest = apply_human_reviews(seed_manifest, args.review_file)
     samples = list(manifest.get("samples") or [])
     if len(samples) != 100:
         raise RuntimeError(f"expected 100 corpus samples, found {len(samples)}")
