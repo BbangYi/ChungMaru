@@ -2731,6 +2731,14 @@ function hasSuggestiveAdultMediaSignal(value) {
     MEDIA_SAFETY_SUGGESTIVE_ADULT_PATTERN.test(text);
 }
 
+function hasStrongBenignMediaSafetyCandidateContext(candidate) {
+  const text = normalizeText([
+    candidate?.visibleText,
+    candidate?.urlText
+  ].filter(Boolean).join(" "));
+  return Boolean(text) && MEDIA_SAFETY_BENIGN_ADULT_CONTEXT_PATTERN.test(text);
+}
+
 function hasRiskyThumbnailMediaSignal(value) {
   const text = normalizeText(String(value || ""));
   if (!text) {
@@ -3924,6 +3932,16 @@ function scheduleNsfwClassifierForCandidates(candidates, selected, pageContext, 
   let queuedSourceCount = 0;
 
   for (const candidate of sortedCandidates) {
+    const hasRiskDomain = hasMediaSafetyRiskDomainSignal(
+      candidate?.domain,
+      candidate?.linkUrl,
+      candidate?.sourceUrl
+    );
+    // Medical and educational cards may contain the word "adult" but are not
+    // adult content. A known risk domain still takes the normal classifier path.
+    if (!hasRiskDomain && hasStrongBenignMediaSafetyCandidateContext(candidate)) {
+      continue;
+    }
     const sourceUrl = getNsfwClassifierSource(candidate);
     if (!shouldQueueNsfwClassifierCandidate(candidate, sourceUrl)) {
       continue;

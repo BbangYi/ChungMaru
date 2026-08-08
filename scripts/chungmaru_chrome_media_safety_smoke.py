@@ -2137,6 +2137,8 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("log_on_clean should not hide clean fixtures")
     if medical_adult and (medical_adult["safe_hidden_count"] != 0 or medical_adult["false_hidden_count"] != 0):
       failures.append("log_on_medical_adult should not hide adult ADHD or medical information fixtures")
+    if medical_adult and medical_adult["classifier_batch_log_count"] != 0:
+      failures.append("log_on_medical_adult should not classify clear medical information fixtures")
     if sidebar_frame and sidebar_frame["frame_harmful_hidden_count"] < 1:
       failures.append("log_on_sidebar_frame should hide explicit visual media inside an iframe")
     if address_guide and address_guide["harmful_hidden_count"] < 6:
@@ -2318,6 +2320,7 @@ def main() -> int:
               "developer_log_enabled": True,
               "media_intervention_mode": args.media_intervention_mode,
               "media_safety_startup_gate_enabled": False,
+              "nsfw_classifier_test_override": "fixture",
           },
           {
               "case_id": "log_on_sidebar_frame",
