@@ -1807,26 +1807,46 @@ def run_desktop_mode(
         copy_source_archive_to_desktop(args, source_archive)
     pulled = False
     desktop_mode = "chrome-media-start" if mode == "chrome-media" else mode
+    if mode == "chrome-media":
+        expected_key = str(args.run_key or "")
+        try:
+            verify_desktop(args, mode=desktop_mode, require_source=True)
+        except Exception:
+            pull_desktop_fallback_state_with_retry(args, runner_home, attempts=1)
+            raise
+        # Task Scheduler writes the new status asynchronously after the
+        # bootstrap SSH command returns. Polling prevents an older status
+        # file from falsely failing the parent ledger.
+        deadline = time.monotonic() + 15
+        latest_status: dict[str, object] = {}
+        while time.monotonic() < deadline:
+            pull_desktop_fallback_state_with_retry(args, runner_home, attempts=1)
+            latest_status = read_status(chrome_media_status_path(runner_home))
+            if str(latest_status.get("runKey") or "") == expected_key:
+                state = str(latest_status.get("state") or "")
+                if state == "running":
+                    return "started"
+                if state == "ok":
+                    validate_desktop_artifact_set(runner_home, mode=mode, run_key_value=expected_key)
+                    return "completed"
+                if state == "failed":
+                    raise RuntimeError(
+                        "Desktop chrome-media task failed before reconciliation: "
+                        f"{latest_status.get('message') or 'unknown error'}"
+                    )
+            time.sleep(1)
+        raise RuntimeError(
+            "Desktop chrome-media detached start did not produce the expected status: "
+            f"expected={expected_key or '<none>'} actual={latest_status.get('runKey') or '<none>'} "
+            f"state={latest_status.get('state') or '<none>'}"
+        )
+
     try:
         verify_desktop(args, mode=desktop_mode, require_source=True)
     finally:
         pulled = pull_desktop_fallback_state_with_retry(args, runner_home)
     if not pulled:
         raise RuntimeError(f"Desktop {mode} completed without a recoverable artifact pull")
-
-    if mode == "chrome-media":
-        status = read_status(chrome_media_status_path(runner_home))
-        expected_key = str(args.run_key or "")
-        if (
-            str(status.get("state") or "") != "running"
-            or str(status.get("runKey") or "") != expected_key
-        ):
-            raise RuntimeError(
-                "Desktop chrome-media detached start did not produce the expected running status: "
-                f"expected={expected_key or '<none>'} actual={status.get('runKey') or '<none>'} "
-                f"state={status.get('state') or '<none>'}"
-            )
-        return "started"
 
     validate_desktop_artifact_set(runner_home, mode=mode, run_key_value=str(args.run_key or ""))
     return "completed"
