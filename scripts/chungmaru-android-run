@@ -2380,9 +2380,14 @@ def chrome_media_start_command(args: argparse.Namespace) -> int:
         print_kv("pid", existing_pid)
         print_kv("status_file", chrome_media_status_path(args.runner_home))
         return 0
+    # The job itself owns its artifact directory and rejects unmanaged files.
+    # Keep launcher output under runner status so creating this log cannot
+    # pre-populate the job's artifact root before chrome-media-job starts.
     launcher_log = (
-        managed_artifact_root(args.local_work_root, "chrome-media", key)
-        / "chrome-media-launcher.log"
+        args.runner_home
+        / "status"
+        / "chrome-media-launchers"
+        / f"{safe_run_key_segment(key)}.log"
     )
     launcher_log.parent.mkdir(parents=True, exist_ok=True)
     command = [
