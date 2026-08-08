@@ -536,7 +536,9 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
     ]
     if args.headless:
         command.insert(-1, "--headless=new")
-        command.insert(-1, "--disable-gpu")
+        command.insert(-1, "--enable-webgl")
+        command.insert(-1, "--use-angle=swiftshader")
+        command.insert(-1, "--ignore-gpu-blocklist")
     else:
         command.insert(-1, "--start-minimized")
     args.chrome_log.parent.mkdir(parents=True, exist_ok=True)

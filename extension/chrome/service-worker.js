@@ -118,6 +118,7 @@ let developerRuntimeLogEnabledCache = false;
 let developerRuntimeLogStateLoaded = false;
 let developerRuntimeLogStateInFlight = null;
 let nsfwOffscreenCreatePromise = null;
+let nsfwClassifierWarmupPromise = null;
 let nsfwClassifierTestOverride = "normal";
 let nsfwClassifierReadyLogSignature = "";
 const BACKEND_REQUEST_PRIORITY = [
@@ -4080,6 +4081,17 @@ function recordNsfwClassifierReady(response, source = "service-worker") {
 }
 
 async function warmNsfwClassifier(options = {}) {
+  if (nsfwClassifierWarmupPromise) {
+    return nsfwClassifierWarmupPromise;
+  }
+  nsfwClassifierWarmupPromise = warmNsfwClassifierOnce(options)
+    .finally(() => {
+      nsfwClassifierWarmupPromise = null;
+    });
+  return nsfwClassifierWarmupPromise;
+}
+
+async function warmNsfwClassifierOnce(options = {}) {
   const settings = options.settings || await getSettings();
   if (settings?.enabled === false || settings?.mediaSafetyEnabled !== true) {
     return { ok: true, status: "disabled", reason: "MEDIA_SAFETY_DISABLED" };
@@ -4219,6 +4231,11 @@ async function setNsfwClassifierTestOverride(message, sender) {
   }
   const requested = String(message?.mode || "normal").trim().toLowerCase();
   const mode = NSFW_CLASSIFIER_TEST_MODES.has(requested) ? requested : "normal";
+  // A startup warm-up and a test/backend switch cannot share the offscreen
+  // document concurrently. Let the first operation settle before switching.
+  if (nsfwClassifierWarmupPromise) {
+    await nsfwClassifierWarmupPromise.catch(() => {});
+  }
   nsfwClassifierTestOverride = mode;
   nsfwClassifierReadyLogSignature = "";
   if (mode === "off") {
