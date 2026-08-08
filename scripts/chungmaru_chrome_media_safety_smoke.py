@@ -985,6 +985,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedRemainingVisibleTileCount": max_log_metric(logs, "remainingVisibleTileCount"),
       "loggedLatestRemainingVisibleTileCount": latest_log_metric(logs, "remainingVisibleTileCount"),
       "loggedMissedVisibleTileCount": max_log_metric(logs, "missedVisibleTileCount"),
+      "loggedLatestMissedVisibleTileCount": latest_log_metric(logs, "missedVisibleTileCount"),
       "loggedFalseHiddenCount": max_log_metric(logs, "falseHiddenCount"),
       "loggedCollectMs": max_log_metric(logs, "collectMs"),
       "loggedCheapFilterMs": max_log_metric(logs, "cheapFilterMs"),
@@ -1243,7 +1244,15 @@ def build_result_row(
         "hidden_area_px": hidden_area_px,
         "viewport_coverage_pct": round(viewport_coverage_pct, 1),
         "remaining_visible_tile_count": remaining_visible_tile_count,
-        "missed_visible_tile_count": max(int_metric(summary.get("missedVisibleTileCount")), log_summary["loggedMissedVisibleTileCount"]),
+        # The scan response is allowed to precede an asynchronous classifier
+        # decision. Treat final DOM state and the latest batch summary as the
+        # outcome; retaining a historical maximum would turn a resolved miss
+        # into a false failure.
+        "missed_visible_tile_count": max(
+            max(0, harmful_total - harmful_hidden_count),
+            max(0, frame_harmful_total - frame_harmful_hidden_count),
+            log_summary["loggedLatestMissedVisibleTileCount"],
+        ),
         "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
         "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
         "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),

@@ -231,6 +231,8 @@ function normalizeRuntimeLogEvent(event) {
     classifierCandidateCount: Math.max(0, Math.round(Number(event?.classifierCandidateCount || 0))),
     classifierQueuedCount: Math.max(0, Math.round(Number(event?.classifierQueuedCount || 0))),
     classifierAppliedCount: Math.max(0, Math.round(Number(event?.classifierAppliedCount || 0))),
+    classifierResultCount: Math.max(0, Math.round(Number(event?.classifierResultCount || 0))),
+    classifierStaleDropCount: Math.max(0, Math.round(Number(event?.classifierStaleDropCount || 0))),
     cacheHitCount: Math.max(0, Math.round(Number(event?.cacheHitCount || 0))),
     blockedCount: Math.max(0, Math.round(Number(event?.blockedCount || 0))),
     benignCount: Math.max(0, Math.round(Number(event?.benignCount || 0))),

@@ -3718,6 +3718,9 @@ function emitNsfwClassifierBatchLog(response, metrics) {
     modelLoadMs: response?.modelLoadMs || 0,
     warmupMs: response?.warmupMs || 0,
     classifierCandidateCount: metrics.candidateCount,
+    classifierResultCount: metrics.resultCount,
+    classifierAppliedCount: metrics.appliedCount,
+    classifierStaleDropCount: metrics.staleDropCount,
     cacheHitCount: response?.cacheHitCount || 0,
     blockedCount: metrics.blockedCount,
     benignCount: metrics.benignCount,
@@ -3729,6 +3732,7 @@ function emitNsfwClassifierBatchLog(response, metrics) {
     queueWaitMs: metrics.queueWaitMs,
     classifierDecisionMs: metrics.classifierDecisionMs,
     domAddedToActionMs: metrics.domAddedToActionMs,
+    missedVisibleTileCount: metrics.missedVisibleTileCount,
     modelLoadCount: response?.modelLoadCount || 0,
     tensorCount: response?.tensorCount || 0,
     errorCode: metrics.errorCode || "",
@@ -3759,6 +3763,9 @@ function applyNsfwClassifierResponse(records, response, requestStartedAt) {
   );
   const metrics = {
     candidateCount: records.length,
+    resultCount: resultsByKey.size,
+    appliedCount: 0,
+    staleDropCount: 0,
     blockedCount: 0,
     benignCount: 0,
     ambiguousCount: 0,
@@ -3787,6 +3794,7 @@ function applyNsfwClassifierResponse(records, response, requestStartedAt) {
     let appliedForRecord = false;
     for (const entry of record.entries) {
       if (!isNsfwClassifierEntryCurrent(entry)) {
+        metrics.staleDropCount += 1;
         continue;
       }
       const decision = globalThis.ChungmaruNsfwPolicy?.evaluate?.(
@@ -3809,6 +3817,7 @@ function applyNsfwClassifierResponse(records, response, requestStartedAt) {
         setNsfwClassifierElementState(entry.candidate.target, entry.sourceUrl, "blocked");
         if (applied.applied) {
           appliedForRecord = true;
+          metrics.appliedCount += 1;
           metrics.domAddedToActionMs = Math.max(
             metrics.domAddedToActionMs,
             performance.now() - Number(entry.candidate.firstSeenAt || performance.now())
@@ -3834,6 +3843,9 @@ function applyNsfwClassifierResponse(records, response, requestStartedAt) {
   metrics.queueWaitMs = Math.round(Math.max(0, metrics.queueWaitMs));
   metrics.classifierDecisionMs = Math.round(performance.now() - requestStartedAt);
   metrics.domAddedToActionMs = Math.round(metrics.domAddedToActionMs);
+  // The cheap scan may have observed this marker before the asynchronous
+  // classifier returned. Record the post-decision value, not that transient.
+  metrics.missedVisibleTileCount = countKnownHarmfulVisibleMediaMisses();
   emitNsfwClassifierBatchLog(response, metrics);
 }
 
