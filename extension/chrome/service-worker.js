@@ -4104,10 +4104,31 @@ async function warmNsfwClassifier(options = {}) {
 async function syncNsfwClassifierLifecycle(settings) {
   const activeSettings = settings || await getSettings();
   if (activeSettings?.enabled !== false && activeSettings?.mediaSafetyEnabled === true && nsfwClassifierTestOverride !== "off") {
-    // Keep the GPU/offscreen document idle until a visible unresolved image
-    // actually needs classification. The content scripts request warm-up only
-    // after candidate budgeting and cheap filtering.
-    return { ok: true, status: "idle-until-visible-candidate" };
+    // Loading the bundled model is the only multi-second part of this path.
+    // Do it at browser startup/feature enablement, before a page exposes a
+    // visible unresolved image. A failure remains non-blocking: cheap filters
+    // continue to protect known risky media while the visual path cools down.
+    try {
+      return await warmNsfwClassifier({
+        settings: activeSettings,
+        source: "service-worker-lifecycle"
+      });
+    } catch (error) {
+      const errorCode = String(error?.errorCode || error?.message || "NSFW_LIFECYCLE_FAILED").slice(0, 80);
+      recordRuntimeLogEvent({
+        type: "media-safety-classifier-error",
+        ok: false,
+        status: "startup-warmup-failed",
+        source: "service-worker-lifecycle",
+        errorCode,
+        reason: "NSFW classifier startup warm-up failed; cheap media filter remains active"
+      });
+      return {
+        ok: false,
+        status: "degraded-cheap-filter-only",
+        errorCode
+      };
+    }
   }
   await closeNsfwOffscreenDocument();
   return { ok: true, status: "closed" };
