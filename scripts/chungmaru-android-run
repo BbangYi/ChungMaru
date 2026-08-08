@@ -938,6 +938,9 @@ def run_local_mode(
                 "--headless",
                 "--clean-profile",
                 "--summary-only",
+                "--composite-profile",
+                "--composite-repeat", "1",
+                "--composite-classifier-backend", "cpu",
             ],
             cwd=REPO_ROOT,
             env=env,
@@ -1940,6 +1943,22 @@ def collect_known_artifacts(
                 (
                     chrome_behavior_root / "media-safety-smoke.jsonl",
                     current / "chrome-media" / "media-safety-smoke.jsonl",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-composite.csv",
+                    current / "chrome-media" / "media-safety-composite.csv",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-composite.jsonl",
+                    current / "chrome-media" / "media-safety-composite.jsonl",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-composite-summary.csv",
+                    current / "chrome-media" / "media-safety-composite-summary.csv",
+                ),
+                (
+                    chrome_behavior_root / "media-safety-composite-report.md",
+                    current / "chrome-media" / "media-safety-composite-report.md",
                 ),
             ]
         )
