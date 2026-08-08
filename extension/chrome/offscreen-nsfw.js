@@ -169,6 +169,25 @@ async function warmNsfwShape(batchSize) {
   return Math.round(performance.now() - startedAt);
 }
 
+async function loadNsfwModelByFormat(modelUrl) {
+  let format = "";
+  try {
+    const response = await fetch(modelUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw createNsfwError("NSFW_MODEL_MANIFEST_FETCH_FAILED", `Model manifest returned ${response.status}`);
+    }
+    format = String((await response.json())?.format || "").trim().toLowerCase();
+  } catch (error) {
+    if (error?.errorCode) throw error;
+    throw createNsfwError("NSFW_MODEL_MANIFEST_FETCH_FAILED", String(error?.message || error));
+  }
+
+  if (format === "graph-model") {
+    return tf.loadGraphModel(modelUrl);
+  }
+  return tf.loadLayersModel(modelUrl);
+}
+
 async function loadNsfwModel() {
   if (nsfwModel) return getNsfwStatus();
   if (nsfwModelPromise) return nsfwModelPromise;
@@ -176,7 +195,7 @@ async function loadNsfwModel() {
   nsfwModelPromise = (async () => {
     const loadStartedAt = performance.now();
     await selectNsfwBackend();
-    nsfwModel = await tf.loadLayersModel(NSFW_MODEL_URL);
+    nsfwModel = await loadNsfwModelByFormat(NSFW_MODEL_URL);
     nsfwModelLoadMs = Math.round(performance.now() - loadStartedAt);
     nsfwModelLoadCount += 1;
 

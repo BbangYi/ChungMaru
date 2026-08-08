@@ -14,6 +14,13 @@ assert.equal(contextualSexy.verdict, "block");
 const contextFreeSexy = policy.evaluate({ Porn: 0.03, Hentai: 0.01, Sexy: 0.82 }, false);
 assert.equal(contextFreeSexy.verdict, "ambiguous");
 
+const contextualDrawing = policy.evaluate({ Drawing: 0.41, Neutral: 0.55, Sexy: 0.04 }, true, true);
+assert.equal(contextualDrawing.verdict, "block");
+assert.equal(contextualDrawing.reason, "nsfw drawing plus explicit adult context");
+
+const contextOnlyDrawing = policy.evaluate({ Drawing: 0.41, Neutral: 0.55, Sexy: 0.04 }, true, false);
+assert.equal(contextOnlyDrawing.verdict, "benign");
+
 const benign = policy.evaluate({ Neutral: 0.95, Porn: 0.01, Hentai: 0.01, Sexy: 0.02 }, false);
 assert.equal(benign.verdict, "benign");
 

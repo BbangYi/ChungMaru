@@ -3,6 +3,7 @@
     explicitBlock: 0.65,
     contextualExplicitBlock: 0.45,
     contextualSexyBlock: 0.8,
+    strongContextDrawingBlock: 0.4,
     ambiguousExplicit: 0.35,
     ambiguousSexy: 0.65
   });
@@ -23,7 +24,7 @@
     };
   }
 
-  function evaluate(scores, adultContext = false) {
+  function evaluate(scores, adultContext = false, strongAdultContext = false) {
     const normalized = normalizeScores(scores);
     const explicitScore = Math.min(1, normalized.Porn + normalized.Hentai);
     if (explicitScore >= THRESHOLDS.explicitBlock) {
@@ -46,6 +47,14 @@
       return {
         verdict: "block",
         reason: "nsfw suggestive visual plus adult context",
+        explicitScore,
+        sexyScore: normalized.Sexy
+      };
+    }
+    if (strongAdultContext && normalized.Drawing >= THRESHOLDS.strongContextDrawingBlock) {
+      return {
+        verdict: "block",
+        reason: "nsfw drawing plus explicit adult context",
         explicitScore,
         sexyScore: normalized.Sexy
       };

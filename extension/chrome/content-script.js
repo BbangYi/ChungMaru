@@ -3530,18 +3530,22 @@ function getNsfwClassifierSource(candidate) {
 }
 
 function hasNsfwAdultContext(candidate, pageContext = null) {
-  const localContext = normalizeText([
-    candidate?.visibleText,
-    candidate?.urlText,
-    candidate?.contextText
-  ].filter(Boolean).join(" "));
-  if (hasExplicitAdultMediaSignal(localContext)) {
+  if (hasStrongNsfwAdultCandidateContext(candidate)) {
     return true;
   }
   return (
     pageContext?.strictMediaMode === true &&
     ["adult", "mixed"].includes(String(pageContext?.category || ""))
   );
+}
+
+function hasStrongNsfwAdultCandidateContext(candidate) {
+  const localContext = normalizeText([
+    candidate?.visibleText,
+    candidate?.urlText,
+    candidate?.contextText
+  ].filter(Boolean).join(" "));
+  return hasExplicitAdultMediaSignal(localContext);
 }
 
 function invalidateNsfwClassifierContext(options = {}) {
@@ -3780,7 +3784,11 @@ function applyNsfwClassifierResponse(records, response, requestStartedAt) {
       if (!isNsfwClassifierEntryCurrent(entry)) {
         continue;
       }
-      const decision = globalThis.ChungmaruNsfwPolicy?.evaluate?.(result.scores, entry.adultContext);
+      const decision = globalThis.ChungmaruNsfwPolicy?.evaluate?.(
+        result.scores,
+        entry.adultContext,
+        entry.strongAdultContext
+      );
       const verdict = decision?.verdict || "ambiguous";
       if (verdict === "block") {
         recordVerdict = "block";
@@ -3951,6 +3959,7 @@ function scheduleNsfwClassifierForCandidates(candidates, selected, pageContext, 
       candidate,
       sourceUrl,
       adultContext: hasNsfwAdultContext(candidate, pageContext),
+      strongAdultContext: hasStrongNsfwAdultCandidateContext(candidate),
       generation: nsfwClassifierContextGeneration,
       pageHref: String(location.href || "")
     };
