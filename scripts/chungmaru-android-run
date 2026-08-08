@@ -987,7 +987,9 @@ def run_local_mode(
                 "--output-dir", str(classifier_output),
                 "--cold-runs", "3",
                 "--warm-runs", "3",
-                "--backend", "normal",
+                # Chrome media acceptance is CPU-first. The benchmark must not
+                # silently become a SwiftShader/WebGL result on Desktop.
+                "--backend", "cpu",
             ],
             cwd=REPO_ROOT,
             env=env,
