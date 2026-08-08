@@ -1710,6 +1710,21 @@ Remove-Item -Path $StagePath -Recurse -Force -ErrorAction SilentlyContinue
         )
 
 
+def pull_desktop_fallback_state_with_retry(
+    args: argparse.Namespace,
+    runner_home: Path,
+    *,
+    attempts: int = 3,
+) -> bool:
+    """Recover Desktop-local artifacts across transient SSH reset failures."""
+    for attempt in range(max(1, attempts)):
+        if pull_desktop_fallback_state(args, runner_home):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(2)
+    return False
+
+
 def verify_desktop(
     args: argparse.Namespace,
     *,
@@ -1738,7 +1753,7 @@ def run_desktop_mode(
     try:
         verify_desktop(args, mode=mode, require_source=True)
     finally:
-        pull_desktop_fallback_state(args, runner_home)
+        pull_desktop_fallback_state_with_retry(args, runner_home)
 
 
 def clear_known_artifacts(path: Path) -> None:
@@ -2334,7 +2349,7 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
         # Desktop-local runs do not write directly to the shared SSD. A dropped
         # SSH session can therefore leave a completed remote run invisible
         # until reconciliation explicitly pulls its local runner state.
-        pulled_desktop_state = pull_desktop_fallback_state(args, args.runner_home)
+        pulled_desktop_state = pull_desktop_fallback_state_with_retry(args, args.runner_home)
     status_path = chrome_media_status_path(args.runner_home)
     status = read_status(status_path)
     if not status:
