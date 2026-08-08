@@ -97,7 +97,7 @@ const NSFW_OFFSCREEN_TARGET = "chungmaru-nsfw-offscreen";
 // at the message boundary as well.
 const NSFW_CLASSIFIER_BATCH_LIMIT = 2;
 const NSFW_CLASSIFIER_MAX_DATA_URL_CHARS = 1024 * 1024;
-const NSFW_CLASSIFIER_TEST_MODES = new Set(["normal", "off", "fixture", "cpu"]);
+const NSFW_CLASSIFIER_TEST_MODES = new Set(["normal", "off", "fixture", "cpu", "wasm"]);
 const WELLBEING_USAGE_ALARM_NAME = "wellbeing-active-usage-sample";
 const WELLBEING_USAGE_ALARM_PERIOD_MINUTES = 1;
 const BACKEND_QUEUE_LIMIT_BY_MODE = new Map([

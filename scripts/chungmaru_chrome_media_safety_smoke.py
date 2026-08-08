@@ -696,7 +696,7 @@ def get_runtime_logs(worker: CdpWebSocket) -> list[dict[str, Any]]:
 
 
 def set_nsfw_classifier_test_override(worker: CdpWebSocket, mode: str) -> dict[str, Any]:
-    normalized = mode if mode in {"normal", "off", "fixture", "cpu"} else "normal"
+    normalized = mode if mode in {"normal", "off", "fixture", "cpu", "wasm"} else "normal"
     expression = (
         "(async () => setNsfwClassifierTestOverride("
         f"{json.dumps({'type': 'SET_NSFW_CLASSIFIER_TEST_OVERRIDE', 'mode': normalized})},"
@@ -1131,7 +1131,7 @@ def origin_and_path_prefix(url: str) -> tuple[str, str]:
 
 def classifier_execution_mode(case: dict[str, Any]) -> str:
     override = str(case.get("nsfw_classifier_test_override") or "normal").strip().lower()
-    if override in {"normal", "cpu"}:
+    if override in {"normal", "cpu", "wasm"}:
       return "real-model"
     if override == "fixture":
       return "controlled-override"

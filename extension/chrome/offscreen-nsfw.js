@@ -1,6 +1,10 @@
 const NSFW_OFFSCREEN_TARGET = "chungmaru-nsfw-offscreen";
 const NSFW_MODEL_VERSION = "nsfwjs-mobilenet-v2@v4.2.1";
 const NSFW_MODEL_URL = chrome.runtime.getURL("vendor/nsfw/model/model.json");
+const NSFW_WASM_ASSET_URLS = {
+  "tfjs-backend-wasm.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm.wasm"),
+  "tfjs-backend-wasm-simd.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm-simd.wasm")
+};
 const NSFW_INPUT_SIZE = 224;
 const NSFW_CLASS_NAMES = ["Drawing", "Hentai", "Neutral", "Porn", "Sexy"];
 const NSFW_MAX_BATCH_SIZE = 4;
@@ -135,13 +139,27 @@ async function selectNsfwBackend() {
     throw createNsfwError("NSFW_TFJS_MISSING", "TensorFlow.js runtime is unavailable");
   }
   tf.enableProdMode();
-  const preferred = nsfwForcedBackend || "webgl";
+  // WASM SIMD is CPU-only and avoids the extension competing with page WebGL.
+  // The non-SIMD binary stays bundled as the runtime fallback for older CPUs.
+  const preferred = nsfwForcedBackend || "wasm";
   try {
+    if (preferred === "wasm") {
+      if (typeof tf.wasm?.setWasmPaths !== "function") {
+        throw createNsfwError("NSFW_WASM_RUNTIME_MISSING", "TensorFlow.js WASM runtime is unavailable");
+      }
+      tf.wasm.setWasmPaths(NSFW_WASM_ASSET_URLS);
+    }
     const selected = await tf.setBackend(preferred);
     if (!selected) throw new Error(`backend rejected: ${preferred}`);
     await tf.ready();
   } catch (error) {
     if (preferred === "cpu") throw error;
+    if (preferred === "wasm") {
+      throw createNsfwError(
+        "NSFW_WASM_UNAVAILABLE",
+        `WASM classifier backend is unavailable: ${String(error?.message || error)}`
+      );
+    }
     throw createNsfwError(
       "NSFW_WEBGL_UNAVAILABLE",
       `WebGL backend is unavailable: ${String(error?.message || error)}`
@@ -519,8 +537,8 @@ function enqueueNsfwBatch(message) {
 }
 
 async function setNsfwTestOverride(mode) {
-  const normalized = ["normal", "off", "fixture", "cpu"].includes(mode) ? mode : "normal";
-  const nextForcedBackend = normalized === "cpu" ? "cpu" : "";
+  const normalized = ["normal", "off", "fixture", "cpu", "wasm"].includes(mode) ? mode : "normal";
+  const nextForcedBackend = normalized === "cpu" || normalized === "wasm" ? normalized : "";
   const backendChanged = nextForcedBackend !== nsfwForcedBackend;
   nsfwTestOverride = normalized;
   nsfwForcedBackend = nextForcedBackend;

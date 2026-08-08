@@ -9,6 +9,30 @@
       "version": "4.22.0"
     },
     {
+      "bytes": 144402,
+      "component": "TensorFlow.js WASM ES2017 backend",
+      "path": "wasm/tf-backend-wasm.min.js",
+      "sha256": "bdd8c3c1fb0b37601bc2a122efa20b8d78e2936d104b03a44591be4188c63f65",
+      "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.es2017.min.js",
+      "version": "4.22.0"
+    },
+    {
+      "bytes": 311123,
+      "component": "TensorFlow.js WASM baseline binary",
+      "path": "wasm/tfjs-backend-wasm.wasm",
+      "sha256": "70a5d516060464e5269f01c74bac1772d6b8ab6cb612acf16b5cdaf61f78d892",
+      "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tfjs-backend-wasm.wasm",
+      "version": "4.22.0"
+    },
+    {
+      "bytes": 424594,
+      "component": "TensorFlow.js WASM SIMD binary",
+      "path": "wasm/tfjs-backend-wasm-simd.wasm",
+      "sha256": "77ebb28a6d34f371dbbf2086b7f2de8994acd8ea5a3cf1fa24d2c26c840cac7b",
+      "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tfjs-backend-wasm-simd.wasm",
+      "version": "4.22.0"
+    },
+    {
       "bytes": 128945,
       "component": "NSFWJS MobileNetV2 model",
       "path": "model/model.json",

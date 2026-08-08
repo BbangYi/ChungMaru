@@ -916,9 +916,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-only", action="store_true")
     parser.add_argument(
         "--backend",
-        choices=["normal", "cpu"],
+        choices=["normal", "cpu", "wasm"],
         default="normal",
-        help="Benchmark-only TFJS backend selection. normal uses WebGL with headless SwiftShader; cpu is a reference run.",
+        help="Benchmark-only TFJS backend selection. normal uses WebGL with headless SwiftShader; cpu is the direct TFJS reference and wasm is the CPU-only product target.",
     )
     return parser.parse_args()
 

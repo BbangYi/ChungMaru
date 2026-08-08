@@ -967,7 +967,7 @@ def run_local_mode(
             "--summary-only",
             "--composite-profile",
             "--composite-repeat", "1",
-            "--composite-classifier-backend", "cpu",
+            "--composite-classifier-backend", "wasm",
         ]
         run_streamed_command(
             composite_command,
@@ -987,9 +987,9 @@ def run_local_mode(
                 "--output-dir", str(classifier_output),
                 "--cold-runs", "3",
                 "--warm-runs", "3",
-                # Chrome media acceptance is CPU-first. The benchmark must not
-                # silently become a SwiftShader/WebGL result on Desktop.
-                "--backend", "cpu",
+                # Chrome media acceptance is CPU-only. WASM is the product
+                # target; the direct TFJS CPU result remains a reference run.
+                "--backend", "wasm",
             ],
             cwd=REPO_ROOT,
             env=env,
