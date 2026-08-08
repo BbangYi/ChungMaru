@@ -926,25 +926,47 @@ def run_local_mode(
         if not chrome_path:
             raise RuntimeError("Chrome for Testing path was not provided by the runner bootstrap")
         behavior_output = local_artifacts / "behavior"
+        smoke_command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "chungmaru_chrome_media_safety_smoke.py"),
+            "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
+            "--chrome-path", chrome_path,
+            "--profile-dir", str(local_work_root / "profiles" / f"chrome-media-smoke-{safe_run_key_segment(run_key_value)}"),
+            "--chrome-log", str(local_artifacts / "chrome-media-smoke.chrome.log"),
+            "--output-dir", str(behavior_output),
+            "--headless",
+            "--clean-profile",
+            "--summary-only",
+        ]
+        # Keep the behavior acceptance suite separate from the composite
+        # traversal profile. The latter alone does not produce the harmful /
+        # clean / late-load fixture evidence required by the media gate.
         run_streamed_command(
-            [
-                sys.executable,
-                str(REPO_ROOT / "scripts" / "chungmaru_chrome_media_safety_smoke.py"),
-                "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
-                "--chrome-path", chrome_path,
-                "--profile-dir", str(local_work_root / "profiles" / f"chrome-media-smoke-{safe_run_key_segment(run_key_value)}"),
-                "--chrome-log", str(local_artifacts / "chrome-media-smoke.chrome.log"),
-                "--output-dir", str(behavior_output),
-                "--headless",
-                "--clean-profile",
-                "--summary-only",
-                "--composite-profile",
-                "--composite-repeat", "1",
-                "--composite-classifier-backend", "cpu",
-            ],
+            smoke_command,
             cwd=REPO_ROOT,
             env=env,
             log_path=local_artifacts / "chrome-media-smoke.log",
+        )
+        composite_command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "chungmaru_chrome_media_safety_smoke.py"),
+            "--extension-dir", str(REPO_ROOT / "extension" / "chrome"),
+            "--chrome-path", chrome_path,
+            "--profile-dir", str(local_work_root / "profiles" / f"chrome-media-composite-{safe_run_key_segment(run_key_value)}"),
+            "--chrome-log", str(local_artifacts / "chrome-media-composite.chrome.log"),
+            "--output-dir", str(behavior_output),
+            "--headless",
+            "--clean-profile",
+            "--summary-only",
+            "--composite-profile",
+            "--composite-repeat", "1",
+            "--composite-classifier-backend", "cpu",
+        ]
+        run_streamed_command(
+            composite_command,
+            cwd=REPO_ROOT,
+            env=env,
+            log_path=local_artifacts / "chrome-media-composite.log",
         )
         classifier_output = local_artifacts / "nsfw-classifier"
         run_streamed_command(
@@ -1995,6 +2017,14 @@ def collect_known_artifacts(
                     current / "chrome-media" / "chrome-media-smoke.chrome.log",
                 ),
                 (
+                    chrome_media_root / "chrome-media-composite.log",
+                    current / "chrome-media" / "chrome-media-composite.log",
+                ),
+                (
+                    chrome_media_root / "chrome-media-composite.chrome.log",
+                    current / "chrome-media" / "chrome-media-composite.chrome.log",
+                ),
+                (
                     classifier_root / "nsfw-classifier-raw.csv",
                     current / "chrome-media" / "nsfw-classifier-raw.csv",
                 ),
@@ -2573,10 +2603,12 @@ def chrome_media_status_command(args: argparse.Namespace) -> int:
         chrome_media_reconcile_command(args)
         status = read_status(chrome_media_status_path(args.runner_home))
         pid = int(status.get("pid") or 0)
+    is_desktop_status = args.executor == "desktop"
     print(json.dumps(
         {
             **status,
-            "pidRunning": pid_is_running(pid),
+            "pidRunning": None if is_desktop_status else pid_is_running(pid),
+            "pidCheck": "remote-status" if is_desktop_status else "local-process",
             "statusFile": str(chrome_media_status_path(args.runner_home)),
         },
         ensure_ascii=False,
