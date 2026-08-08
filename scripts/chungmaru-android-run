@@ -1117,7 +1117,7 @@ if ($Mode -or $RequireSource) {{
   }}
 }}
 
-$RequiresAndroid = $Mode -ne "chrome-media"
+$RequiresAndroid = $Mode -notin @("chrome-media", "chrome-media-start")
 $PythonCommand = Get-Command python -ErrorAction SilentlyContinue
 $PythonArgs = @()
 if (!$PythonCommand) {{
@@ -1747,20 +1747,37 @@ def run_desktop_mode(
     mode: str,
     runner_home: Path,
     source_archive: Path | None = None,
-) -> None:
+) -> str:
     wake_desktop(args)
     if not wait_for_ssh(args, args.desktop_ssh, timeout_seconds=args.ssh_wait):
         raise RuntimeError(f"desktop SSH did not become ready: {args.desktop_ssh}")
     if source_archive is not None:
         copy_source_archive_to_desktop(args, source_archive)
     pulled = False
+    desktop_mode = "chrome-media-start" if mode == "chrome-media" else mode
     try:
-        verify_desktop(args, mode=mode, require_source=True)
+        verify_desktop(args, mode=desktop_mode, require_source=True)
     finally:
         pulled = pull_desktop_fallback_state_with_retry(args, runner_home)
     if not pulled:
         raise RuntimeError(f"Desktop {mode} completed without a recoverable artifact pull")
+
+    if mode == "chrome-media":
+        status = read_status(chrome_media_status_path(runner_home))
+        expected_key = str(args.run_key or "")
+        if (
+            str(status.get("state") or "") != "running"
+            or str(status.get("runKey") or "") != expected_key
+        ):
+            raise RuntimeError(
+                "Desktop chrome-media detached start did not produce the expected running status: "
+                f"expected={expected_key or '<none>'} actual={status.get('runKey') or '<none>'} "
+                f"state={status.get('state') or '<none>'}"
+            )
+        return "started"
+
     validate_desktop_artifact_set(runner_home, mode=mode, run_key_value=str(args.run_key or ""))
+    return "completed"
 
 
 def validate_desktop_artifact_set(runner_home: Path, *, mode: str, run_key_value: str) -> None:
@@ -2214,8 +2231,9 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
                 mode=mode,
             )
             add_metric(conn, run_id, "source_dir", source_dir)
+        desktop_state = "completed"
         if args.executor == "desktop":
-            run_desktop_mode(args, mode, runner_home, source_archive=source_dir)
+            desktop_state = run_desktop_mode(args, mode, runner_home, source_archive=source_dir)
         else:
             run_local_mode(mode, runner_home, args.local_work_root, run_key_value=key)
         if args.collect_after and args.executor != "desktop":
@@ -2227,6 +2245,28 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
             )
             add_metric(conn, run_id, "collected_artifacts", copied)
         duration_ms = int((time.monotonic() - started) * 1000)
+        if desktop_state == "started":
+            update_run(
+                conn,
+                run_id,
+                status="running",
+                duration_ms=duration_ms,
+                summary="chrome-media detached job started on Desktop",
+            )
+            add_event(conn, run_id, "info", "chrome-media detached job started on Desktop")
+            export_runs_csv(conn, runner_home)
+            write_runner_status(
+                runner_home,
+                state="running",
+                message="chrome-media detached job started on Desktop",
+                command=mode,
+                extra={"runKey": key, "durationMs": duration_ms, "executor": args.executor},
+            )
+            print_kv("run_key", key)
+            print_kv("status", "running")
+            print_kv("duration_ms", duration_ms)
+            print_kv("ledger", runner_home / "chungmaru-runner.sqlite")
+            return 0
         update_run(conn, run_id, status="ok", duration_ms=duration_ms)
         export_runs_csv(conn, runner_home)
         mirror_current_to_latest(runner_home)
@@ -2420,7 +2460,7 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
             status = read_status(status_path)
     pid = int(status.get("pid") or 0)
     state = str(status.get("state") or "")
-    if state == "running" and pid and not pid_is_running(pid):
+    if args.executor != "desktop" and state == "running" and pid and not pid_is_running(pid):
         write_chrome_media_status(
             args.runner_home,
             state="stale",
@@ -2492,7 +2532,7 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
 def chrome_media_status_command(args: argparse.Namespace) -> int:
     status = read_status(chrome_media_status_path(args.runner_home))
     pid = int(status.get("pid") or 0)
-    if str(status.get("state") or "") == "running" and pid and not pid_is_running(pid):
+    if args.executor != "desktop" and str(status.get("state") or "") == "running" and pid and not pid_is_running(pid):
         chrome_media_reconcile_command(args)
         status = read_status(chrome_media_status_path(args.runner_home))
         pid = int(status.get("pid") or 0)
