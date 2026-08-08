@@ -514,6 +514,22 @@ def worker_call(worker: CdpWebSocket, function_name: str, *args: Any, timeout_s:
     return value
 
 
+def warm_classifier(worker: CdpWebSocket, *, timeout_s: float = 45) -> dict[str, Any]:
+    """Exercise the extension's public warm-up message contract.
+
+    Calling the internal service-worker helper directly hides the offscreen
+    failure reason when a Promise rejects through CDP. The product path uses
+    this message, so it is also the useful benchmark/diagnostic boundary.
+    """
+    value = worker.evaluate(
+        "(async () => chrome.runtime.sendMessage({type:'WARMUP_NSFW_CLASSIFIER'}))()",
+        timeout_s=timeout_s,
+    )
+    if not isinstance(value, dict):
+        raise RuntimeError(f"unexpected WARMUP_NSFW_CLASSIFIER response: {value!r}")
+    return value
+
+
 def configure_worker(worker: CdpWebSocket, backend: str) -> None:
     settings = {
         "enabled": True,
@@ -945,7 +961,7 @@ def main() -> int:
             args.backend,
         )
         try:
-            warmup = worker_call(worker, "warmNsfwClassifier", {"source": "benchmark-warmup"}, timeout_s=45)
+            warmup = warm_classifier(worker)
             print(json.dumps({"ok": bool(warmup.get("ok")), "warmup": warmup}, ensure_ascii=False, indent=2))
             return 0 if warmup.get("ok") else 1
         finally:
@@ -999,7 +1015,7 @@ def main() -> int:
             )
             try:
                 started = time.perf_counter()
-                warmup = worker_call(worker, "warmNsfwClassifier", {"source": "benchmark-cold"}, timeout_s=45)
+                warmup = warm_classifier(worker)
                 cold_rows.append({
                     "run_index": cold_index,
                     "runtime_mode": RUNTIME_MODE,
@@ -1028,7 +1044,7 @@ def main() -> int:
             args.backend,
         )
         try:
-            warmup = worker_call(worker, "warmNsfwClassifier", {"source": "benchmark-warm"}, timeout_s=45)
+            warmup = warm_classifier(worker)
             tensor_baseline = int(warmup.get("tensorCount") or 0)
             representative = [samples[index] for index in range(0, len(samples), max(1, len(samples) // 12))][:12]
             for batch_size in (1, 2):
