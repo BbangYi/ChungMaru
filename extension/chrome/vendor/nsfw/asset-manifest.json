@@ -33,6 +33,14 @@
       "version": "4.22.0"
     },
     {
+      "bytes": 435643,
+      "component": "TensorFlow.js WASM threaded SIMD compatibility binary",
+      "path": "wasm/tfjs-backend-wasm-threaded-simd.wasm",
+      "sha256": "c052228d4bef185c27bbe59a9e029570c78bbb9f08b3cb46b597851650373de2",
+      "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tfjs-backend-wasm-threaded-simd.wasm",
+      "version": "4.22.0"
+    },
+    {
       "bytes": 128945,
       "component": "NSFWJS MobileNetV2 model",
       "path": "model/model.json",

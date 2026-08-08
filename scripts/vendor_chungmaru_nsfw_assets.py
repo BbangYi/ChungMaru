@@ -47,6 +47,14 @@ ASSETS = (
         "component": "TensorFlow.js WASM SIMD binary",
     },
     {
+        "path": "wasm/tfjs-backend-wasm-threaded-simd.wasm",
+        "source_name": "tfjs-backend-wasm-threaded-simd.wasm",
+        "url": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tfjs-backend-wasm-threaded-simd.wasm",
+        "sha256": "c052228d4bef185c27bbe59a9e029570c78bbb9f08b3cb46b597851650373de2",
+        "version": "4.22.0",
+        "component": "TensorFlow.js WASM threaded SIMD compatibility binary",
+    },
+    {
         "path": "model/model.json",
         "source_name": "chungmaru-nsfw-model.json",
         "url": "https://raw.githubusercontent.com/infinitered/nsfwjs/v4.2.1/models/mobilenet_v2/model.json",

@@ -3,7 +3,8 @@ const NSFW_MODEL_VERSION = "nsfwjs-mobilenet-v2@v4.2.1";
 const NSFW_MODEL_URL = chrome.runtime.getURL("vendor/nsfw/model/model.json");
 const NSFW_WASM_ASSET_URLS = {
   "tfjs-backend-wasm.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm.wasm"),
-  "tfjs-backend-wasm-simd.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm-simd.wasm")
+  "tfjs-backend-wasm-simd.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm-simd.wasm"),
+  "tfjs-backend-wasm-threaded-simd.wasm": chrome.runtime.getURL("vendor/nsfw/wasm/tfjs-backend-wasm-threaded-simd.wasm")
 };
 const NSFW_INPUT_SIZE = 224;
 const NSFW_CLASS_NAMES = ["Drawing", "Hentai", "Neutral", "Porn", "Sexy"];
