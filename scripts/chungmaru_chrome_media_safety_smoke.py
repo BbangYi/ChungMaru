@@ -1012,19 +1012,20 @@ def summarize_classifier_logs(logs: list[dict[str, Any]]) -> dict[str, Any]:
         item for item in logs
         if str(item.get("type") or "").startswith("media-safety-classifier-")
     ]
+    frame_error_logs = [item for item in logs if item.get("type") == "media-safety-frame-error"]
     batch_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-batch"]
     error_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-error"]
     ready_logs = [item for item in classifier_logs if item.get("type") == "media-safety-classifier-ready"]
     error_codes = sorted({
         str(item.get("errorCode") or "").strip()[:80]
-        for item in error_logs
+        for item in [*error_logs, *frame_error_logs]
         if str(item.get("errorCode") or "").strip()
     })
     return {
         "classifier_log_count": len(classifier_logs),
         "classifier_ready_log_count": len(ready_logs),
         "classifier_batch_log_count": len(batch_logs),
-        "classifier_error_log_count": len(error_logs),
+        "classifier_error_log_count": len(error_logs) + len(frame_error_logs),
         "classifier_error_codes": ",".join(error_codes),
         "classifier_candidate_count": sum_log_metric(batch_logs, "classifierCandidateCount"),
         "classifier_cache_hit_count": sum_log_metric(batch_logs, "cacheHitCount"),
