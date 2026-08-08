@@ -2665,6 +2665,11 @@ def chrome_media_reconcile_command(args: argparse.Namespace) -> int:
 
 
 def chrome_media_status_command(args: argparse.Namespace) -> int:
+    # Desktop jobs write status on the Desktop-local runner. Refresh that
+    # small state bundle before reporting so a completed/failed job cannot be
+    # shown indefinitely as the last locally cached `running` status.
+    if args.executor == "desktop":
+        pull_desktop_fallback_state_with_retry(args, args.runner_home, attempts=1)
     status = read_status(chrome_media_status_path(args.runner_home))
     pid = int(status.get("pid") or 0)
     if args.executor != "desktop" and str(status.get("state") or "") == "running" and pid and not pid_is_running(pid):
