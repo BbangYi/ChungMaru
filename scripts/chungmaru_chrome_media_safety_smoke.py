@@ -525,6 +525,12 @@ def launch_media_smoke_chrome(args: argparse.Namespace) -> subprocess.Popen[byte
         "--window-position=-4000,0",
         "--force-device-scale-factor=1",
         "--disable-background-networking",
+        # Composite latency is measured against the active user-visible tab.
+        # Without these flags headless Chrome can defer the tab's timer probe,
+        # turning background scheduling into a false extension lag signal.
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
         "--disable-component-extensions-with-background-pages",
         "--disable-features=DisableLoadExtensionCommandLineSwitch",
         "--disable-notifications",
@@ -1447,6 +1453,7 @@ def run_case(
     target = create_tab(debugging_port, case_url)
     page = CdpWebSocket(str(target["webSocketDebuggerUrl"]))
     try:
+      page.call("Page.bringToFront", timeout_s=5)
       apply_cpu_throttle(page, float(case.get("cpu_throttle_rate") or 1))
       wait_for_page_ready(page, timeout_s=10)
       start_layout_shift_measurement(page)
