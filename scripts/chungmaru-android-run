@@ -2412,10 +2412,12 @@ def chrome_media_start_command(args: argparse.Namespace) -> int:
             "close_fds": os.name != "nt",
         }
         if os.name == "nt":
-            popen_kwargs["creationflags"] = (
-                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-                | getattr(subprocess, "DETACHED_PROCESS", 0)
-            )
+            # Keep standard handles attached to the launcher log. Windows
+            # child processes do not receive a Unix-style SIGHUP when the SSH
+            # parent exits, so a separate process group is sufficient and
+            # avoids DETACHED_PROCESS dropping the child before it writes a
+            # terminal status.
+            popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
             popen_kwargs["start_new_session"] = True
         process = subprocess.Popen(command, **popen_kwargs)
