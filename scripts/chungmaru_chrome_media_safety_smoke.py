@@ -1855,7 +1855,10 @@ def build_composite_cases(args: argparse.Namespace, fixture_port: int) -> list[d
             "site_protection_enabled": False,
             "search_result_protection_enabled": False,
             "media_safety_enabled": True,
-            "classifier_override": classifier_backend,
+            # Synthetic SVG fixtures carry no real explicit pixels. Use the
+            # deterministic override to verify the async classifier pipeline;
+            # actual model quality is measured only by the reviewed corpus job.
+            "classifier_override": "fixture",
         },
         {
             "profile": "all_features_on",
@@ -1865,7 +1868,7 @@ def build_composite_cases(args: argparse.Namespace, fixture_port: int) -> list[d
             "site_protection_enabled": True,
             "search_result_protection_enabled": True,
             "media_safety_enabled": True,
-            "classifier_override": classifier_backend,
+            "classifier_override": "fixture",
         },
     ]
     cases: list[dict[str, Any]] = []
@@ -1924,13 +1927,13 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
     write_outputs(output_dir, summary_rows, "media-safety-composite-summary")
 
     report_lines = [
-        "# Chungmaru CPU Composite Traversal Evidence",
+        "# Chungmaru Composite Traversal Evidence",
         "",
         f"- Captured at: `{now_iso()}`",
-        f"- Classifier backend requested: `{args.composite_classifier_backend}`",
+        "- Visual classifier mode: `controlled-fixture` for synthetic SVG behavior cases.",
         f"- CPU throttle rate: `{float(args.cpu_throttle_rate or 1)}` (supplementary only)",
         f"- Local logical cores: `{os.cpu_count() or 'unknown'}`",
-        "- Reference profile: CPU backend, GPU disabled in headless Chrome, single classifier queue, 4 logical cores / 8GB RAM target; local machine constraints are recorded but not a low-spec proof.",
+        "- Actual-model CPU latency and quality are reported separately by the NSFW classifier corpus benchmark; this fixture report does not substitute for it.",
         "- Image bytes: fixture/generated local assets only for composite smoke; NSFW corpus bytes remain in Desktop/local scratch when classifier benchmark is run.",
         "",
         "## Profile Summary",
