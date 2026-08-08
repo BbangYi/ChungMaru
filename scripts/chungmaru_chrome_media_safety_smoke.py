@@ -1900,6 +1900,8 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
           "scan_ok_count": sum(bool(row.get("scan_ok")) for row in group),
           "action_count_max": max((int_metric(row.get("action_count")) for row in group), default=0),
           "false_hidden_count_max": max((int_metric(row.get("false_hidden_count")) for row in group), default=0),
+          "missed_visible_tile_count_max": max((int_metric(row.get("missed_visible_tile_count")) for row in group), default=0),
+          "classifier_error_count": sum(int_metric(row.get("classifier_error_log_count")) for row in group),
           "collect_ms_p95": percentile((int_metric(row.get("collect_ms")) for row in group), 95),
           "apply_ms_p95": percentile((int_metric(row.get("apply_ms")) for row in group), 95),
           "dom_added_to_action_ms_p95": percentile((int_metric(row.get("dom_added_to_action_ms")) for row in group), 95),
@@ -1926,13 +1928,13 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
         "",
         "## Profile Summary",
         "",
-        "| Profile | Runs | OK | Actions max | False hides max | collect p95 | apply p95 | domAdded p95 | classifier queue p95 | real classifier runs | classifier inference p95 | long tasks | event-loop lag max |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Profile | Runs | OK | Actions max | False hides max | Harmful misses max | Classifier errors | collect p95 | apply p95 | domAdded p95 | classifier queue p95 | real classifier runs | classifier inference p95 | long tasks | event-loop lag max |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in summary_rows:
       report_lines.append(
           "| {protection_profile} | {run_count} | {scan_ok_count} | {action_count_max} | "
-          "{false_hidden_count_max} | {collect_ms_p95} | {apply_ms_p95} | "
+          "{false_hidden_count_max} | {missed_visible_tile_count_max} | {classifier_error_count} | {collect_ms_p95} | {apply_ms_p95} | "
           "{dom_added_to_action_ms_p95} | {classifier_queue_wait_ms_p95} | "
           "{classifier_real_run_count} | {classifier_inference_ms_p95} | {long_task_count} | {event_loop_lag_max_ms} |".format(**row)
       )
@@ -1947,6 +1949,26 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
         "",
     ])
     (output_dir / "media-safety-composite-report.md").write_text("\n".join(report_lines), encoding="utf-8")
+
+
+def assert_composite_acceptance(rows: list[dict[str, Any]]) -> None:
+    """Require real classifier profiles to protect every fixture harmful tile."""
+    failures: list[str] = []
+    for profile in ("media_classifier", "all_features_on"):
+      profile_rows = [row for row in rows if row.get("protection_profile") == profile]
+      if not profile_rows:
+        failures.append(f"{profile} profile is missing")
+        continue
+      for row in profile_rows:
+        case_id = str(row.get("case_id") or profile)
+        misses = int_metric(row.get("missed_visible_tile_count"))
+        classifier_errors = int_metric(row.get("classifier_error_log_count"))
+        if misses > 0:
+          failures.append(f"{case_id} left {misses} harmful visible tile(s)")
+        if classifier_errors > 0:
+          failures.append(f"{case_id} recorded {classifier_errors} classifier error event(s)")
+    if failures:
+      raise RuntimeError("; ".join(failures))
 
 
 def percentile(values: list[int], pct: float) -> int:
@@ -2452,6 +2474,7 @@ def main() -> int:
             worker.close()
         write_outputs(args.output_dir, rows, COMPOSITE_OUTPUT_PREFIX)
         write_composite_summary(args.output_dir, rows, args)
+        assert_composite_acceptance(rows)
       elif live_targets:
         repeat_count = max(1, int(args.live_repeat or 1))
         startup_modes = startup_gate_values(args.live_startup_mode)
