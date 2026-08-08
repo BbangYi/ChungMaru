@@ -2,6 +2,15 @@ package com.capstone.design.youtubeparser
 
 object InstagramCommentExtractor {
 
+    private data class CombinedComment(
+        val authorId: String,
+        val body: String
+    )
+    private val nonAuthorPrefixes = setOf(
+        "a", "an", "he", "how", "i", "it", "she", "that", "the",
+        "these", "they", "this", "those", "we", "what", "when", "why", "you"
+    )
+
     fun extractComments(nodes: List<ParsedTextNode>): List<ParsedComment> {
         if (nodes.isEmpty()) return emptyList()
 
@@ -15,11 +24,12 @@ object InstagramCommentExtractor {
 
         for (node in sorted) {
             val text = node.displayText ?: continue
-            val body = extractBodyFromCombinedComment(text)
-            if (body != null && isLikelyCommentBody(body)) {
+            val combined = extractCombinedComment(text)
+            if (combined != null && isLikelyCommentBody(combined.body)) {
                 results += ParsedComment(
-                    commentText = body,
-                    boundsInScreen = BoundsRect(node.left, node.top, node.right, node.bottom)
+                    commentText = combined.body,
+                    boundsInScreen = BoundsRect(node.left, node.top, node.right, node.bottom),
+                    authorId = combined.authorId
                 )
             }
         }
@@ -41,7 +51,8 @@ object InstagramCommentExtractor {
                 if (isLikelyCommentBody(nextText)) {
                     results += ParsedComment(
                         commentText = nextText,
-                        boundsInScreen = BoundsRect(next.left, next.top, next.right, next.bottom)
+                        boundsInScreen = BoundsRect(next.left, next.top, next.right, next.bottom),
+                        authorId = anchorText.trim().removePrefix("@")
                     )
                     break
                 }
@@ -51,7 +62,7 @@ object InstagramCommentExtractor {
         for (node in sorted) {
             val text = node.displayText ?: continue
             if (!isLikelyCommentBody(text)) continue
-            if (extractBodyFromCombinedComment(text) != null) continue
+            if (extractCombinedComment(text) != null) continue
             if (looksLikeUsername(text)) continue
             if (isDateText(text)) continue
             if (isMetaText(text)) continue
@@ -67,15 +78,17 @@ object InstagramCommentExtractor {
         }
     }
 
-    private fun extractBodyFromCombinedComment(text: String): String? {
+    private fun extractCombinedComment(text: String): CombinedComment? {
         val trimmed = text.trim()
         val match = Regex("""^([A-Za-z0-9._]{3,30})\s+(.+)$""").find(trimmed) ?: return null
+        val authorId = match.groupValues[1].trim()
+        if (authorId.lowercase() in nonAuthorPrefixes) return null
         val body = match.groupValues[2].trim()
         if (body.isBlank()) return null
         if (isDateText(body)) return null
         if (isMetaText(body)) return null
         if (!isLikelyCommentBody(body)) return null
-        return body
+        return CombinedComment(authorId = authorId, body = body)
     }
 
     private fun looksLikeUsername(text: String): Boolean {

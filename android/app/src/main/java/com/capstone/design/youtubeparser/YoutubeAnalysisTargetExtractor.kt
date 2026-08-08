@@ -28,7 +28,7 @@ object YoutubeAnalysisTargetExtractor {
         nodes: List<ParsedTextNode>,
         screenHeight: Int? = null
     ): List<ParsedComment> {
-        val commentTargets = YoutubeCommentExtractor.extractComments(nodes)
+        val commentTargets = YoutubeCommentAnalysisAdapter.adapt(YoutubeCommentExtractor.extractComments(nodes))
         val searchInputTargets = nodes
             .asSequence()
             .mapNotNull { toYoutubeSearchInputTarget(it) }

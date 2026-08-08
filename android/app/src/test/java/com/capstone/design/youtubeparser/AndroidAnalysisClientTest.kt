@@ -230,6 +230,34 @@ class AndroidAnalysisClientTest {
     }
 
     @Test
+    fun summarizeErrorBodyForLog_collapsesAndTruncatesServerDebugHtml() {
+        val debugHtml = """
+            <html>
+              <body>
+                <h1>Bad Request</h1>
+                <pre>SECRET_KEY = should_not_spam_logcat</pre>
+                <pre>${"x".repeat(700)}</pre>
+              </body>
+            </html>
+        """.trimIndent()
+
+        val summary = AndroidAnalysisClient.summarizeErrorBodyForLog(debugHtml)
+
+        assertTrue(summary.length <= 323)
+        assertFalse(summary.contains("\n"))
+        assertTrue(summary.endsWith("..."))
+    }
+
+    @Test
+    fun shouldRetryOnAlternateEndpoint_acceptsMissingOrFailedServer() {
+        assertTrue(AndroidAnalysisClient.shouldRetryOnAlternateEndpoint(404))
+        assertTrue(AndroidAnalysisClient.shouldRetryOnAlternateEndpoint(405))
+        assertTrue(AndroidAnalysisClient.shouldRetryOnAlternateEndpoint(500))
+        assertFalse(AndroidAnalysisClient.shouldRetryOnAlternateEndpoint(400))
+        assertFalse(AndroidAnalysisClient.shouldRetryOnAlternateEndpoint(401))
+    }
+
+    @Test
     fun parseAndroidAnalysisResponse_rejectsImpossibleCount() {
         val error = expectInvalidResponse {
             AndroidAnalysisClient.parseAndroidAnalysisResponse(

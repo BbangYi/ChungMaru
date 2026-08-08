@@ -91,7 +91,12 @@ class VisualTextOcrProcessor {
         }
 
         val workItems = selectedRois.flatMap { roi ->
-            recognizers.flatMap { recognizer ->
+            val roiRecognizers = if (roi.source == "youtube-comment-panel") {
+                recognizers.take(1)
+            } else {
+                recognizers
+            }
+            roiRecognizers.flatMap { recognizer ->
                 imageVariantsFor(roi).map { variant ->
                     OcrWorkItem(
                         roi = roi,
@@ -268,11 +273,18 @@ class VisualTextOcrProcessor {
         geometryScale: Float
     ): List<ParsedComment> {
         val lineText = text.replace(Regex("\\s+"), " ").trim()
-        if (roiSource == "browser-visual-region" || VisualTextOcrCandidateFilter.looksDebugRelevant(lineText)) {
+        if (
+            roiSource == "browser-visual-region" ||
+            roiSource == "youtube-comment-panel" ||
+            VisualTextOcrCandidateFilter.looksDebugRelevant(lineText)
+        ) {
             Log.d(TAG, "OCR line source=$roiSource text=$lineText")
         }
         if (!VisualTextOcrCandidateFilter.isUsefulOcrLineText(lineText)) return emptyList()
-        val candidateRanges = VisualTextOcrCandidateFilter.findAnalysisRanges(lineText)
+        val candidateRanges = VisualTextOcrCandidateFilter.findAnalysisRangesForSource(
+            text = lineText,
+            roiSource = roiSource
+        )
         if (candidateRanges.isEmpty()) {
             if (VisualTextOcrCandidateFilter.looksDebugRelevant(lineText)) {
                 Log.d(TAG, "OCR line filtered text=$lineText")
@@ -845,6 +857,23 @@ internal object VisualTextOcrCandidateFilter {
         return text.any { it.isLetterOrDigit() || it.code in 0xAC00..0xD7A3 }
     }
 
+    fun findAnalysisRangesForSource(text: String, roiSource: String): List<CandidateRange> {
+        if (roiSource != YOUTUBE_COMMENT_PANEL_SOURCE) return findAnalysisRanges(text)
+        if (!isUsefulOcrLineText(text)) return emptyList()
+
+        val trimmed = trimOriginalRange(text, 0, text.length)
+        if (trimmed.end <= trimmed.start) return emptyList()
+        val visualText = text.substring(trimmed.start, trimmed.end)
+        return listOf(
+            CandidateRange(
+                analysisText = visualText,
+                visualText = visualText,
+                start = trimmed.start,
+                end = trimmed.end
+            )
+        )
+    }
+
     fun findAnalysisRanges(text: String): List<CandidateRange> {
         val normalized = normalizeForMatching(text)
         if (normalized.value.trim().length < MIN_ANALYSIS_TEXT_LENGTH) return emptyList()
@@ -880,6 +909,7 @@ internal object VisualTextOcrCandidateFilter {
             (normalized.contains("k") || normalized.contains("f"))
     }
 
+    private const val YOUTUBE_COMMENT_PANEL_SOURCE = "youtube-comment-panel"
     private const val MIN_ANALYSIS_TEXT_LENGTH = 2
     private const val MAX_OCR_LINE_TEXT_LENGTH = 260
 
@@ -894,10 +924,22 @@ internal object VisualTextOcrCandidateFilter {
         "share",
         "save",
         "download",
+        "comments",
+        "replies",
+        "top",
+        "newest",
+        "reply",
+        "loading",
+        "검열중",
+        "검열 중",
         "전체",
         "동영상",
         "홈",
-        "구독"
+        "구독",
+        "댓글",
+        "답글",
+        "인기순",
+        "최신순"
     )
 
     private fun normalizeForMatching(text: String): NormalizedText {

@@ -9,6 +9,7 @@ internal data class MaskOverlayScrollDelta(
 )
 
 internal enum class MaskOverlayScrollDeltaSource {
+    YOUTUBE_COMMENT_ANCHOR,
     EXPLICIT_DELTA,
     ABSOLUTE_POSITION
 }
@@ -17,8 +18,8 @@ internal object MaskOverlayEventPolicy {
     private const val TAKE_SCREENSHOT_INTERVAL_TOO_SHORT_ERROR_CODE = 3
     private const val MIN_SCREENSHOT_REQUEST_INTERVAL_MS = 380L
     private const val SCREENSHOT_RETRY_GRACE_MS = 64L
-    private const val VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS = 180L
-    private const val VISUAL_SCROLL_INVALIDATION_GRACE_MS = 450L
+    private const val VISUAL_CONTENT_CHANGE_INVALIDATION_GRACE_MS = 4_200L
+    private const val VISUAL_SCROLL_INVALIDATION_GRACE_MS = 4_200L
     private const val VISUAL_REFRESH_COOLDOWN_MS = 1200L
 
     fun resolveScrollTranslationDelta(
@@ -82,6 +83,71 @@ internal object MaskOverlayEventPolicy {
         currentOverlayRevision: Long
     ): Boolean {
         return analysisOk && snapshotOverlayRevision != currentOverlayRevision
+    }
+
+    fun shouldPrimeYoutubeLoadingForPotentialScroll(
+        eventType: Int,
+        isYoutubePackage: Boolean,
+        isLikelySelfContentChange: Boolean,
+        hasConfirmedCommentPanel: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            isYoutubePackage &&
+            !isLikelySelfContentChange &&
+            hasConfirmedCommentPanel
+    }
+
+    fun shouldRestoreYoutubeLoadingOnForeground(
+        eventType: Int,
+        isYoutubePackage: Boolean,
+        wasYoutubeObserved: Boolean,
+        hasCachedCommentPanel: Boolean,
+        isCacheFresh: Boolean,
+        windowClassMatches: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            isYoutubePackage &&
+            !wasYoutubeObserved &&
+            hasCachedCommentPanel &&
+            isCacheFresh &&
+            windowClassMatches
+    }
+
+    fun shouldPrimeYoutubeLoadingForLaunchClick(
+        eventType: Int,
+        isTrustedLauncherPackage: Boolean,
+        hasCachedCommentPanel: Boolean,
+        isCacheFresh: Boolean,
+        isYoutubeLaunchTarget: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            isTrustedLauncherPackage &&
+            hasCachedCommentPanel &&
+            isCacheFresh &&
+            isYoutubeLaunchTarget
+    }
+
+    fun shouldPrimeYoutubeLoadingForCommentButtonClick(
+        eventType: Int,
+        isYoutubePackage: Boolean,
+        hasCachedCommentPanel: Boolean,
+        isCacheFresh: Boolean,
+        labelLooksLikeComments: Boolean,
+        isCompactTrailingAction: Boolean
+    ): Boolean {
+        return eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            isYoutubePackage &&
+            hasCachedCommentPanel &&
+            isCacheFresh &&
+            labelLooksLikeComments &&
+            isCompactTrailingAction
+    }
+    fun shouldClearOverlayForExitPackage(
+        eventType: Int,
+        isExitPackage: Boolean
+    ): Boolean {
+        return isExitPackage &&
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
     }
 
     fun shouldPreserveOnScrollContentChange(
@@ -195,9 +261,22 @@ internal object MaskOverlayEventPolicy {
         hasActiveMasks: Boolean,
         overlayUpdatedRecently: Boolean
     ): Boolean {
-        return eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+        val canComeFromOverlayWindow =
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        return canComeFromOverlayWindow &&
             hasActiveMasks &&
             overlayUpdatedRecently
+    }
+
+    fun shouldRemoveYoutubeMirrorAfterPanelMiss(
+        panelPresent: Boolean,
+        panelTransitionActive: Boolean,
+        missingForMs: Long,
+        missingGraceMs: Long
+    ): Boolean {
+        if (panelPresent || panelTransitionActive) return false
+        return missingForMs >= missingGraceMs.coerceAtLeast(0L)
     }
 
     fun screenshotRequestThrottleDelay(elapsedSinceLastRequestMs: Long): Long {

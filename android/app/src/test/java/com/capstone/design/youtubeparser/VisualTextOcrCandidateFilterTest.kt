@@ -46,6 +46,25 @@ class VisualTextOcrCandidateFilterTest {
         assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("Shorts"))
         assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("2.1M"))
         assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("https://youtube.com/watch?v=test"))
+        assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("검열중"))
+        assertFalse(VisualTextOcrCandidateFilter.isUsefulOcrLineText("Loading"))
+    }
+
+    @Test
+    fun findAnalysisRangesForSource_sendsWholeCommentLineToModel() {
+        val text = "이 영상은 정말 별로네요"
+
+        assertTrue(VisualTextOcrCandidateFilter.findAnalysisRanges(text).isEmpty())
+        val ranges = VisualTextOcrCandidateFilter.findAnalysisRangesForSource(
+            text = text,
+            roiSource = "youtube-comment-panel"
+        )
+
+        assertEquals(1, ranges.size)
+        assertEquals(text, ranges.single().analysisText)
+        assertEquals(text, ranges.single().visualText)
+        assertEquals(0, ranges.single().start)
+        assertEquals(text.length, ranges.single().end)
     }
 
     @Test

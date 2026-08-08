@@ -533,6 +533,53 @@ class VisualTextRoiPlannerTest {
     }
 
     @Test
+    fun planFromNodes_usesNativeCommentPanelAsExclusiveOcrRegion() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode(
+                    displayText = "",
+                    left = 0,
+                    top = 845,
+                    right = 1200,
+                    bottom = 1824,
+                    className = "android.widget.FrameLayout",
+                    viewIdResourceName = "com.google.android.youtube:id/panel_content_touch_wrapper"
+                ),
+                textNode(
+                    displayText = "답글",
+                    left = 276,
+                    top = 1076,
+                    right = 374,
+                    bottom = 1172,
+                    className = "android.view.ViewGroup"
+                ),
+                textNode(
+                    displayText = "댓글 추가",
+                    left = 78,
+                    top = 1737,
+                    right = 1120,
+                    bottom = 1824,
+                    className = "android.widget.EditText"
+                ),
+                contentDescriptionNode(
+                    displayText = "시발 자동자, 조회수 1만회, 1일 전 - 동영상 재생",
+                    left = 0,
+                    top = 0,
+                    right = 600,
+                    bottom = 720
+                )
+            ),
+            screenWidth = 1200,
+            screenHeight = 1920
+        )
+
+        assertEquals(1, rois.size)
+        assertEquals("youtube-comment-panel", rois.single().source)
+        assertEquals("comment-panel-native-content", rois.single().reason)
+        assertEquals(BoundsRect(0, 845, 1200, 1737), rois.single().boundsInScreen)
+    }
+
+    @Test
     fun planFromNodes_addsCompactCommentPanelRoisFromAuthorRows() {
         val rois = VisualTextRoiPlanner.planFromNodes(
             nodes = listOf(
@@ -554,6 +601,70 @@ class VisualTextRoiPlannerTest {
         assertTrue(rois.first().boundsInScreen.top > 728)
         assertTrue(rois.first().boundsInScreen.bottom < 930)
         assertTrue(rois.first().boundsInScreen.right < 1080)
+    }
+
+    @Test
+    fun planFromNodes_addsCommentPanelRoisForDottedRepliesHeader() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("Replies.", 24, 951, 260, 1095),
+                textNode("@reply_user 11 hours ago", 88, 1160, 520, 1200),
+                textNode("Reply...", 36, 2230, 486, 2312)
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        assertTrue(rois.any { it.source == "youtube-comment-panel" })
+    }
+    @Test
+    fun planFromNodes_infersCommentPanelRoisFromReplyControlsWithoutHeader() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("@replyuser", 144, 1134, 374, 1182),
+                textNode("3 days ago", 404, 1134, 514, 1182),
+                textNode("Nice transparent floor plan", 144, 1194, 554, 1255),
+                textNode("Like this comment along with 11 other people", 96, 1255, 240, 1399, className = "android.widget.Button"),
+                textNode("Dislike this comment", 264, 1255, 408, 1399, className = "android.widget.Button"),
+                textNode("Reply", 414, 1255, 561, 1399, className = "android.widget.Button")
+            ),
+            screenWidth = 1344,
+            screenHeight = 2992
+        )
+
+        assertTrue(rois.joinToString(), rois.any { it.source == "youtube-comment-panel" })
+    }
+    @Test
+    fun planFromNodes_ignoresAvatarHandleButtonsWhenBuildingCommentPanelRois() {
+        val rois = VisualTextRoiPlanner.planFromNodes(
+            nodes = listOf(
+                textNode("Comments", 0, 703, 954, 829, className = "android.widget.LinearLayout"),
+                textNode("Newest", 610, 851, 798, 935, className = "android.widget.ToggleButton"),
+                contentDescriptionNode("@YouTube", 32, 1139, 95, 1202, className = "android.widget.ImageView"),
+                textNode("@YouTube, verified user", 127, 1202, 281, 1244, className = "android.view.ViewGroup"),
+                textNode("This is a pinned comment", 127, 1254, 1006, 1298, className = "android.view.ViewGroup"),
+                textNode("Like this comment along with 271K other people", 85, 1424, 211, 1550, className = "android.widget.Button"),
+                contentDescriptionNode("@candycake9531", 32, 1708, 95, 1771, className = "android.widget.ImageView"),
+                textNode("@candycake9531", 127, 1708, 380, 1750, className = "android.view.ViewGroup"),
+                textNode(
+                    "Is everyone going to ignore the fact that Rick Astley looks like a twelve year old boy but has a uniquely deep voice?",
+                    127,
+                    1761,
+                    1006,
+                    1912,
+                    className = "android.view.ViewGroup"
+                ),
+                textNode("Reply", 363, 2038, 491, 2164, className = "android.widget.Button"),
+                textNode("Share your thoughts...", 64, 2224, 1018, 2310, className = "android.widget.EditText")
+            ),
+            screenWidth = 1080,
+            screenHeight = 2400
+        )
+
+        val commentRois = rois.filter { it.source == "youtube-comment-panel" }
+        assertTrue(rois.joinToString(), commentRois.isNotEmpty())
+        assertTrue(commentRois.none { it.boundsInScreen.left < 100 })
+        assertTrue(commentRois.first().boundsInScreen.top > 1244)
     }
 
     @Test
