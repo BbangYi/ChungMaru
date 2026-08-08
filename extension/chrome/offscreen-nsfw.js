@@ -22,6 +22,7 @@ let nsfwModel = null;
 let nsfwModelPromise = null;
 let nsfwBackend = "";
 let nsfwForcedBackend = "";
+let nsfwWasmPathsConfigured = false;
 let nsfwModelLoadCount = 0;
 let nsfwModelLoadMs = 0;
 let nsfwWarmupMs = 0;
@@ -144,11 +145,12 @@ async function selectNsfwBackend() {
   // The non-SIMD binary stays bundled as the runtime fallback for older CPUs.
   const preferred = nsfwForcedBackend || "wasm";
   try {
-    if (preferred === "wasm") {
+    if (preferred === "wasm" && !nsfwWasmPathsConfigured) {
       if (typeof tf.wasm?.setWasmPaths !== "function") {
         throw createNsfwError("NSFW_WASM_RUNTIME_MISSING", "TensorFlow.js WASM runtime is unavailable");
       }
       tf.wasm.setWasmPaths(NSFW_WASM_ASSET_URLS);
+      nsfwWasmPathsConfigured = true;
     }
     const selected = await tf.setBackend(preferred);
     if (!selected) throw new Error(`backend rejected: ${preferred}`);
