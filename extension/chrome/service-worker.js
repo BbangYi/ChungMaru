@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
-  mediaSafetyEnabled: false,
+  mediaSafetyEnabled: true,
   mediaSafetyInterventionMode: "auto",
   mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
@@ -237,6 +237,10 @@ function normalizeRuntimeLogEvent(event) {
     inferenceMs: Math.max(0, Math.round(Number(event?.inferenceMs || 0))),
     queueWaitMs: Math.max(0, Math.round(Number(event?.queueWaitMs || 0))),
     classifierDecisionMs: Math.max(0, Math.round(Number(event?.classifierDecisionMs || 0))),
+    classifierDeadlineExceededCount: Math.max(
+      0,
+      Math.round(Number(event?.classifierDeadlineExceededCount || 0))
+    ),
     modelLoadCount: Math.max(0, Math.round(Number(event?.modelLoadCount || 0))),
     tensorCount: Math.max(0, Math.round(Number(event?.tensorCount || 0))),
     tensorBytes: Math.max(0, Math.round(Number(event?.tensorBytes || 0))),
@@ -869,7 +873,7 @@ function mergeSettings(stored) {
     siteProtectionEnabled: stored?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: stored?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: stored?.searchResultProtectionEnabled !== false,
-    mediaSafetyEnabled: stored?.mediaSafetyEnabled === true,
+    mediaSafetyEnabled: stored?.mediaSafetyEnabled !== false,
     mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(stored?.mediaSafetyInterventionMode),
     mediaSafetyStartupGateEnabled: stored?.mediaSafetyStartupGateEnabled === true,
     wellbeingAvatarImages: String(stored?.wellbeingAvatarImages || ""),
@@ -4150,12 +4154,17 @@ async function classifyNsfwImageBatch(message, sender) {
   if (items.length === 0) {
     return { ok: false, errorCode: "NSFW_BATCH_EMPTY", reason: "NSFW batch has no valid items" };
   }
+  const requestedDeadlineEpochMs = Number(message?.deadlineEpochMs || 0);
+  const deadlineEpochMs = Number.isFinite(requestedDeadlineEpochMs) && requestedDeadlineEpochMs > Date.now()
+    ? Math.round(requestedDeadlineEpochMs)
+    : 0;
 
   const response = await sendNsfwOffscreenMessage({
     type: "OFFSCREEN_NSFW_CLASSIFY_BATCH",
     requestId: String(message?.requestId || "").slice(0, 96),
     contextKey: String(message?.contextKey || "").slice(0, 160),
     allowLoopback,
+    deadlineEpochMs,
     items
   });
   if (response?.ok) recordNsfwClassifierReady(response, "classifier-batch");

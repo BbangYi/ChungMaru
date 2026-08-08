@@ -955,7 +955,7 @@ def run_local_mode(
                 "--output-dir", str(classifier_output),
                 "--cold-runs", "3",
                 "--warm-runs", "3",
-                "--backend", "cpu",
+                "--backend", "normal",
             ],
             cwd=REPO_ROOT,
             env=env,

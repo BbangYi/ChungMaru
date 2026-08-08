@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS = {
   siteProtectionEnabled: true,
   siteNavigationWarningEnabled: true,
   searchResultProtectionEnabled: true,
-  mediaSafetyEnabled: false,
+  mediaSafetyEnabled: true,
   mediaSafetyInterventionMode: "auto",
   mediaSafetyStartupGateEnabled: false,
   showWellbeingWidget: true,
@@ -168,12 +168,14 @@ const MEDIA_SAFETY_MAX_OVERLAY_VIEWPORT_AREA_RATIO = 0.65;
 const MEDIA_SAFETY_COMPACT_GROUP_MIN_COUNT = 2;
 const MEDIA_SAFETY_COMPACT_GROUP_MAX_DEPTH = 5;
 const MEDIA_SAFETY_COMPACT_GROUP_MAX_VIEWPORT_AREA_RATIO = 2.5;
-const NSFW_CLASSIFIER_BATCH_LIMIT = 4;
-const NSFW_CLASSIFIER_QUEUE_LIMIT = 12;
+const NSFW_CLASSIFIER_BATCH_LIMIT = 2;
+const NSFW_CLASSIFIER_QUEUE_LIMIT = 6;
 const NSFW_CLASSIFIER_LOW_CORE_BATCH_LIMIT = 1;
 const NSFW_CLASSIFIER_LOW_CORE_QUEUE_LIMIT = 3;
 const NSFW_CLASSIFIER_LOW_CORE_THRESHOLD = 4;
 const NSFW_CLASSIFIER_RETRY_BACKOFF_MS = 30 * 1000;
+const NSFW_CLASSIFIER_RESPONSE_BUDGET_MS = 850;
+const NSFW_CLASSIFIER_COOLDOWN_MS = 30 * 1000;
 const NSFW_CLASSIFIER_MAX_DATA_URL_CHARS = 1024 * 1024;
 const WELLBEING_EXPLICIT_SCORE_THRESHOLD = 0.72;
 const MAX_SELF_TEST_CASES = 32;
@@ -565,6 +567,8 @@ let nsfwClassifierContextGeneration = 1;
 let nsfwClassifierRequestSequence = 0;
 let nsfwClassifierBatchInFlight = false;
 let nsfwClassifierWarmupRequested = false;
+let nsfwClassifierWarmupPromise = null;
+let nsfwClassifierCooldownUntil = 0;
 let nsfwClassifierElementState = new WeakMap();
 const NSFW_CLASSIFIER_PENDING_BY_SOURCE = new Map();
 const MEDIA_SAFETY_FAST_PATH_NODES = new Set();
@@ -702,7 +706,7 @@ function buildSettingsSnapshotKey(settings) {
     siteProtectionEnabled: normalizedSettings.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: normalizedSettings.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: normalizedSettings.searchResultProtectionEnabled !== false,
-    mediaSafetyEnabled: normalizedSettings.mediaSafetyEnabled === true,
+    mediaSafetyEnabled: normalizedSettings.mediaSafetyEnabled !== false,
     mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(
       normalizedSettings.mediaSafetyInterventionMode
     ),
@@ -1363,7 +1367,7 @@ function getMergedSettings(storedSettings) {
     siteProtectionEnabled: storedSettings?.siteProtectionEnabled !== false,
     siteNavigationWarningEnabled: storedSettings?.siteNavigationWarningEnabled !== false,
     searchResultProtectionEnabled: storedSettings?.searchResultProtectionEnabled !== false,
-    mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled === true,
+    mediaSafetyEnabled: storedSettings?.mediaSafetyEnabled !== false,
     mediaSafetyInterventionMode: normalizeMediaSafetyInterventionMode(storedSettings?.mediaSafetyInterventionMode),
     mediaSafetyStartupGateEnabled: storedSettings?.mediaSafetyStartupGateEnabled === true,
     wellbeingAvatarImages: String(storedSettings?.wellbeingAvatarImages || ""),
@@ -3536,41 +3540,94 @@ function invalidateNsfwClassifierContext(options = {}) {
   nsfwClassifierContextGeneration += 1;
   NSFW_CLASSIFIER_PENDING_BY_SOURCE.clear();
   nsfwClassifierElementState = new WeakMap();
+  nsfwClassifierCooldownUntil = 0;
   if (options.resetWarmup === true) {
     nsfwClassifierWarmupRequested = false;
+    nsfwClassifierWarmupPromise = null;
   }
 }
 
 function requestNsfwClassifierWarmup(settings = cachedSettings) {
-  if (nsfwClassifierWarmupRequested || !isMediaSafetyEnabled(settings)) {
-    return;
+  if (!isMediaSafetyEnabled(settings)) {
+    return Promise.resolve(null);
+  }
+  if (nsfwClassifierWarmupPromise) {
+    return nsfwClassifierWarmupPromise;
+  }
+  if (nsfwClassifierWarmupRequested) {
+    return Promise.resolve(null);
   }
   nsfwClassifierWarmupRequested = true;
-  const runWarmup = () => {
-    safeRuntimeSendMessage({ type: "WARMUP_NSFW_CLASSIFIER" })
-      .then((response) => {
-        if (!response?.ok && response?.status !== "disabled") {
-          throw new Error(response?.errorCode || response?.reason || "NSFW_MODEL_LOAD_FAILED");
-        }
-      })
-      .catch((error) => {
-        nsfwClassifierWarmupRequested = false;
-        emitRuntimeLogEvent({
-          type: "media-safety-classifier-error",
-          ok: false,
-          status: "warmup-failed",
-          source: "content-script",
-          errorCount: 1,
-          errorCode: String(error?.errorCode || error?.message || "NSFW_MODEL_LOAD_FAILED").slice(0, 80),
-          reason: "bundled NSFW classifier warmup failed"
+  nsfwClassifierWarmupPromise = new Promise((resolve) => {
+    const runWarmup = () => {
+      safeRuntimeSendMessage({ type: "WARMUP_NSFW_CLASSIFIER" })
+        .then((response) => {
+          if (!response?.ok && response?.status !== "disabled") {
+            throw new Error(response?.errorCode || response?.reason || "NSFW_MODEL_LOAD_FAILED");
+          }
+          resolve(response);
+        })
+        .catch((error) => {
+          const errorCode = String(error?.errorCode || error?.message || "NSFW_MODEL_LOAD_FAILED").slice(0, 80);
+          nsfwClassifierWarmupRequested = false;
+          if (shouldCooldownNsfwClassifier(errorCode)) {
+            nsfwClassifierCooldownUntil = Date.now() + NSFW_CLASSIFIER_COOLDOWN_MS;
+            for (const record of NSFW_CLASSIFIER_PENDING_BY_SOURCE.values()) {
+              markNsfwClassifierRecordError(record, errorCode);
+            }
+            NSFW_CLASSIFIER_PENDING_BY_SOURCE.clear();
+          }
+          emitRuntimeLogEvent({
+            type: "media-safety-classifier-error",
+            ok: false,
+            status: "warmup-failed",
+            source: "content-script",
+            errorCount: 1,
+            classifierDeadlineExceededCount: errorCode === "NSFW_DEADLINE_EXCEEDED" ? 1 : 0,
+            errorCode,
+            reason: "bundled NSFW classifier warmup failed"
+          });
+          resolve(null);
+        })
+        .finally(() => {
+          nsfwClassifierWarmupPromise = null;
+          if (NSFW_CLASSIFIER_PENDING_BY_SOURCE.size > 0 && isMediaSafetyEnabled(cachedSettings)) {
+            window.setTimeout(() => flushNsfwClassifierQueue(), 0);
+          }
         });
-      });
-  };
-  if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(runWarmup, { timeout: 1200 });
-  } else {
-    window.setTimeout(runWarmup, 0);
+    };
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(runWarmup, { timeout: 1200 });
+    } else {
+      window.setTimeout(runWarmup, 0);
+    }
+  });
+  return nsfwClassifierWarmupPromise;
+}
+
+function createNsfwClassifierBudgetError() {
+  const error = new Error("NSFW classifier exceeded its response budget");
+  error.errorCode = "NSFW_DEADLINE_EXCEEDED";
+  return error;
+}
+
+async function sendNsfwClassifierBatchWithBudget(message) {
+  const responsePromise = safeRuntimeSendMessage(message);
+  let timeoutId = null;
+  const deadlinePromise = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(createNsfwClassifierBudgetError()), NSFW_CLASSIFIER_RESPONSE_BUDGET_MS);
+  });
+  try {
+    return await Promise.race([responsePromise, deadlinePromise]);
+  } finally {
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+    }
   }
+}
+
+function shouldCooldownNsfwClassifier(errorCode) {
+  return ["NSFW_DEADLINE_EXCEEDED", "NSFW_WEBGL_UNAVAILABLE"].includes(String(errorCode || ""));
 }
 
 function shouldQueueNsfwClassifierCandidate(candidate, sourceUrl) {
@@ -3768,6 +3825,12 @@ async function flushNsfwClassifierQueue() {
   ) {
     return;
   }
+  if (nsfwClassifierWarmupPromise) {
+    return;
+  }
+  if (Date.now() < nsfwClassifierCooldownUntil) {
+    return;
+  }
 
   const { batchLimit } = getNsfwClassifierAdmissionLimits();
   const records = Array.from(NSFW_CLASSIFIER_PENDING_BY_SOURCE.values()).slice(0, batchLimit);
@@ -3780,10 +3843,11 @@ async function flushNsfwClassifierQueue() {
   nsfwClassifierBatchInFlight = true;
   const requestStartedAt = performance.now();
   try {
-    const response = await safeRuntimeSendMessage({
+    const response = await sendNsfwClassifierBatchWithBudget({
       type: "CLASSIFY_NSFW_IMAGE_BATCH",
       requestId: `nsfw-${records[0]?.generation || 0}-${++nsfwClassifierRequestSequence}`,
       contextKey: `${records[0]?.generation || 0}:${compactRuntimeUrl(location.href)}`,
+      deadlineEpochMs: Date.now() + NSFW_CLASSIFIER_RESPONSE_BUDGET_MS,
       items: records.map((record) => ({
         candidateKey: record.candidateKey,
         sourceUrl: record.sourceUrl
@@ -3797,6 +3861,9 @@ async function flushNsfwClassifierQueue() {
     applyNsfwClassifierResponse(records, response, requestStartedAt);
   } catch (error) {
     const errorCode = String(error?.errorCode || error?.message || "NSFW_CLASSIFIER_FAILED").slice(0, 80);
+    if (shouldCooldownNsfwClassifier(errorCode)) {
+      nsfwClassifierCooldownUntil = Date.now() + NSFW_CLASSIFIER_COOLDOWN_MS;
+    }
     for (const record of records) {
       markNsfwClassifierRecordError(record, errorCode);
     }
@@ -3807,6 +3874,7 @@ async function flushNsfwClassifierQueue() {
       source: "content-script",
       classifierCandidateCount: records.length,
       errorCount: records.length,
+      classifierDeadlineExceededCount: errorCode === "NSFW_DEADLINE_EXCEEDED" ? records.length : 0,
       classifierDecisionMs: Math.round(performance.now() - requestStartedAt),
       errorCode,
       reason: "NSFW classifier batch request failed"
@@ -3814,7 +3882,10 @@ async function flushNsfwClassifierQueue() {
   } finally {
     nsfwClassifierBatchInFlight = false;
     if (NSFW_CLASSIFIER_PENDING_BY_SOURCE.size > 0 && isMediaSafetyEnabled(cachedSettings)) {
-      queueMicrotask(() => flushNsfwClassifierQueue());
+      const delayMs = Date.now() < nsfwClassifierCooldownUntil
+        ? Math.max(0, nsfwClassifierCooldownUntil - Date.now())
+        : isLowCoreMediaSafetyDevice() ? 80 : 0;
+      window.setTimeout(() => flushNsfwClassifierQueue(), delayMs);
     }
   }
 }
@@ -3893,7 +3964,7 @@ function scheduleNsfwClassifierForCandidates(candidates, selected, pageContext, 
     // unresolved visible source exists keeps dense gambling-banner pages off the
     // GPU/worker path entirely.
     requestNsfwClassifierWarmup(settings);
-    queueMicrotask(() => flushNsfwClassifierQueue());
+    window.setTimeout(() => flushNsfwClassifierQueue(), 0);
   }
   return queuedSourceCount;
 }
@@ -14449,6 +14520,9 @@ async function bootstrap() {
     return;
   }
   maybeEnableMediaSafetyStartupGate(initialSettings);
+  if (isMediaSafetyEnabled(initialSettings) && !shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
+    requestNsfwClassifierWarmup(initialSettings);
+  }
   if (!shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
     runImmediateMediaSafetyScan(initialSettings, { reason: "bootstrap-fast" });
   }

@@ -993,6 +993,7 @@ def summarize_media_logs(logs: list[dict[str, Any]]) -> dict[str, int]:
       "loggedMediaSafetyFastPathRunCount": max_log_metric(logs, "mediaSafetyFastPathRunCount"),
       "loggedMediaSafetyFastPathCandidateCount": max_log_metric(logs, "mediaSafetyFastPathCandidateCount"),
       "loggedMediaSafetyFastPathActionCount": max_log_metric(logs, "mediaSafetyFastPathActionCount"),
+      "loggedClassifierDeadlineExceededCount": sum_log_metric(logs, "classifierDeadlineExceededCount"),
     }
 
 
@@ -1287,6 +1288,7 @@ def build_result_row(
             int_metric(summary.get("mediaSafetyFastPathActionCount")),
             log_summary["loggedMediaSafetyFastPathActionCount"],
         ),
+        "classifier_deadline_exceeded_count": log_summary["loggedClassifierDeadlineExceededCount"],
         "late_decision_ms": max(
             int_metric(dom.get("lateDecisionMs")),
             int_metric(pre_manual_dom.get("lateDecisionMs")),
@@ -2011,6 +2013,7 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
       fast_path_run_values = metric_values(group_rows, "media_safety_fast_path_run_count", successful_only=False)
       fast_path_candidate_values = metric_values(group_rows, "media_safety_fast_path_candidate_count", successful_only=False)
       fast_path_action_values = metric_values(group_rows, "media_safety_fast_path_action_count", successful_only=False)
+      classifier_deadline_values = metric_values(group_rows, "classifier_deadline_exceeded_count", successful_only=False)
       context_refresh_values = metric_values(group_rows, "media_safety_page_context_refresh_count", successful_only=False)
       coverage_values = float_metric_values(group_rows, "viewport_coverage_pct", successful_only=False)
       summary_rows.append({
@@ -2040,6 +2043,7 @@ def summarize_live_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
           "media_safety_fast_path_run_count_max": max(fast_path_run_values, default=0),
           "media_safety_fast_path_candidate_count_max": max(fast_path_candidate_values, default=0),
           "media_safety_fast_path_action_count_max": max(fast_path_action_values, default=0),
+          "classifier_deadline_exceeded_count_max": max(classifier_deadline_values, default=0),
           "media_safety_page_context_refresh_count_max": max(context_refresh_values, default=0),
           "viewport_coverage_pct_max": round(max(coverage_values, default=0.0), 1),
           "collect_ms_p50": percentile(collect_values, 50),

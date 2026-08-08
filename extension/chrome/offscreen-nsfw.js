@@ -7,6 +7,8 @@ const NSFW_MAX_BATCH_SIZE = 4;
 const NSFW_CACHE_LIMIT = 256;
 const NSFW_CACHE_TTL_MS = 30 * 60 * 1000;
 const NSFW_FETCH_TIMEOUT_MS = 1500;
+const NSFW_WARM_BATCH_SIZE = 2;
+const NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS = 120;
 const NSFW_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const NSFW_MAX_BATCH_BYTES = 12 * 1024 * 1024;
 const NSFW_MAX_DATA_URL_CHARS = 1024 * 1024;
@@ -34,6 +36,22 @@ function serializeNsfwError(error, fallbackCode) {
     errorCode: String(error?.errorCode || fallbackCode || "NSFW_CLASSIFIER_FAILED").slice(0, 80),
     reason: String(error?.message || error || fallbackCode || "NSFW classifier failed").slice(0, 220)
   };
+}
+
+function getNsfwDeadlineEpochMs(message) {
+  const value = Number(message?.deadlineEpochMs || 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function getNsfwRemainingBudgetMs(deadlineEpochMs) {
+  if (!deadlineEpochMs) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor(deadlineEpochMs - Date.now()));
+}
+
+function assertNsfwDeadline(deadlineEpochMs, minimumRemainingMs = 1) {
+  if (getNsfwRemainingBudgetMs(deadlineEpochMs) < minimumRemainingMs) {
+    throw createNsfwError("NSFW_DEADLINE_EXCEEDED", "NSFW classifier response budget exceeded");
+  }
 }
 
 function isLoopbackHost(hostname) {
@@ -124,14 +142,16 @@ async function selectNsfwBackend() {
     await tf.ready();
   } catch (error) {
     if (preferred === "cpu") throw error;
-    const selected = await tf.setBackend("cpu");
-    if (!selected) throw error;
-    await tf.ready();
+    throw createNsfwError(
+      "NSFW_WEBGL_UNAVAILABLE",
+      `WebGL backend is unavailable: ${String(error?.message || error)}`
+    );
   }
   nsfwBackend = String(tf.getBackend() || "unknown");
 }
 
 async function warmNsfwShape(batchSize) {
+  const startedAt = performance.now();
   const input = tf.zeros([batchSize, NSFW_INPUT_SIZE, NSFW_INPUT_SIZE, 3]);
   let output = null;
   try {
@@ -146,6 +166,7 @@ async function warmNsfwShape(batchSize) {
       output?.dispose?.();
     }
   }
+  return Math.round(performance.now() - startedAt);
 }
 
 async function loadNsfwModel() {
@@ -162,8 +183,8 @@ async function loadNsfwModel() {
     const warmupStartedAt = performance.now();
     await warmNsfwShape(1);
     try {
-      await warmNsfwShape(NSFW_MAX_BATCH_SIZE);
-      nsfwWarmBatchSize = NSFW_MAX_BATCH_SIZE;
+      await warmNsfwShape(NSFW_WARM_BATCH_SIZE);
+      nsfwWarmBatchSize = NSFW_WARM_BATCH_SIZE;
     } catch {
       nsfwWarmBatchSize = 1;
     }
@@ -243,11 +264,13 @@ async function readImageResponse(response, byteBudget) {
   return blob;
 }
 
-async function fetchAndDecodeNsfwImage(item, allowLoopback, byteBudget) {
+async function fetchAndDecodeNsfwImage(item, allowLoopback, byteBudget, deadlineEpochMs) {
   const sourceUrl = normalizeNsfwSourceUrl(item.sourceUrl, allowLoopback);
+  assertNsfwDeadline(deadlineEpochMs, NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS);
   const fetchStartedAt = performance.now();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), NSFW_FETCH_TIMEOUT_MS);
+  const timeoutMs = Math.min(NSFW_FETCH_TIMEOUT_MS, getNsfwRemainingBudgetMs(deadlineEpochMs));
+  const timeoutId = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
   let response;
   try {
     response = await fetch(sourceUrl, {
@@ -269,6 +292,7 @@ async function fetchAndDecodeNsfwImage(item, allowLoopback, byteBudget) {
   }
   normalizeNsfwSourceUrl(response.url || sourceUrl, allowLoopback);
   const blob = await readImageResponse(response, byteBudget);
+  assertNsfwDeadline(deadlineEpochMs, NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS);
   const fetchMs = Math.round(performance.now() - fetchStartedAt);
 
   const decodeStartedAt = performance.now();
@@ -336,6 +360,8 @@ async function inferNsfwBitmaps(decoded) {
 async function classifyNsfwBatch(message, queuedAt) {
   const startedAt = performance.now();
   const queueWaitMs = Math.round(startedAt - queuedAt);
+  const deadlineEpochMs = getNsfwDeadlineEpochMs(message);
+  assertNsfwDeadline(deadlineEpochMs, NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS);
   const items = Array.isArray(message?.items) ? message.items.slice(0, NSFW_MAX_BATCH_SIZE) : [];
   if (items.length === 0) {
     throw createNsfwError("NSFW_BATCH_EMPTY", "NSFW classifier batch is empty");
@@ -369,6 +395,7 @@ async function classifyNsfwBatch(message, queuedAt) {
   }
 
   await loadNsfwModel();
+  assertNsfwDeadline(deadlineEpochMs, NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS);
   const allowLoopback = message?.allowLoopback === true;
   const resultsByKey = new Map();
   const misses = [];
@@ -406,7 +433,7 @@ async function classifyNsfwBatch(message, queuedAt) {
     const byteBudget = { total: 0 };
     const decodedOrErrors = await Promise.all(misses.map(async (item) => {
       try {
-        return await fetchAndDecodeNsfwImage(item, allowLoopback, byteBudget);
+        return await fetchAndDecodeNsfwImage(item, allowLoopback, byteBudget, deadlineEpochMs);
       } catch (error) {
         return {
           candidateKey: item.candidateKey,
@@ -429,6 +456,7 @@ async function classifyNsfwBatch(message, queuedAt) {
       }
     }
     if (decoded.length > 0) {
+      assertNsfwDeadline(deadlineEpochMs, NSFW_MIN_REMAINING_INFERENCE_BUDGET_MS);
       const inference = await inferNsfwBitmaps(decoded);
       inferenceMs = inference.inferenceMs;
       for (const prediction of inference.predictions) {
