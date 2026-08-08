@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -392,6 +393,8 @@ def write_chrome_media_status(
     duration_ms: int | None = None,
     local_work_root: Path | None = None,
     log_path: Path | None = None,
+    started_at: str | None = None,
+    heartbeat_count: int | None = None,
 ) -> Path:
     payload: dict[str, object] = {
         "updatedAt": now_iso(),
@@ -415,6 +418,10 @@ def write_chrome_media_status(
         )
     if log_path is not None:
         payload["launcherLog"] = str(log_path)
+    if started_at:
+        payload["startedAt"] = started_at
+    if heartbeat_count is not None:
+        payload["heartbeatCount"] = max(0, int(heartbeat_count))
     output = chrome_media_status_path(runner_home)
     write_json(output, payload)
     write_runner_status(
@@ -2422,6 +2429,27 @@ def run_mode(args: argparse.Namespace, mode: str) -> int:
 
 def chrome_media_job_command(args: argparse.Namespace) -> int:
     key = args.run_key or run_key()
+    started_at = now_iso()
+    started_monotonic = time.monotonic()
+    heartbeat_stop = threading.Event()
+    heartbeat_count = 0
+
+    def write_heartbeat() -> None:
+        nonlocal heartbeat_count
+        while not heartbeat_stop.wait(15):
+            heartbeat_count += 1
+            write_chrome_media_status(
+                args.runner_home,
+                state="running",
+                message="chrome-media job running",
+                run_key_value=key,
+                pid=os.getpid(),
+                duration_ms=round((time.monotonic() - started_monotonic) * 1000),
+                local_work_root=args.local_work_root,
+                started_at=started_at,
+                heartbeat_count=heartbeat_count,
+            )
+
     write_chrome_media_status(
         args.runner_home,
         state="running",
@@ -2429,22 +2457,40 @@ def chrome_media_job_command(args: argparse.Namespace) -> int:
         run_key_value=key,
         pid=os.getpid(),
         local_work_root=args.local_work_root,
+        started_at=started_at,
+        heartbeat_count=heartbeat_count,
     )
     args.run_key = key
     args.executor = "local"
     args.publish_source = False
     args.collect_after = True
-    exit_code = run_mode(args, "chrome-media")
-    state = "ok" if exit_code == 0 else "failed"
-    write_chrome_media_status(
-        args.runner_home,
-        state=state,
-        message=f"chrome-media job exited with code {exit_code}",
-        run_key_value=key,
-        pid=os.getpid(),
-        exit_code=exit_code,
-        local_work_root=args.local_work_root,
-    )
+    heartbeat_thread = threading.Thread(target=write_heartbeat, name="chrome-media-heartbeat", daemon=True)
+    heartbeat_thread.start()
+    exit_code = 1
+    message = "chrome-media job failed before completion"
+    try:
+        exit_code = run_mode(args, "chrome-media")
+        message = f"chrome-media job exited with code {exit_code}"
+    except Exception as exc:
+        message = f"chrome-media job raised {type(exc).__name__}: {exc}"
+        raise
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=2)
+        duration_ms = round((time.monotonic() - started_monotonic) * 1000)
+        state = "ok" if exit_code == 0 else "failed"
+        write_chrome_media_status(
+            args.runner_home,
+            state=state,
+            message=message,
+            run_key_value=key,
+            pid=os.getpid(),
+            exit_code=exit_code,
+            duration_ms=duration_ms,
+            local_work_root=args.local_work_root,
+            started_at=started_at,
+            heartbeat_count=heartbeat_count,
+        )
     return exit_code
 
 
