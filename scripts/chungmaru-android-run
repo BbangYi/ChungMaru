@@ -1753,10 +1753,45 @@ def run_desktop_mode(
         raise RuntimeError(f"desktop SSH did not become ready: {args.desktop_ssh}")
     if source_archive is not None:
         copy_source_archive_to_desktop(args, source_archive)
+    pulled = False
     try:
         verify_desktop(args, mode=mode, require_source=True)
     finally:
-        pull_desktop_fallback_state_with_retry(args, runner_home)
+        pulled = pull_desktop_fallback_state_with_retry(args, runner_home)
+    if not pulled:
+        raise RuntimeError(f"Desktop {mode} completed without a recoverable artifact pull")
+    validate_desktop_artifact_set(runner_home, mode=mode, run_key_value=str(args.run_key or ""))
+
+
+def validate_desktop_artifact_set(runner_home: Path, *, mode: str, run_key_value: str) -> None:
+    """Reject stale Desktop artifacts before recording a successful remote run."""
+    current = runner_home / "current"
+    run_metadata_path = current / "run.json"
+    if not run_metadata_path.exists():
+        raise RuntimeError(f"Desktop {mode} artifact metadata is missing after pull")
+    try:
+        metadata = json.loads(run_metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Desktop {mode} artifact metadata is unreadable: {exc}") from exc
+
+    expected_root = safe_run_key_segment(run_key_value)
+    actual_mode = str(metadata.get("mode") or "")
+    actual_root = str(metadata.get("localArtifactRoot") or "")
+    if actual_mode != mode or (expected_root and expected_root not in actual_root):
+        raise RuntimeError(
+            f"Desktop {mode} artifact run mismatch: expected={expected_root or '<none>'} "
+            f"mode={actual_mode or '<none>'} root={actual_root or '<none>'}"
+        )
+
+    required = {
+        "chrome-media": (
+            current / "chrome-media" / "media-safety-smoke.csv",
+            current / "chrome-media" / "nsfw-classifier-summary.csv",
+        )
+    }.get(mode, ())
+    missing = [str(path.relative_to(current)) for path in required if not path.exists()]
+    if missing:
+        raise RuntimeError(f"Desktop {mode} artifact pull is incomplete: missing={','.join(missing)}")
 
 
 def clear_known_artifacts(path: Path) -> None:
