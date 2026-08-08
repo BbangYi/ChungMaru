@@ -435,14 +435,20 @@ def configure_worker(worker: CdpWebSocket, backend: str) -> None:
         "return true;})()",
         timeout_s=10,
     )
-    response = worker.evaluate(
-        "(async () => setNsfwClassifierTestOverride("
-        f"{{type:'SET_NSFW_CLASSIFIER_TEST_OVERRIDE',mode:{json.dumps(backend)}}},"
-        "{id:chrome.runtime.id}))()",
-        timeout_s=10,
-    )
-    if not response.get("ok"):
-        raise RuntimeError(f"failed to enable classifier: {response}")
+    deadline = time.monotonic() + 12
+    last_response: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        response = worker.evaluate(
+            "(async () => setNsfwClassifierTestOverride("
+            f"{{type:'SET_NSFW_CLASSIFIER_TEST_OVERRIDE',mode:{json.dumps(backend)}}},"
+            "{id:chrome.runtime.id}))()",
+            timeout_s=10,
+        )
+        if response.get("ok"):
+            return
+        last_response = response
+        time.sleep(0.25)
+    raise RuntimeError(f"failed to enable classifier after startup warm-up: {last_response}")
 
 
 class ResilientExtensionWorker:
