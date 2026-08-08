@@ -92,7 +92,10 @@ const WELLBEING_SITE_LIMIT = 60;
 const RUNTIME_EVENT_LOG_LIMIT = 140;
 const NSFW_OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 const NSFW_OFFSCREEN_TARGET = "chungmaru-nsfw-offscreen";
-const NSFW_CLASSIFIER_BATCH_LIMIT = 4;
+// Batch 4 exceeds the one-second SLO on the controlled low-power WebGL path.
+// Content scripts already admit at most two unique sources; enforce that bound
+// at the message boundary as well.
+const NSFW_CLASSIFIER_BATCH_LIMIT = 2;
 const NSFW_CLASSIFIER_MAX_DATA_URL_CHARS = 1024 * 1024;
 const NSFW_CLASSIFIER_TEST_MODES = new Set(["normal", "off", "fixture", "cpu"]);
 const WELLBEING_USAGE_ALARM_NAME = "wellbeing-active-usage-sample";

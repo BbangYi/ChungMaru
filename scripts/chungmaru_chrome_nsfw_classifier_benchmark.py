@@ -736,6 +736,7 @@ def write_report(
 ) -> str:
     warm_rows = [row for row in summary_rows if row.get("record_type") == "performance" and row.get("phase") == "full-corpus"]
     warm_inference_p95 = max((float(row.get("inference_ms_p95") or 0) for row in warm_rows), default=0)
+    warm_total_p95 = max((float(row.get("offscreen_total_ms_p95") or 0) for row in warm_rows), default=0)
     cached_rows = [row for row in summary_rows if row.get("record_type") == "performance" and row.get("phase") == "full-corpus-cache"]
     cache_hit_rate = max((float(row.get("cache_hit_rate") or 0) for row in cached_rows), default=0)
     reviewed = manifest.get("reviewStatus") == "human_reviewed"
@@ -744,7 +745,7 @@ def write_report(
         "labels_human_reviewed": reviewed,
         "holdout_recall_ge_85pct": float(quality["holdoutHarmfulRecall"]) >= 0.85,
         "holdout_false_hidden_le_5pct": float(quality["holdoutBenignFalseHiddenRate"]) <= 0.05,
-        "warm_inference_p95_le_120ms": warm_inference_p95 <= 120,
+        "warm_classifier_total_p95_lt_1000ms": warm_total_p95 < 1000,
         "cache_hit_rate_ge_90pct": cache_hit_rate >= 0.9,
         "model_load_once": int(final_status.get("modelLoadCount") or 0) == 1,
         "tensor_delta_zero": int(quality.get("tensorDelta") or 0) == 0,
@@ -762,6 +763,7 @@ def write_report(
         f"- Holdout harmful recall: {float(quality['holdoutHarmfulRecall']) * 100:.1f}%",
         f"- Holdout benign false-hidden rate: {float(quality['holdoutBenignFalseHiddenRate']) * 100:.1f}%",
         f"- Warm inference p95: {warm_inference_p95:.1f} ms",
+        f"- Warm classifier total p95: {warm_total_p95:.1f} ms",
         f"- Repeated-pass cache hit rate: {cache_hit_rate * 100:.1f}%",
         f"- Cold model load runs: {len(cold_rows)}",
         "",
@@ -915,7 +917,7 @@ def main() -> int:
             warmup = worker_call(worker, "warmNsfwClassifier", {"source": "benchmark-warm"}, timeout_s=45)
             tensor_baseline = int(warmup.get("tensorCount") or 0)
             representative = [samples[index] for index in range(0, len(samples), max(1, len(samples) // 12))][:12]
-            for batch_size in (1, 2, 4):
+            for batch_size in (1, 2):
                 variant_urls = {
                     sample["sampleId"]: f"{source_urls[sample['sampleId']]}?batch={batch_size}"
                     for sample in representative
@@ -944,7 +946,7 @@ def main() -> int:
                     source_urls,
                     phase=phase,
                     run_index=run_index,
-                    batch_size=4,
+                    batch_size=2,
                     completed_batches=completed_batches,
                     on_batch=lambda raw_batch, batch: (
                         raw_rows.extend(raw_batch),
@@ -985,7 +987,7 @@ def main() -> int:
     summary_rows = build_summary_rows(batch_rows, quality)
     comparison_rows = [
         {"metric": "cold_model_load_ms", "baseline": 0, "optimized": percentile((row["model_load_ms"] for row in cold_rows), 50), "target": "record_only"},
-        {"metric": "warm_inference_p95_ms", "baseline": 0, "optimized": max((row.get("inference_ms_p95", 0) for row in summary_rows if row.get("phase") == "full-corpus"), default=0), "target": "<=120"},
+        {"metric": "warm_classifier_total_p95_ms", "baseline": 0, "optimized": max((row.get("offscreen_total_ms_p95", 0) for row in summary_rows if row.get("phase") == "full-corpus"), default=0), "target": "<1000"},
         {"metric": "cached_wall_p95_ms", "baseline": 0, "optimized": max((row.get("wall_ms_p95", 0) for row in summary_rows if row.get("phase") == "full-corpus-cache"), default=0), "target": "<=150"},
         {"metric": "cache_hit_rate", "baseline": 0, "optimized": max((row.get("cache_hit_rate", 0) for row in summary_rows if row.get("phase") == "full-corpus-cache"), default=0), "target": ">=0.90"},
         {"metric": "google_general_search_classifier_requests", "baseline": 0, "optimized": "pending_quick_qa", "target": "0"},
