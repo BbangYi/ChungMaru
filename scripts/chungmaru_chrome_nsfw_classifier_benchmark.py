@@ -31,6 +31,7 @@ from chungmaru_chrome_latency_smoke import CdpWebSocket, wait_for_service_worker
 
 MODEL_VERSION = "nsfwjs-mobilenet-v2@v4.2.1"
 RUNTIME_MODE = "headless-swiftshader-webgl"
+MAX_ERROR_REASON_LENGTH = 220
 DEFAULT_EXTENSION_DIR = Path("extension/chrome")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
 DEFAULT_CORPUS_DIR = Path(os.environ.get("CHUNGMARU_NSFW_CORPUS_DIR", "/private/tmp/chungmaru-nsfw-corpus"))
@@ -531,6 +532,10 @@ def warm_classifier(worker: CdpWebSocket, *, timeout_s: float = 45) -> dict[str,
     return value
 
 
+def normalize_error_reason(value: Any) -> str:
+    return " ".join(str(value or "").split())[:MAX_ERROR_REASON_LENGTH]
+
+
 def configure_worker(worker: CdpWebSocket, backend: str) -> None:
     settings = {
         "enabled": True,
@@ -683,6 +688,7 @@ def classify_batch(
             "wall_ms": wall_ms,
             "ok": bool(result.get("ok")),
             "error_code": str(result.get("errorCode") or response.get("errorCode") or ""),
+            "error_reason": normalize_error_reason(result.get("reason") or response.get("reason")),
         })
     batch_row = {
         "runtime_mode": RUNTIME_MODE,
@@ -703,6 +709,7 @@ def classify_batch(
         "tensor_count": int(response.get("tensorCount") or 0),
         "ok": bool(response.get("ok")),
         "error_code": str(response.get("errorCode") or ""),
+        "error_reason": normalize_error_reason(response.get("reason")),
     }
     return raw_rows, batch_row
 
@@ -1028,6 +1035,7 @@ def main() -> int:
                     "tensor_count": int(warmup.get("tensorCount") or 0),
                     "ok": bool(warmup.get("ok")),
                     "error_code": str(warmup.get("errorCode") or ""),
+                    "error_reason": normalize_error_reason(warmup.get("reason")),
                 })
                 completed_cold_runs.add(cold_index)
                 checkpoint_progress("running")
