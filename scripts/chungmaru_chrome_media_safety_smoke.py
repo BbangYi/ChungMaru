@@ -2308,8 +2308,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--composite-repeat", type=int, default=1)
     parser.add_argument(
         "--composite-classifier-backend",
-        choices=["cpu", "fixture", "off"],
-        default="cpu",
+        choices=["cpu", "wasm", "fixture", "off"],
+        default="wasm",
         help="Requested backend label retained for runner compatibility; synthetic classifier cases use the fixture override.",
     )
     parser.add_argument(
