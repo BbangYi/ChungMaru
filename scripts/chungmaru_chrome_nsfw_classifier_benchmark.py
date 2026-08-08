@@ -30,6 +30,7 @@ from chungmaru_chrome_latency_smoke import CdpWebSocket, wait_for_service_worker
 
 
 MODEL_VERSION = "nsfwjs-mobilenet-v2@v4.2.1"
+RUNTIME_MODE = "headless-swiftshader-webgl"
 DEFAULT_EXTENSION_DIR = Path("extension/chrome")
 DEFAULT_OUTPUT_DIR = Path("evaluation/media-safety/results/current")
 DEFAULT_CORPUS_DIR = Path(os.environ.get("CHUNGMARU_NSFW_CORPUS_DIR", "/private/tmp/chungmaru-nsfw-corpus"))
@@ -375,6 +376,9 @@ def launch_chrome(chrome_path: Path, extension_dir: Path, profile_dir: Path, por
         f"--user-data-dir={profile_dir}",
         f"--remote-debugging-port={port}",
         "--headless=new",
+        "--enable-webgl",
+        "--use-angle=swiftshader",
+        "--ignore-gpu-blocklist",
         "--no-first-run",
         "--no-default-browser-check",
         "--window-size=1440,900",
@@ -530,6 +534,7 @@ def classify_batch(
         raw_rows.append({
             "captured_at": now_iso(),
             "model_version": response.get("modelVersion") or MODEL_VERSION,
+            "runtime_mode": RUNTIME_MODE,
             "backend": response.get("backend") or "",
             "phase": phase,
             "run_index": run_index,
@@ -557,6 +562,7 @@ def classify_batch(
             "error_code": str(result.get("errorCode") or response.get("errorCode") or ""),
         })
     batch_row = {
+        "runtime_mode": RUNTIME_MODE,
         "phase": phase,
         "run_index": run_index,
         "batch_size": len(samples),
@@ -743,6 +749,7 @@ def write_report(
         "",
         f"- Verdict: **{verdict}**",
         f"- Model: `{MODEL_VERSION}`",
+        f"- Runtime: `{RUNTIME_MODE}` (controlled benchmark only; not a user-device GPU measurement)",
         f"- Backend: `{final_status.get('backend') or 'unknown'}`",
         f"- Corpus: {manifest.get('sampleCount', 0)} candidates, review status `{manifest.get('reviewStatus')}`",
         f"- Calibrated explicit threshold: `{quality['calibratedThreshold']}`",
@@ -791,7 +798,7 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         choices=["normal", "cpu"],
         default="normal",
-        help="Benchmark-only TFJS backend selection. CPU avoids unavailable headless WebGL.",
+        help="Benchmark-only TFJS backend selection. normal uses WebGL with headless SwiftShader; cpu is a reference run.",
     )
     return parser.parse_args()
 
@@ -873,6 +880,7 @@ def main() -> int:
                 warmup = worker_call(worker, "warmNsfwClassifier", {"source": "benchmark-cold"}, timeout_s=45)
                 cold_rows.append({
                     "run_index": cold_index,
+                    "runtime_mode": RUNTIME_MODE,
                     "backend": warmup.get("backend") or "",
                     "model_load_ms": int(warmup.get("modelLoadMs") or 0),
                     "warmup_ms": int(warmup.get("warmupMs") or 0),
