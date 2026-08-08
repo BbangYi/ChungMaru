@@ -137,7 +137,9 @@ const RUNTIME_PERF_FLUSH_INTERVAL_MS = 5000;
 const RUNTIME_PERF_EVENT_LOOP_SAMPLE_MS = 250;
 const RUNTIME_PERF_EVENT_LOOP_LAG_THRESHOLD_MS = 80;
 const MEDIA_SAFETY_SCAN_DEBOUNCE_MS = 140;
-const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 180;
+// Visible unresolved media gets 120ms of scheduler budget before the 850ms
+// classifier deadline. This keeps the decision-first path inside one second.
+const MEDIA_SAFETY_VISIBILITY_DEBOUNCE_MS = 120;
 const MEDIA_SAFETY_CANDIDATE_LIMIT = 24;
 const MEDIA_SAFETY_STRICT_CANDIDATE_LIMIT = 32;
 const MEDIA_SAFETY_DOM_SCAN_NODE_LIMIT = 140;
@@ -147,7 +149,7 @@ const MEDIA_SAFETY_DENSE_LINK_MIN_COUNT = 4;
 const MEDIA_SAFETY_FAST_MUTATION_NODE_LIMIT = 24;
 const MEDIA_SAFETY_FAST_MUTATION_CANDIDATE_LIMIT = 14;
 const MEDIA_SAFETY_MIN_RESCAN_INTERVAL_MS = 360;
-const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 650;
+const MEDIA_SAFETY_VISIBILITY_RESCAN_INTERVAL_MS = 120;
 const MEDIA_SAFETY_SETTLE_RESCAN_INTERVAL_MS = 1250;
 const MEDIA_SAFETY_SETTLE_SCAN_DELAY_MS = 420;
 const MEDIA_SAFETY_PIPELINE_CONTENTION_DELAY_MS = 180;
@@ -3560,7 +3562,7 @@ function invalidateNsfwClassifierContext(options = {}) {
   }
 }
 
-function requestNsfwClassifierWarmup(settings = cachedSettings) {
+function requestNsfwClassifierWarmup(settings = cachedSettings, options = {}) {
   if (!isMediaSafetyEnabled(settings)) {
     return Promise.resolve(null);
   }
@@ -3609,7 +3611,9 @@ function requestNsfwClassifierWarmup(settings = cachedSettings) {
           }
         });
     };
-    if ("requestIdleCallback" in window) {
+    if (options.immediate === true) {
+      runWarmup();
+    } else if ("requestIdleCallback" in window) {
       window.requestIdleCallback(runWarmup, { timeout: 1200 });
     } else {
       window.setTimeout(runWarmup, 0);
@@ -14549,7 +14553,7 @@ async function bootstrap() {
   }
   maybeEnableMediaSafetyStartupGate(initialSettings);
   if (isMediaSafetyEnabled(initialSettings) && !shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
-    requestNsfwClassifierWarmup(initialSettings);
+    requestNsfwClassifierWarmup(initialSettings, { immediate: true });
   }
   if (!shouldSkipMediaSafetyProfile(getMediaSafetyProfile())) {
     runImmediateMediaSafetyScan(initialSettings, { reason: "bootstrap-fast" });

@@ -47,6 +47,7 @@ CHROME_FOR_TESTING_EXECUTABLE = (
     "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"
 )
 DEVELOPER_RUNTIME_LOG_ENABLED_STORAGE_KEY = "developerRuntimeLogEnabled"
+ONE_SECOND_PROTECTION_BUDGET_MS = 1000
 
 
 def now_iso() -> str:
@@ -2189,6 +2190,27 @@ def assert_acceptance(rows: list[dict[str, Any]]) -> None:
       failures.append("classifier_log_on_visual_safe should write one aggregate classifier batch log")
     if classifier_safe and classifier_safe["classifier_benign_count"] < 1:
       failures.append("classifier_log_on_visual_safe should record a benign classifier decision")
+    for row in rows:
+      case_id = str(row.get("case_id") or "unknown")
+      action_count = int_metric(row.get("action_count"))
+      dom_added_to_action_ms = int_metric(row.get("dom_added_to_action_ms"))
+      if action_count > 0 and dom_added_to_action_ms > ONE_SECOND_PROTECTION_BUDGET_MS:
+        failures.append(
+            f"{case_id} exceeded the {ONE_SECOND_PROTECTION_BUDGET_MS}ms DOM-to-action budget "
+            f"({dom_added_to_action_ms}ms)"
+        )
+      classifier_decision_ms = int_metric(row.get("classifier_decision_ms_max"))
+      if classifier_decision_ms > ONE_SECOND_PROTECTION_BUDGET_MS:
+        failures.append(
+            f"{case_id} exceeded the {ONE_SECOND_PROTECTION_BUDGET_MS}ms classifier decision budget "
+            f"({classifier_decision_ms}ms)"
+        )
+    if late_load and int_metric(late_load.get("late_decision_ms")) > ONE_SECOND_PROTECTION_BUDGET_MS:
+      failures.append(
+          "log_on_late_load exceeded the "
+          f"{ONE_SECOND_PROTECTION_BUDGET_MS}ms delayed-media decision budget "
+          f"({int_metric(late_load.get('late_decision_ms'))}ms)"
+      )
     if failures:
       raise RuntimeError("; ".join(failures))
 
