@@ -1811,7 +1811,7 @@ def write_outputs(output_dir: Path, rows: list[dict[str, Any]], prefix: str) -> 
 
 
 def build_composite_cases(args: argparse.Namespace, fixture_port: int) -> list[dict[str, Any]]:
-    classifier_backend = str(args.composite_classifier_backend or "cpu")
+    requested_backend = str(args.composite_classifier_backend or "cpu")
     repeat_count = max(1, int(args.composite_repeat or 1))
     local_fixture = f"http://127.0.0.1:{fixture_port}/?scenario=composite"
     google_search_fixture = f"http://www.google.com:{fixture_port}/search?scenario=composite&q=casino"
@@ -1882,7 +1882,7 @@ def build_composite_cases(args: argparse.Namespace, fixture_port: int) -> list[d
             "media_safety_startup_gate_enabled": False,
             "protection_profile": profile["profile"],
             "repeat_index": repeat_index,
-            "cpu_backend": classifier_backend,
+            "cpu_backend": requested_backend,
             "cpu_throttle_rate": float(args.cpu_throttle_rate or 1),
             "backend_enabled": False,
             "nsfw_classifier_test_override": profile["classifier_override"],
@@ -1962,7 +1962,7 @@ def write_composite_summary(output_dir: Path, rows: list[dict[str, Any]], args: 
 
 
 def assert_composite_acceptance(rows: list[dict[str, Any]]) -> None:
-    """Require real classifier profiles to protect every fixture harmful tile."""
+    """Require controlled classifier profiles to protect every fixture harmful tile."""
     failures: list[str] = []
     for profile in ("media_classifier", "all_features_on"):
       profile_rows = [row for row in rows if row.get("protection_profile") == profile]
@@ -2303,14 +2303,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--composite-profile",
         action="store_true",
-        help="Run the CPU-oriented OFF/text-site/cheap/classifier/all-features composite traversal matrix.",
+        help="Run the controlled OFF/text-site/cheap/classifier/all-features composite traversal matrix.",
     )
     parser.add_argument("--composite-repeat", type=int, default=1)
     parser.add_argument(
         "--composite-classifier-backend",
         choices=["cpu", "fixture", "off"],
         default="cpu",
-        help="Classifier backend used for composite media_classifier/all_features_on profiles.",
+        help="Requested backend label retained for runner compatibility; synthetic classifier cases use the fixture override.",
     )
     parser.add_argument(
         "--cpu-throttle-rate",
