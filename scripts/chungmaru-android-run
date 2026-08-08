@@ -1490,9 +1490,39 @@ $RunnerArgs = @(
     "--collect-after",
     $Mode
   )
-  & $PythonExe @PythonArgs @RunnerArgs
-  if ($LASTEXITCODE -ne 0) {{
-    throw "Desktop local runner failed: mode=$Mode exit=$LASTEXITCODE"
+  if ($Mode -eq "chrome-media-start") {{
+    # OpenSSH places session children in a Windows job object and terminates
+    # them when the SSH command exits. Run the long Chrome job in the logged-in
+    # desktop session instead, using one stable task name to avoid task sprawl.
+    $TaskUser = (Get-CimInstance Win32_ComputerSystem).UserName
+    if ([string]::IsNullOrWhiteSpace($TaskUser)) {{
+      throw "no interactive Desktop user is available for chrome-media task"
+    }}
+    $RunnerArgs[$RunnerArgs.Count - 1] = "chrome-media-job"
+    $TaskArgumentLine = (($PythonArgs + $RunnerArgs) | ForEach-Object {{
+      '"' + $_.ToString().Replace('"', '\\"') + '"'
+    }}) -join " "
+    $TaskScript = Join-Path $RunnerHome "bootstrap\\chrome-media-task.cmd"
+    New-Item -ItemType Directory -Path (Split-Path -Parent $TaskScript) -Force | Out-Null
+    @"
+@echo off
+set "CHUNGMARU_CHROME_PATH=$ChromeForTesting"
+set "CHUNGMARU_RUNNER_HOME=$RunnerHome"
+set "CHUNGMARU_LOCAL_WORK_ROOT=$env:CHUNGMARU_LOCAL_WORK_ROOT"
+cd /d "$LocalRepo"
+"$PythonExe" $TaskArgumentLine
+"@ | Set-Content -Path $TaskScript -Encoding ASCII
+    $TaskAction = New-ScheduledTaskAction -Execute "cmd.exe" -Argument ("/d /c " + $TaskScript)
+    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId $TaskUser -LogonType Interactive -RunLevel Limited
+    $TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName "Chungmaru-ChromeMedia-Runner" -Action $TaskAction -Principal $TaskPrincipal -Settings $TaskSettings -Force | Out-Null
+    Start-ScheduledTask -TaskName "Chungmaru-ChromeMedia-Runner"
+    Write-Output "desktop_chrome_media_task=started"
+  }} else {{
+    & $PythonExe @PythonArgs @RunnerArgs
+    if ($LASTEXITCODE -ne 0) {{
+      throw "Desktop local runner failed: mode=$Mode exit=$LASTEXITCODE"
+    }}
   }}
 }}
 """
