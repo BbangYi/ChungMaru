@@ -1176,6 +1176,11 @@ def build_result_row(
     frame_harmful_hidden_count = int_metric(dom.get("frameHarmfulHiddenCount"))
     safe_total = int_metric(dom.get("safeTotal"))
     safe_hidden_count = int_metric(dom.get("safeHiddenCount"))
+    known_harmful_miss_count = max(0, harmful_total - harmful_hidden_count) + max(
+        0,
+        frame_harmful_total - frame_harmful_hidden_count,
+    )
+    has_known_harmful_fixture = harmful_total > 0 or frame_harmful_total > 0
     pre_manual_dom = pre_manual_dom if isinstance(pre_manual_dom, dict) else {}
     dom_candidate_count = harmful_total + safe_total if media_enabled else 0
     effective_action_count = max(
@@ -1244,15 +1249,15 @@ def build_result_row(
         "hidden_area_px": hidden_area_px,
         "viewport_coverage_pct": round(viewport_coverage_pct, 1),
         "remaining_visible_tile_count": remaining_visible_tile_count,
-        # The scan response is allowed to precede an asynchronous classifier
-        # decision. Treat final DOM state and the latest batch summary as the
-        # outcome; retaining a historical maximum would turn a resolved miss
-        # into a false failure.
-        "missed_visible_tile_count": max(
-            max(0, harmful_total - harmful_hidden_count),
-            max(0, frame_harmful_total - frame_harmful_hidden_count),
-            log_summary["loggedLatestMissedVisibleTileCount"],
+        # Fixture markers expose final DOM truth. Their container can remain
+        # visible after a protected child has been collapsed, so keep the raw
+        # logger value separately instead of treating it as a final miss.
+        "missed_visible_tile_count": (
+            known_harmful_miss_count
+            if has_known_harmful_fixture
+            else log_summary["loggedLatestMissedVisibleTileCount"]
         ),
+        "instrumented_missed_visible_tile_count": log_summary["loggedLatestMissedVisibleTileCount"],
         "false_hidden_count": max(int_metric(summary.get("falseHiddenCount")), log_summary["loggedFalseHiddenCount"], safe_hidden_count),
         "collect_ms": max(int_metric(summary.get("collectMs")), log_summary["loggedCollectMs"]),
         "cheap_filter_ms": max(int_metric(summary.get("cheapFilterMs")), log_summary["loggedCheapFilterMs"]),
