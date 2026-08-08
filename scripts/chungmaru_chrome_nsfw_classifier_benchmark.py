@@ -515,14 +515,15 @@ def worker_call(worker: CdpWebSocket, function_name: str, *args: Any, timeout_s:
 
 
 def warm_classifier(worker: CdpWebSocket, *, timeout_s: float = 45) -> dict[str, Any]:
-    """Exercise the extension's public warm-up message contract.
+    """Exercise the offscreen warm-up contract and retain its error reason.
 
-    Calling the internal service-worker helper directly hides the offscreen
-    failure reason when a Promise rejects through CDP. The product path uses
-    this message, so it is also the useful benchmark/diagnostic boundary.
+    A service worker cannot message itself through ``runtime.sendMessage``.
+    The regular helper wraps this offscreen response in a rejected Promise,
+    which CDP cannot serialize. Calling the same offscreen boundary directly
+    preserves the bounded diagnostic reason without exposing image data.
     """
     value = worker.evaluate(
-        "(async () => chrome.runtime.sendMessage({type:'WARMUP_NSFW_CLASSIFIER'}))()",
+        "(async () => sendNsfwOffscreenMessage({type:'OFFSCREEN_NSFW_WARMUP'}))()",
         timeout_s=timeout_s,
     )
     if not isinstance(value, dict):
