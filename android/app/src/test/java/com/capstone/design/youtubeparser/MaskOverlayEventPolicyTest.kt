@@ -206,6 +206,199 @@ class MaskOverlayEventPolicyTest {
     }
 
     @Test
+    fun shouldPrimeYoutubeLoadingForPotentialScroll_coversPrecedingContentChange() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForPotentialScroll(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = true,
+                isLikelySelfContentChange = false,
+                hasConfirmedCommentPanel = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForPotentialScroll(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = true,
+                isLikelySelfContentChange = true,
+                hasConfirmedCommentPanel = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForPotentialScroll(
+                eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                isYoutubePackage = true,
+                isLikelySelfContentChange = false,
+                hasConfirmedCommentPanel = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForPotentialScroll(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = false,
+                isLikelySelfContentChange = false,
+                hasConfirmedCommentPanel = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForPotentialScroll(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = true,
+                isLikelySelfContentChange = false,
+                hasConfirmedCommentPanel = false
+            )
+        )
+    }
+
+    @Test
+    fun shouldRestoreYoutubeLoadingOnForeground_requiresFreshMatchingYoutubeWindow() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldRestoreYoutubeLoadingOnForeground(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isYoutubePackage = true,
+                wasYoutubeObserved = false,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                windowClassMatches = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRestoreYoutubeLoadingOnForeground(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = true,
+                wasYoutubeObserved = false,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                windowClassMatches = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRestoreYoutubeLoadingOnForeground(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isYoutubePackage = true,
+                wasYoutubeObserved = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                windowClassMatches = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRestoreYoutubeLoadingOnForeground(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isYoutubePackage = true,
+                wasYoutubeObserved = false,
+                hasCachedCommentPanel = true,
+                isCacheFresh = false,
+                windowClassMatches = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRestoreYoutubeLoadingOnForeground(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isYoutubePackage = true,
+                wasYoutubeObserved = false,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                windowClassMatches = false
+            )
+        )
+    }
+
+    @Test
+    fun shouldPrimeYoutubeLoadingForLaunchClick_requiresTrustedYoutubeClickAndFreshCache() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForLaunchClick(
+                eventType = AccessibilityEvent.TYPE_VIEW_CLICKED,
+                isTrustedLauncherPackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                isYoutubeLaunchTarget = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForLaunchClick(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isTrustedLauncherPackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                isYoutubeLaunchTarget = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForLaunchClick(
+                eventType = AccessibilityEvent.TYPE_VIEW_CLICKED,
+                isTrustedLauncherPackage = false,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                isYoutubeLaunchTarget = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForLaunchClick(
+                eventType = AccessibilityEvent.TYPE_VIEW_CLICKED,
+                isTrustedLauncherPackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = false,
+                isYoutubeLaunchTarget = true
+            )
+        )
+    }
+
+    @Test
+    fun shouldPrimeYoutubeLoadingForCommentButtonClick_requiresExactCachedCommentAction() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForCommentButtonClick(
+                eventType = AccessibilityEvent.TYPE_VIEW_CLICKED,
+                isYoutubePackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                labelLooksLikeComments = true,
+                isCompactTrailingAction = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForCommentButtonClick(
+                eventType = AccessibilityEvent.TYPE_VIEW_CLICKED,
+                isYoutubePackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                labelLooksLikeComments = true,
+                isCompactTrailingAction = false
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldPrimeYoutubeLoadingForCommentButtonClick(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isYoutubePackage = true,
+                hasCachedCommentPanel = true,
+                isCacheFresh = true,
+                labelLooksLikeComments = true,
+                isCompactTrailingAction = true
+            )
+        )
+    }
+    @Test
+    fun shouldClearOverlayForExitPackage_ignoresTrailingLauncherContentChanges() {
+        assertTrue(
+            MaskOverlayEventPolicy.shouldClearOverlayForExitPackage(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isExitPackage = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldClearOverlayForExitPackage(
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                isExitPackage = true
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldClearOverlayForExitPackage(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                isExitPackage = false
+            )
+        )
+    }
+
+    @Test
     fun shouldPreserveOnScrollContentChange_keepsTranslatedMasksDuringLayoutBursts() {
         assertTrue(
             MaskOverlayEventPolicy.shouldPreserveOnScrollContentChange(
@@ -430,7 +623,7 @@ class MaskOverlayEventPolicyTest {
             MaskOverlayEventPolicy.shouldDeferVisualInvalidationForContentChange(
                 eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 visualAnalysisInFlight = true,
-                elapsedSinceVisualAnalysisStartMs = 250L
+                elapsedSinceVisualAnalysisStartMs = 4_500L
             )
         )
     }
@@ -455,7 +648,7 @@ class MaskOverlayEventPolicyTest {
             MaskOverlayEventPolicy.shouldDeferVisualInvalidationForFreshCapture(
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 visualAnalysisInFlight = true,
-                elapsedSinceVisualAnalysisStartMs = 640L
+                elapsedSinceVisualAnalysisStartMs = 4_500L
             )
         )
         assertFalse(
@@ -508,6 +701,13 @@ class MaskOverlayEventPolicyTest {
                 overlayUpdatedRecently = true
             )
         )
+        assertTrue(
+            MaskOverlayEventPolicy.isLikelySelfContentChange(
+                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                hasActiveMasks = true,
+                overlayUpdatedRecently = true
+            )
+        )
     }
 
     @Test
@@ -524,6 +724,63 @@ class MaskOverlayEventPolicyTest {
                 eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
                 hasActiveMasks = true,
                 overlayUpdatedRecently = true
+            )
+        )
+    }
+
+    @Test
+    fun shouldRemoveYoutubeMirrorAfterPanelMiss_waitsForStableAbsence() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
+                panelPresent = false,
+                panelTransitionActive = false,
+                missingForMs = 899L,
+                missingGraceMs = 900L
+            )
+        )
+        assertTrue(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
+                panelPresent = false,
+                panelTransitionActive = false,
+                missingForMs = 900L,
+                missingGraceMs = 900L
+            )
+        )
+    }
+
+    @Test
+    fun shouldRemoveYoutubeMirrorAfterPanelMiss_ignoresPanelTransitions() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
+                panelPresent = false,
+                panelTransitionActive = true,
+                missingForMs = 5_000L,
+                missingGraceMs = 900L
+            )
+        )
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
+                panelPresent = true,
+                panelTransitionActive = false,
+                missingForMs = 5_000L,
+                missingGraceMs = 900L
+            )
+        )
+    }
+
+    @Test
+    fun shouldRemoveYoutubeMirrorAfterPanelMiss_keepsReadyMirrorOnTreeOcclusion() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = true,
+                panelPresent = false,
+                panelTransitionActive = false,
+                missingForMs = 5_000L,
+                missingGraceMs = 900L
             )
         )
     }

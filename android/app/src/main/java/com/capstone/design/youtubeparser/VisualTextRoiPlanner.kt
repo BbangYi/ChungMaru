@@ -53,6 +53,8 @@ object VisualTextRoiPlanner {
     private const val COMMENT_PANEL_RIGHT_PADDING_PX = 24
     private const val COMMENT_PANEL_BOTTOM_GUARD_PX = 72
     private const val MAX_COMMENT_PANEL_ROI_COUNT = 4
+    private const val COMMENT_PANEL_AUTHOR_AVATAR_MAX_WIDTH_PX = 96
+    private const val COMMENT_PANEL_AUTHOR_LABEL_MIN_WIDTH_PX = 96
     private const val BROWSER_TEXT_NODE_SOURCE = "browser-text-node"
     private const val BROWSER_VISUAL_NODE_SOURCE = "browser-visual-region"
     private const val BROWSER_TEXT_ROI_HORIZONTAL_PADDING_PX = 12
@@ -89,6 +91,13 @@ object VisualTextRoiPlanner {
         val browserTextNodeRois = buildBrowserTextNodeRois(nodes, screenWidth, screenHeight)
         val browserVisualNodeRois = buildBrowserVisualNodeRois(nodes, screenWidth, screenHeight)
         val commentPanelRois = buildYoutubeCommentPanelRois(nodes, screenWidth, screenHeight)
+        if (commentPanelRois.isNotEmpty()) {
+            return VisualTextRoiPlan(
+                rois = commentPanelRois.take(MAX_ROI_COUNT),
+                candidateCount = rawCandidates.size + commentPanelRois.size
+            )
+        }
+
         val fallbackCandidates =
             browserTextNodeRois +
                 browserVisualNodeRois +
@@ -528,6 +537,9 @@ object VisualTextRoiPlanner {
         screenHeight: Int
     ): List<VisualTextRoi> {
         if (nodes.none { it.packageName == YOUTUBE_PACKAGE }) return emptyList()
+        buildYoutubeNativeCommentPanelRoi(nodes, screenWidth, screenHeight)?.let { nativeRoi ->
+            return listOf(nativeRoi)
+        }
 
         val panelContentTop = commentPanelContentTop(nodes, screenHeight) ?: return emptyList()
         val inputTop = commentPanelInputTop(nodes, screenHeight)
@@ -542,7 +554,7 @@ object VisualTextRoiPlanner {
                     node.packageName == YOUTUBE_PACKAGE &&
                     node.top >= minAuthorTop &&
                     node.top < panelBottom &&
-                    looksLikeYoutubeCommentAuthor(node.displayText.orEmpty())
+                    looksLikeYoutubeCommentAuthorNode(node)
             }
             .sortedWith(compareBy<ParsedTextNode> { it.top }.thenBy { it.left })
             .take(MAX_COMMENT_PANEL_ROI_COUNT + 1)
@@ -580,6 +592,50 @@ object VisualTextRoiPlanner {
             }
     }
 
+    private fun buildYoutubeNativeCommentPanelRoi(
+        nodes: List<ParsedTextNode>,
+        screenWidth: Int,
+        screenHeight: Int
+    ): VisualTextRoi? {
+        val contentNode = nodes
+            .asSequence()
+            .filter { node ->
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
+                    node.viewIdResourceName.orEmpty() in YOUTUBE_COMMENT_PANEL_CONTENT_VIEW_IDS
+            }
+            .filter { node -> node.right > node.left && node.bottom > node.top }
+            .maxByOrNull { node ->
+                (node.right - node.left) * (node.bottom - node.top)
+            }
+            ?: return null
+
+        val left = contentNode.left.coerceIn(0, screenWidth)
+        val right = contentNode.right.coerceIn(left, screenWidth)
+        val top = contentNode.top.coerceIn(0, screenHeight)
+        val contentBottom = contentNode.bottom.coerceIn(top, screenHeight)
+        val inputTop = commentPanelInputTop(nodes, screenHeight)
+        val bottom = if (inputTop in (top + MIN_HEIGHT_PX) until contentBottom) {
+            inputTop
+        } else {
+            contentBottom
+        }
+        if (right - left < MIN_WIDTH_PX || bottom - top < MIN_HEIGHT_PX) return null
+
+        return VisualTextRoi(
+            boundsInScreen = BoundsRect(
+                left = left,
+                top = top,
+                right = right,
+                bottom = bottom
+            ),
+            source = YOUTUBE_COMMENT_PANEL_SOURCE,
+            priority = -5,
+            reason = "comment-panel-native-content",
+            sourceText = contentNode.viewIdResourceName.orEmpty()
+        )
+    }
+
     private fun commentPanelContentTop(nodes: List<ParsedTextNode>, screenHeight: Int): Int? {
         val panelMarkers = nodes
             .asSequence()
@@ -591,7 +647,9 @@ object VisualTextRoiPlanner {
             }
             .toList()
 
-        if (panelMarkers.isEmpty()) return null
+        if (panelMarkers.isEmpty()) {
+            return inferCommentPanelContentTopFromCommentRows(nodes, screenHeight)
+        }
 
         val headerBottom = panelMarkers.maxOf { it.bottom }
         val sortBottom = nodes
@@ -609,14 +667,57 @@ object VisualTextRoiPlanner {
         return max(headerBottom, sortBottom ?: headerBottom) + SCREEN_EDGE_PADDING_PX
     }
 
-    private fun commentPanelInputTop(nodes: List<ParsedTextNode>, screenHeight: Int): Int {
-        return nodes
+    private fun inferCommentPanelContentTopFromCommentRows(
+        nodes: List<ParsedTextNode>,
+        screenHeight: Int
+    ): Int? {
+        val minTop = (screenHeight * COMMENT_PANEL_AUTHOR_MIN_TOP_RATIO).toInt()
+        val hasCommentActions = nodes.any { node ->
+            node.isVisibleToUser &&
+                node.packageName == YOUTUBE_PACKAGE &&
+                node.top >= minTop &&
+                isYoutubeCommentActionControl(node.displayText.orEmpty())
+        }
+        if (!hasCommentActions) return null
+
+        val authors = nodes
             .asSequence()
             .filter { node ->
                 node.isVisibleToUser &&
                     node.packageName == YOUTUBE_PACKAGE &&
+                    node.top >= minTop &&
+                    looksLikeYoutubeCommentAuthorNode(node)
+            }
+            .sortedWith(compareBy<ParsedTextNode> { it.top }.thenBy { it.left })
+            .toList()
+        val firstAuthor = authors.firstOrNull() ?: return null
+
+        val hasBodyBelowAuthor = nodes.any { node ->
+            node.isVisibleToUser &&
+                node.packageName == YOUTUBE_PACKAGE &&
+                node.top >= firstAuthor.bottom &&
+                node.top <= firstAuthor.bottom + COMMENT_PANEL_ROW_MAX_HEIGHT_PX &&
+                node.left >= firstAuthor.left - COMMENT_PANEL_LEFT_PADDING_PX &&
+                !looksLikeYoutubeCommentAuthorNode(node) &&
+                !isYoutubeCommentActionControl(node.displayText.orEmpty()) &&
+                !isYoutubeCommentInput(node.displayText.orEmpty())
+        }
+        if (!hasBodyBelowAuthor) return null
+
+        return firstAuthor.top
+    }
+    private fun commentPanelInputTop(nodes: List<ParsedTextNode>, screenHeight: Int): Int {
+        return nodes
+            .asSequence()
+            .filter { node ->
+                val displayText = node.displayText.orEmpty()
+                val isInputWidget = node.className.orEmpty().contains("EditText", ignoreCase = true)
+                val isInputLabel = isYoutubeCommentInput(displayText) &&
+                    !isYoutubeCommentActionControl(displayText)
+                node.isVisibleToUser &&
+                    node.packageName == YOUTUBE_PACKAGE &&
                     node.top > (screenHeight * 0.55f).toInt() &&
-                    isYoutubeCommentInput(node.displayText.orEmpty())
+                    (isInputWidget || isInputLabel)
             }
             .map { it.top }
             .minOrNull()
@@ -626,14 +727,13 @@ object VisualTextRoiPlanner {
     private fun isYoutubeCommentPanelMarker(text: String): Boolean {
         val normalized = text.replace(Regex("\\s+"), " ").trim()
         val lower = normalized.lowercase()
-        return lower == "comments" ||
-            lower == "replies" ||
-            lower == "reply" ||
-            lower.matches(Regex("""^\d+\s+repl(?:y|ies)\b.*""")) ||
+        val marker = lower.trimEnd('.', ':')
+        return marker == "comments" ||
+            marker == "replies" ||
+            marker.matches(Regex("""^\d+\s+repl(?:y|ies)\b.*""")) ||
             normalized == "댓글" ||
             normalized.endsWith("개의 답글")
     }
-
     private fun isYoutubeCommentSortControl(text: String): Boolean {
         val normalized = text.replace(Regex("\\s+"), " ").trim()
         val lower = normalized.lowercase()
@@ -653,22 +753,55 @@ object VisualTextRoiPlanner {
             normalized.startsWith("답글")
     }
 
+    private fun isYoutubeCommentActionControl(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        return lower.startsWith("like this comment") ||
+            lower == "dislike this comment" ||
+            lower == "reply" ||
+            lower == "답글" ||
+            lower == "답글 달기"
+    }
+    private fun looksLikeYoutubeCommentAuthorNode(node: ParsedTextNode): Boolean {
+        val normalized = node.displayText.orEmpty().replace(Regex("\\s+"), " ").trim()
+        if (!looksLikeYoutubeCommentAuthor(normalized)) return false
+
+        val width = node.right - node.left
+        val className = node.className.orEmpty()
+        val height = node.bottom - node.top
+        val isAvatarClass = className.contains("Button", ignoreCase = true) ||
+            className.contains("Image", ignoreCase = true)
+        if (isAvatarClass && width <= COMMENT_PANEL_AUTHOR_AVATAR_MAX_WIDTH_PX && height <= COMMENT_PANEL_AUTHOR_AVATAR_MAX_WIDTH_PX) {
+            return false
+        }
+        if (width < COMMENT_PANEL_AUTHOR_LABEL_MIN_WIDTH_PX && !normalized.lowercase().contains(" ago")) {
+            return false
+        }
+
+        return true
+    }
+
     private fun looksLikeYoutubeCommentAuthor(text: String): Boolean {
         val normalized = text.replace(Regex("\\s+"), " ").trim()
         if (!normalized.startsWith("@")) return false
         if (normalized.length !in 2..96) return false
 
+        val handleToken = normalized.substringBefore(" ")
+        if (handleToken.length < 3) return false
+        if (handleToken.any { it == '/' || it == '\\' }) return false
+
         val lower = normalized.lowercase()
-        return Regex("""^@[^\s·•]{2,}""").containsMatchIn(normalized) &&
-            (
-                lower.contains(" ago") ||
-                    lower.contains("edited") ||
-                    lower.contains("전") ||
-                    lower.contains("개월") ||
-                    lower.contains("일") ||
-                    lower.contains("시간") ||
-                    normalized.count { it.isWhitespace() } <= 1
-                )
+        val hasTimelineOrBadge = lower.contains(" ago") ||
+            lower.contains("edited") ||
+            lower.contains("verified user") ||
+            lower.contains("개월 전") ||
+            lower.contains("년 전") ||
+            lower.contains("일 전") ||
+            lower.contains("시간 전") ||
+            lower.contains("분 전") ||
+            lower.contains("초 전") ||
+            lower.contains("수정됨")
+
+        return hasTimelineOrBadge || normalized.count { it.isWhitespace() } <= 2
     }
 
     private fun buildYoutubeFallbackRois(
@@ -938,6 +1071,11 @@ object VisualTextRoiPlanner {
 
     private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
     private const val YOUTUBE_COMMENT_PANEL_SOURCE = "youtube-comment-panel"
+    private val YOUTUBE_COMMENT_PANEL_CONTENT_VIEW_IDS = setOf(
+        "com.google.android.youtube:id/panel_content_touch_wrapper",
+        "com.google.android.youtube:id/panel_content",
+        "com.google.android.youtube:id/engagement_panel_content"
+    )
 
     private val ACCESSIBILITY_FIRST_PACKAGES = setOf(
         "com.android.chrome",

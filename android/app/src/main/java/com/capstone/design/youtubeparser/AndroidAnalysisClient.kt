@@ -27,10 +27,13 @@ object AndroidAnalysisClient {
 
     private const val TAG = "AndroidAnalysisClient"
     private const val CONNECT_TIMEOUT_MS = 500
-    private const val READ_TIMEOUT_MS = 2500
+    private const val READ_TIMEOUT_MS = 12_000
     private const val RESPONSE_CACHE_LIMIT = 512
     private const val RESPONSE_CACHE_TTL_MS = 30_000L
+    private const val YOUTUBE_SAFE_CACHE_TTL_MS = 10 * 60 * 1000L
+    private const val YOUTUBE_HARMFUL_CACHE_TTL_MS = 30 * 60 * 1000L
     private const val ACCESSIBILITY_LOOKAHEAD_PREFIX = "android-accessibility-lookahead:"
+    private const val MAX_ERROR_BODY_LOG_CHARS = 320
 
     private val gson = GsonBuilder().create()
     private val responseCache = object : LinkedHashMap<String, CachedAnalysisResult>(
@@ -49,8 +52,27 @@ object AndroidAnalysisClient {
         }
     }
 
+    fun cachedResultForComment(context: Context, comment: ParsedComment): AndroidAnalysisResultItem? {
+        val sensitivity = AnalysisSensitivityStore.get(context)
+        if (sensitivity <= 0) return null
+        return getCachedResult(comment, System.currentTimeMillis(), sensitivity)
+    }
+
     fun analyzeSnapshot(context: Context, snapshot: ParseSnapshot): AndroidAnalysisAttempt {
-        val url = AnalysisEndpointStore.resolveAnalyzeUrl(context)
+        return analyzeSnapshot(
+            context = context,
+            snapshot = snapshot,
+            candidateUrls = AnalysisEndpointStore.resolveAnalyzeUrls(context)
+        )
+    }
+
+    private fun analyzeSnapshot(
+        context: Context,
+        snapshot: ParseSnapshot,
+        candidateUrls: List<String>
+    ): AndroidAnalysisAttempt {
+        val url = candidateUrls.firstOrNull()
+            ?: AnalysisEndpointStore.resolveAnalyzeUrl(context)
         val sensitivity = AnalysisSensitivityStore.get(context)
         val startedAt = System.currentTimeMillis()
         val commentCount = snapshot.comments.size
@@ -140,7 +162,21 @@ object AndroidAnalysisClient {
 
             val latencyMs = System.currentTimeMillis() - startedAt
             if (responseCode !in 200..299) {
-                Log.w(TAG, "analysis failed url=$url responseCode=$responseCode body=$responseText")
+                Log.w(TAG, "analysis failed url=$url responseCode=$responseCode body=${summarizeErrorBodyForLog(responseText)}")
+                if (
+                    candidateUrls.size > 1 &&
+                    shouldRetryOnAlternateEndpoint(responseCode)
+                ) {
+                    Log.w(
+                        TAG,
+                        "retry analysis with alternate endpoint next=${candidateUrls[1]}"
+                    )
+                    return analyzeSnapshot(
+                        context = context,
+                        snapshot = snapshot,
+                        candidateUrls = candidateUrls.drop(1)
+                    )
+                }
                 buildCachedFallbackAttempt(
                     url = url,
                     sensitivity = sensitivity,
@@ -168,7 +204,7 @@ object AndroidAnalysisClient {
                     requestEntries = requestEntries,
                     freshResponse = response
                 )
-                cacheFreshResults(requestEntries, response.results, sensitivity)
+                cacheFreshResults(requestEntries, response, sensitivity)
                 val offensiveCount = countActionableOffensiveResults(mergedResponse)
                 val actionableSamples = buildActionableSamples(mergedResponse)
                 Log.d(
@@ -195,6 +231,17 @@ object AndroidAnalysisClient {
                 ?: error.javaClass.simpleName
                 ?: "REQUEST_FAILED"
             Log.e(TAG, "analysis request failed url=$url", error)
+            if (candidateUrls.size > 1) {
+                Log.w(
+                    TAG,
+                    "retry analysis with alternate endpoint next=${candidateUrls[1]} error=$errorCode"
+                )
+                return analyzeSnapshot(
+                    context = context,
+                    snapshot = snapshot,
+                    candidateUrls = candidateUrls.drop(1)
+                )
+            }
             buildCachedFallbackAttempt(
                 url = url,
                 sensitivity = sensitivity,
@@ -218,6 +265,19 @@ object AndroidAnalysisClient {
         }
     }
 
+    internal fun shouldRetryOnAlternateEndpoint(responseCode: Int): Boolean {
+        return responseCode == HttpURLConnection.HTTP_NOT_FOUND ||
+            responseCode == HttpURLConnection.HTTP_BAD_METHOD ||
+            responseCode >= HttpURLConnection.HTTP_INTERNAL_ERROR
+    }
+
+    internal fun summarizeErrorBodyForLog(responseText: String): String {
+        val summary = responseText
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        if (summary.length <= MAX_ERROR_BODY_LOG_CHARS) return summary
+        return summary.take(MAX_ERROR_BODY_LOG_CHARS) + "..."
+    }
     fun analyzeSnapshotFromCache(context: Context, snapshot: ParseSnapshot): AndroidAnalysisAttempt {
         val url = AnalysisEndpointStore.resolveAnalyzeUrl(context)
         val sensitivity = AnalysisSensitivityStore.get(context)
@@ -358,30 +418,67 @@ object AndroidAnalysisClient {
 
     private fun cacheFreshResults(
         requestEntries: List<PendingComment>,
-        results: List<AndroidAnalysisResultItem>,
+        response: AndroidAnalysisResponse,
         sensitivity: Int
     ) {
-        val expiresAt = System.currentTimeMillis() + RESPONSE_CACHE_TTL_MS
+        val now = System.currentTimeMillis()
         val matchedFreshResults = matchFreshResultsToComments(
             comments = requestEntries.map { it.comment },
-            results = results
+            results = response.results
         )
         synchronized(responseCache) {
             requestEntries.forEachIndexed { index, entry ->
-                val result = matchedFreshResults.getOrNull(index) ?: return@forEachIndexed
                 val comment = entry.comment
+                val result = matchedFreshResults.getOrNull(index) ?: return@forEachIndexed
+                val cacheResult = result.copy(
+                    original = comment.commentText,
+                    boundsInScreen = comment.boundsInScreen,
+                    authorId = comment.authorId
+                )
+
+                val expiresAt = cacheExpiresAt(
+                    comment = comment,
+                    result = cacheResult,
+                    now = now
+                )
                 cacheKeysForComment(comment, sensitivity).forEach { key ->
-                    responseCache[key] = CachedAnalysisResult(
-                        result.copy(
-                            original = comment.commentText,
-                            boundsInScreen = comment.boundsInScreen,
-                            authorId = comment.authorId
-                        ),
-                        expiresAt
-                    )
+                    responseCache[key] = CachedAnalysisResult(cacheResult, expiresAt)
                 }
             }
         }
+    }
+
+
+    private fun cacheExpiresAt(
+        comment: ParsedComment,
+        result: AndroidAnalysisResultItem,
+        now: Long
+    ): Long {
+        if (!shouldUseExtendedYoutubeCache(comment)) {
+            return now + RESPONSE_CACHE_TTL_MS
+        }
+
+        val ttl = if (result.isOffensive) {
+            YOUTUBE_HARMFUL_CACHE_TTL_MS
+        } else {
+            YOUTUBE_SAFE_CACHE_TTL_MS
+        }
+        return now + ttl
+    }
+
+
+    private fun shouldUseExtendedYoutubeCache(comment: ParsedComment): Boolean {
+        val sourceKey = normalizeSourceCacheKey(comment.authorId)
+        return sourceKey == "android-accessibility:youtube_user_input" ||
+            sourceKey == "android-accessibility:youtube_title" ||
+            sourceKey == "android-accessibility:youtube_shorts_title" ||
+            sourceKey == "youtube-composite-description" ||
+            sourceKey.startsWith("android-accessibility-comment:youtube") ||
+            sourceKey.startsWith("youtube-visual-range:") ||
+            sourceKey.startsWith("ocr:youtube-composite-card:") ||
+            sourceKey.startsWith("ocr:youtube-visible-band:") ||
+            sourceKey.startsWith("ocr:youtube-comment-panel:") ||
+            sourceKey.startsWith("ocr:youtube-semantic-card:")
     }
 
     internal fun matchFreshResultsToComments(

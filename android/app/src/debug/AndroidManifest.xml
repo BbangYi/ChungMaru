@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".DebugYoutubeMaskHarnessActivity"
+            android:exported="true"
+            android:label="Mask verification"
+            android:theme="@style/Theme.Design" />
+        <activity
+            android:name=".DebugInstagramMirrorHarnessActivity"
+            android:exported="true"
+            android:label="Instagram mirror verification"
+            android:theme="@style/Theme.Design" />
+    </application>
+</manifest>

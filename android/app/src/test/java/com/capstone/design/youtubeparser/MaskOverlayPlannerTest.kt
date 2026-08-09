@@ -1536,7 +1536,7 @@ class MaskOverlayPlannerTest {
     }
 
     @Test
-    fun translateSpecs_dropsMergedPlatformCommentMasksDuringScrollRecaptureGap() {
+    fun translateSpecs_keepsYoutubeCommentMasksDuringScrollRecaptureGap() {
         val response = responseOf(
             resultOf(
                 offensive = true,
@@ -1550,7 +1550,7 @@ class MaskOverlayPlannerTest {
         val specs = AndroidMaskOverlayPlanner.buildSpecs(response, screenWidth = 1080, screenHeight = 2400)
 
         assertEquals(1, specs.size)
-        assertFalse(specs.single().allowScrollTranslation)
+        assertTrue(specs.single().allowScrollTranslation)
 
         val translated = AndroidMaskOverlayPlanner.translateSpecs(
             specs = specs,
@@ -1560,7 +1560,8 @@ class MaskOverlayPlannerTest {
             screenHeight = 2400
         )
 
-        assertTrue(translated.isEmpty())
+        assertEquals(1, translated.size)
+        assertEquals(specs.single().top - 24, translated.single().top)
     }
 
     @Test

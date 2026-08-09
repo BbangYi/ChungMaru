@@ -7,15 +7,19 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.RectF
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 data class MaskOverlaySpec(
     val left: Int,
@@ -24,8 +28,14 @@ data class MaskOverlaySpec(
     val height: Int,
     val label: String,
     val allowScrollTranslation: Boolean = true,
-    val debugSource: String = ""
+    val debugSource: String = "",
+    val style: MaskOverlayStyle = MaskOverlayStyle.BLOCKED
 )
+
+enum class MaskOverlayStyle {
+    BLOCKED,
+    LOADING
+}
 
 data class MaskOverlayPlan(
     val specs: List<MaskOverlaySpec>,
@@ -113,6 +123,10 @@ object AndroidMaskOverlayPlanner {
     private const val MAX_COMMENT_ACCESSIBILITY_HEIGHT_PX = 300
     private const val MAX_COMMENT_ACCESSIBILITY_LINE_COUNT = 8
     private const val MAX_COMMENT_ACCESSIBILITY_WIDTH_RATIO = 0.96f
+    private const val YOUTUBE_COMMENT_HORIZONTAL_START_PADDING_PX = 22
+    private const val YOUTUBE_COMMENT_HORIZONTAL_END_PADDING_PX = 40
+    private const val YOUTUBE_COMMENT_VERTICAL_PADDING_PX = 14
+    private const val YOUTUBE_COMMENT_TRAILING_MARGIN_PX = 24
     private const val MAX_UNSOURCED_LONG_TEXT_LENGTH = 70
     private const val MAX_UNSOURCED_LONG_TEXT_HEIGHT_PX = 72
     private const val MAX_VISUAL_SOURCE_HEIGHT_PX = 110
@@ -273,7 +287,7 @@ object AndroidMaskOverlayPlanner {
 
     fun signature(specs: List<MaskOverlaySpec>): String {
         return specs.joinToString("|") {
-            "${it.left},${it.top},${it.width},${it.height},${it.label},${it.allowScrollTranslation}"
+            "${it.left},${it.top},${it.width},${it.height},${it.label},${it.allowScrollTranslation},${it.style}"
         }
     }
 
@@ -415,6 +429,7 @@ object AndroidMaskOverlayPlanner {
                 visualMetadata = visualMetadata,
                 visualTextForSizing = visualTextForSizing,
                 screenHeight = screenHeight,
+                screenWidth = screenWidth,
                 debugSource = debugSource
             )
         }
@@ -426,6 +441,16 @@ object AndroidMaskOverlayPlanner {
         item: AndroidAnalysisResultItem,
         originalLength: Int
     ): List<EvidenceSpan> {
+        if (isCommentAccessibilityAuthor(item.authorId) && shouldUseWholeTextFallbackSpan(item, originalLength)) {
+            return listOf(
+                EvidenceSpan(
+                    text = item.original.trim().ifBlank { item.original },
+                    start = 0,
+                    end = originalLength,
+                    score = max(max(item.scores.profanity, item.scores.toxicity), item.scores.hate)
+                )
+            )
+        }
         if (item.evidenceSpans.isNotEmpty()) return item.evidenceSpans
         if (!shouldUseWholeTextFallbackSpan(item, originalLength)) return emptyList()
 
@@ -443,6 +468,10 @@ object AndroidMaskOverlayPlanner {
         item: AndroidAnalysisResultItem,
         originalLength: Int
     ): Boolean {
+        if (isCommentAccessibilityAuthor(item.authorId)) {
+            return originalLength in 1..MAX_COMMENT_ACCESSIBILITY_TEXT_LENGTH &&
+                item.original.trim().isNotBlank()
+        }
         if (!isAccessibilityCharRangeAuthor(item.authorId)) return false
         if (originalLength !in 1..MAX_WHOLE_TEXT_FALLBACK_CODEPOINTS) return false
         return item.original.trim().isNotBlank()
@@ -458,6 +487,7 @@ object AndroidMaskOverlayPlanner {
             value == YOUTUBE_USER_INPUT_AUTHOR_ID ||
             value == YOUTUBE_TITLE_ACCESSIBILITY_AUTHOR_ID ||
             value == YOUTUBE_SHORTS_TITLE_ACCESSIBILITY_AUTHOR_ID ||
+            isCommentAccessibilityAuthor(value) ||
             isLineLevelCommentAccessibilityAuthor(value) ||
             isAccessibilityCharRangeAuthor(value) ||
             isPreciseVisualAuthor(value)
@@ -950,6 +980,34 @@ object AndroidMaskOverlayPlanner {
         )
     }
 
+    private fun expandedYoutubeCommentSpec(
+        fullSpec: MaskOverlaySpec,
+        screenWidth: Int,
+        screenHeight: Int,
+        allowScrollTranslation: Boolean,
+        debugSource: String
+    ): MaskOverlaySpec {
+        val left = max(0, fullSpec.left - YOUTUBE_COMMENT_HORIZONTAL_START_PADDING_PX)
+        val top = max(0, fullSpec.top - YOUTUBE_COMMENT_VERTICAL_PADDING_PX)
+        val desiredRight = max(
+            fullSpec.left + fullSpec.width + YOUTUBE_COMMENT_HORIZONTAL_END_PADDING_PX,
+            screenWidth - YOUTUBE_COMMENT_TRAILING_MARGIN_PX
+        )
+        val right = min(screenWidth, desiredRight).coerceAtLeast(left + MIN_WIDTH_PX)
+        val bottom = min(
+            screenHeight,
+            fullSpec.top + fullSpec.height + YOUTUBE_COMMENT_VERTICAL_PADDING_PX
+        ).coerceAtLeast(top + MIN_HEIGHT_PX)
+
+        return fullSpec.copy(
+            left = left,
+            top = top,
+            width = (right - left).coerceAtLeast(MIN_WIDTH_PX),
+            height = (bottom - top).coerceAtLeast(MIN_HEIGHT_PX),
+            allowScrollTranslation = allowScrollTranslation,
+            debugSource = debugSource
+        )
+    }
     private fun toSpanSpec(
         fullSpec: MaskOverlaySpec,
         span: EvidenceSpan,
@@ -961,6 +1019,7 @@ object AndroidMaskOverlayPlanner {
         visualMetadata: VisualTextOcrMetadata?,
         visualTextForSizing: String?,
         screenHeight: Int,
+        screenWidth: Int,
         debugSource: String
     ): MaskOverlaySpec? {
         val resolvedRange = resolveSpanRange(
@@ -974,6 +1033,16 @@ object AndroidMaskOverlayPlanner {
 
         if (isAccessibilityCharRangeAuthor(authorId) && isWholeTextSpan(start, end, originalLength)) {
             return fullSpec.copy(
+                allowScrollTranslation = allowScrollTranslation,
+                debugSource = debugSource
+            )
+        }
+
+        if (isCommentAccessibilityAuthor(authorId) && isWholeTextSpan(start, end, originalLength)) {
+            return expandedYoutubeCommentSpec(
+                fullSpec = fullSpec,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight,
                 allowScrollTranslation = allowScrollTranslation,
                 debugSource = debugSource
             )
@@ -1795,6 +1864,7 @@ class MaskOverlayController(
     private var lastSignature: String = ""
     private var lastOverlayUpdateAtMs: Long = 0L
     private var warmOnly: Boolean = false
+    private var renderGeneration: Long = 0L
 
     fun prewarm() {
         if (activeViews.isNotEmpty()) return
@@ -1936,6 +2006,31 @@ class MaskOverlayController(
         }
     }
 
+    fun fadeOutAndClear(durationMs: Long, reason: String) {
+        if (activeSpecs.isEmpty()) {
+            clear()
+            return
+        }
+
+        val generation = ++renderGeneration
+        Log.d(TAG, "fade out mask overlay reason=$reason durationMs=$durationMs count=${activeSpecs.size}")
+        activeViews.forEach { view ->
+            view.animate().cancel()
+            view.animate()
+                .alpha(0f)
+                .setDuration(durationMs.coerceAtLeast(0L))
+                .withEndAction {
+                    if (generation == renderGeneration) {
+                        Log.d(TAG, "fade out mask overlay complete reason=$reason")
+                        clear()
+                    }
+                }
+                .start()
+        }
+        lastSignature = "fade:$reason:$generation"
+        lastOverlayUpdateAtMs = SystemClock.uptimeMillis()
+    }
+
     fun clear() {
         clearViews()
         lastSignature = ""
@@ -1944,6 +2039,10 @@ class MaskOverlayController(
 
     fun hasActiveMasks(): Boolean {
         return activeSpecs.isNotEmpty()
+    }
+
+    fun activeSpecsSnapshot(): List<MaskOverlaySpec> {
+        return activeSpecs.toList()
     }
 
     fun release() {
@@ -1973,6 +2072,7 @@ class MaskOverlayController(
                 if (existing.frame != frame) {
                     windowManager.updateViewLayout(existing, createBatchMaskLayoutParams(frame))
                 }
+                existing.animate().cancel()
                 existing.setSpecs(frame, emptyList())
                 existing.alpha = 0f
                 activeSpecs.clear()
@@ -1985,6 +2085,7 @@ class MaskOverlayController(
         }
 
         val viewsToRemove = activeViews.toList()
+        viewsToRemove.forEach { it.animate().cancel() }
         activeViews.clear()
         activeSpecs.clear()
         lastSignature = ""
@@ -2000,6 +2101,7 @@ class MaskOverlayController(
     }
 
     private fun renderBatchSpecs(specs: List<MaskOverlaySpec>) {
+        renderGeneration += 1L
         val frame = BatchMaskFrame.fromSpecs(specs, service.resources.displayMetrics.widthPixels, service.resources.displayMetrics.heightPixels)
         val existing = activeViews.singleOrNull() as? BatchBlurMaskView
         val batchView = if (existing == null) {
@@ -2017,6 +2119,7 @@ class MaskOverlayController(
             existing
         }
 
+        batchView.animate().cancel()
         batchView.alpha = 1f
         batchView.setSpecs(frame, specs)
         activeSpecs.clear()
@@ -2031,12 +2134,20 @@ class MaskOverlayController(
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = frame.left
             y = frame.top
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                setFitInsetsTypes(0)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
         }
     }
 }
@@ -2049,6 +2160,15 @@ private data class BatchMaskFrame(
 ) {
     companion object {
         fun fromSpecs(specs: List<MaskOverlaySpec>, screenWidth: Int, screenHeight: Int): BatchMaskFrame {
+            if (specs.any { spec -> spec.allowScrollTranslation }) {
+                return BatchMaskFrame(
+                    left = 0,
+                    top = 0,
+                    width = screenWidth.coerceAtLeast(1),
+                    height = screenHeight.coerceAtLeast(1)
+                )
+            }
+
             val rawLeft = specs.minOf { it.left }
             val rawTop = specs.minOf { it.top }
             val rawRight = specs.maxOf { it.left + it.width }
@@ -2081,6 +2201,16 @@ private class BatchBlurMaskView(context: Context) : View(context) {
         style = Paint.Style.STROKE
         strokeWidth = max(1f, density)
     }
+    private val spinnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = max(3f, 3f * density)
+    }
+    private val loadingTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(75, 85, 99)
+        textAlign = Paint.Align.CENTER
+        textSize = 16f * density
+    }
     var frame: BatchMaskFrame = BatchMaskFrame(0, 0, 1, 1)
         private set
     private var specs: List<MaskOverlaySpec> = emptyList()
@@ -2105,19 +2235,89 @@ private class BatchBlurMaskView(context: Context) : View(context) {
         val top = (spec.top - frame.top).toFloat()
         val right = left + spec.width
         val bottom = top + spec.height
+        val pillRadius = min(radius, spec.height / 2f)
         rect.set(left, top, right, bottom)
-        canvas.drawRoundRect(rect, radius, radius, fillPaint)
+
+        when (spec.style) {
+            MaskOverlayStyle.LOADING -> drawLoadingSkeleton(canvas, spec, pillRadius)
+            MaskOverlayStyle.BLOCKED -> drawBlockedMask(canvas, spec, pillRadius)
+        }
+    }
+
+    private fun drawLoadingSkeleton(canvas: Canvas, spec: MaskOverlaySpec, pillRadius: Float) {
+        val left = rect.left
+        val top = rect.top
+        val right = rect.right
+        val isPaneLoading = spec.label == "comments-loading" ||
+            (spec.width >= (240f * density).roundToInt() && spec.height >= (180f * density).roundToInt())
+
+        fillPaint.color = if (isPaneLoading) {
+            Color.rgb(245, 246, 248)
+        } else {
+            Color.rgb(229, 231, 235)
+        }
+        canvas.drawRoundRect(rect, pillRadius, pillRadius, fillPaint)
+
+        if (isPaneLoading) {
+            edgePaint.color = Color.argb(64, 148, 163, 184)
+            canvas.drawRoundRect(rect, pillRadius, pillRadius, edgePaint)
+            drawLoadingIndicator(canvas, spec)
+            return
+        }
+
+        val bandHeight = max(2f, spec.height / 5f)
+        shadePaint.color = Color.argb(70, 255, 255, 255)
+        bandRect.set(left, top + spec.height * 0.24f, right, top + spec.height * 0.24f + bandHeight)
+        canvas.drawRoundRect(bandRect, pillRadius, pillRadius, shadePaint)
+
+        shadePaint.color = Color.argb(28, 107, 114, 128)
+        bandRect.set(left, top + spec.height * 0.62f, right, top + spec.height * 0.62f + max(1f, bandHeight / 2f))
+        canvas.drawRoundRect(bandRect, pillRadius, pillRadius, shadePaint)
+
+        edgePaint.color = Color.argb(48, 148, 163, 184)
+        canvas.drawRoundRect(rect, pillRadius, pillRadius, edgePaint)
+    }
+
+    private fun drawLoadingIndicator(canvas: Canvas, spec: MaskOverlaySpec) {
+        val centerX = rect.left + spec.width / 2f
+        val centerY = rect.top + spec.height / 2f - 18f * density
+        val spinnerRadius = min(34f * density, min(spec.width, spec.height) * 0.12f)
+        val innerRadius = spinnerRadius * 0.62f
+        val segmentCount = 12
+
+        repeat(segmentCount) { index ->
+            val angle = (index.toDouble() / segmentCount.toDouble()) * 2.0 * PI
+            val alpha = (60 + index * 13).coerceAtMost(216)
+            spinnerPaint.color = Color.argb(alpha, 75, 85, 99)
+            val startX = centerX + cos(angle).toFloat() * innerRadius
+            val startY = centerY + sin(angle).toFloat() * innerRadius
+            val endX = centerX + cos(angle).toFloat() * spinnerRadius
+            val endY = centerY + sin(angle).toFloat() * spinnerRadius
+            canvas.drawLine(startX, startY, endX, endY, spinnerPaint)
+        }
+
+        loadingTextPaint.textSize = 16f * density
+        canvas.drawText("검열중", centerX, centerY + spinnerRadius + 34f * density, loadingTextPaint)
+    }
+
+    private fun drawBlockedMask(canvas: Canvas, spec: MaskOverlaySpec, pillRadius: Float) {
+        val left = rect.left
+        val top = rect.top
+        val right = rect.right
+        fillPaint.color = Color.BLACK
+        canvas.drawRoundRect(rect, pillRadius, pillRadius, fillPaint)
 
         val bandHeight = max(2f, spec.height / 6f)
         shadePaint.color = Color.argb(24, 255, 255, 255)
         bandRect.set(left, top + spec.height * 0.18f, right, top + spec.height * 0.18f + bandHeight)
-        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+        canvas.drawRoundRect(bandRect, pillRadius, pillRadius, shadePaint)
 
         shadePaint.color = Color.argb(20, 0, 0, 0)
         bandRect.set(left, top + spec.height * 0.54f, right, top + spec.height * 0.54f + bandHeight)
-        canvas.drawRoundRect(bandRect, radius, radius, shadePaint)
+        canvas.drawRoundRect(bandRect, pillRadius, pillRadius, shadePaint)
 
-        canvas.drawRoundRect(rect, radius, radius, edgePaint)
+        edgePaint.color = Color.argb(78, 255, 255, 255)
+        canvas.drawRoundRect(rect, pillRadius, pillRadius, edgePaint)
     }
 }
 

@@ -1,13 +1,14 @@
 package com.capstone.design.youtubeparser
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CommentExtractorTest {
 
     @Test
-    fun youtubeExtractor_picksNearestCommentBody() {
-        val comments = YoutubeCommentExtractor.extractComments(
+    fun youtubeExtractor_matchesStandaloneParserAndAnalysisContract() {
+        val parsed = YoutubeCommentExtractor.extractComments(
             listOf(
                 node(text = "@creator", top = 1000, bottom = 1040),
                 node(text = "2시간 전", top = 1048, bottom = 1080),
@@ -16,60 +17,156 @@ class CommentExtractorTest {
             )
         )
 
-        assertEquals(1, comments.size)
-        assertEquals("이 영상 정리 진짜 깔끔하네요", comments.single().commentText)
-        assertEquals("android-accessibility-comment:youtube:@creator", comments.single().authorId)
-    }
+        assertEquals(1, parsed.size)
+        assertEquals("이 영상 정리 진짜 깔끔하네요", parsed.single().commentText)
+        assertEquals("creator", parsed.single().authorId)
 
-    @Test
-    fun youtubeExtractor_mergesDrawerCommentLinesAndStripsReadMore() {
-        val comments = YoutubeCommentExtractor.extractComments(
-            listOf(
-                node(text = "Comments", top = 700, bottom = 760, left = 40, width = 240),
-                node(text = "6 replies", top = 850, bottom = 890, left = 132, width = 160),
-                node(text = "@cloudd9619 • 3mo ago (edited)", top = 980, bottom = 1024, left = 132, width = 560),
-                node(text = "또 다시 보여줘야돼가", top = 1040, bottom = 1084, left = 132, width = 640),
-                node(text = "내가 다시 보여줘야된다 이게 아니라", top = 1092, bottom = 1136, left = 132, width = 760),
-                node(text = "하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서", top = 1144, bottom = 1188, left = 132, width = 860),
-                node(text = "이게 존나 야마있네... Read more", top = 1196, bottom = 1240, left = 132, width = 760),
-                node(text = "565", top = 1300, bottom = 1340, left = 132, width = 90),
-                node(text = "2 replies", top = 1420, bottom = 1460, left = 132, width = 170),
-                node(text = "@그랜드슬램1 • 4mo ago", top = 1540, bottom = 1584, left = 132, width = 520),
-                node(text = "노래 뒤지게 좋네 ㅋㅋㅋㅋㅋㅋ 이건 진짜 들어도 안질린다", top = 1600, bottom = 1644, left = 132, width = 840),
-                node(text = "십", top = 1652, bottom = 1696, left = 132, width = 80),
-                node(text = "536", top = 1760, bottom = 1800, left = 132, width = 90)
-            )
-        )
-
-        assertEquals(4, comments.size)
+        val adapted = YoutubeCommentAnalysisAdapter.adapt(parsed)
+        assertEquals(1, adapted.size)
         assertEquals(
-            "또 다시 보여줘야돼가\n내가 다시 보여줘야된다 이게 아니라\n하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서\n이게 존나 야마있네...",
-            comments[0].commentText
+            "android-accessibility-comment:youtube:creator",
+            adapted.single().authorId
         )
-        assertEquals("하...씨발...또 다시 보여줘야돼? 그래야 믿어?이런거같아서", comments[1].commentText)
-        assertEquals("이게 존나 야마있네...", comments[2].commentText)
-        assertEquals("노래 뒤지게 좋네 ㅋㅋㅋㅋㅋㅋ 이건 진짜 들어도 안질린다\n십", comments[3].commentText)
-        assertEquals(BoundsRect(132, 1040, 992, 1240), comments.first().boundsInScreen)
-        assertEquals(BoundsRect(132, 1144, 992, 1188), comments[1].boundsInScreen)
-        assertEquals(BoundsRect(132, 1196, 892, 1240), comments[2].boundsInScreen)
-        assertEquals("android-accessibility-comment:youtube:@cloudd9619", comments.first().authorId)
-        assertEquals("android-accessibility-comment:youtube:@cloudd9619:line:1144", comments[1].authorId)
-        assertEquals("android-accessibility-comment:youtube:@cloudd9619:line:1196", comments[2].authorId)
-        assertEquals("android-accessibility-comment:youtube:@그랜드슬램1", comments.last().authorId)
     }
 
     @Test
-    fun youtubeExtractor_keepsBodyTextThatMentionsCommentOrReply() {
+    fun youtubeExtractor_keepsOriginalSingleNodeMultilineBody() {
+        val body = "문제를 잘못 만듦.\n원을 그리는 것과 지우는 것 1회 허용이라고 써야지"
         val comments = YoutubeCommentExtractor.extractComments(
             listOf(
-                node(text = "@creator • 4mo ago", top = 1000, bottom = 1040),
-                node(text = "이 댓글 답글까지 진짜 이상하네", top = 1050, bottom = 1110, width = 720),
-                node(text = "2 replies", top = 1180, bottom = 1220)
+                node(text = "@wide_tablet", top = 820, bottom = 860, left = 96, width = 460),
+                node(text = "7년 전", top = 864, bottom = 900, left = 96, width = 160),
+                node(text = body, top = 908, bottom = 1010, left = 96, width = 1048),
+                node(text = "답글 총 4개 보기", top = 1020, bottom = 1070, left = 96, width = 280)
             )
         )
 
         assertEquals(1, comments.size)
-        assertEquals("이 댓글 답글까지 진짜 이상하네", comments.single().commentText)
+        assertEquals(body, comments.single().commentText)
+        assertEquals(BoundsRect(96, 908, 1144, 1010), comments.single().boundsInScreen)
+    }
+
+    @Test
+    fun youtubeExtractor_neverPromotesTabletReplyControls() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(text = "@first_user", top = 820, bottom = 860, left = 96, width = 460),
+                node(text = "답글 보기", top = 908, bottom = 970, left = 96, width = 280),
+                node(text = "@second_user", top = 1080, bottom = 1120, left = 96, width = 460),
+                node(text = "답글 총 4개 보기", top = 1168, bottom = 1230, left = 96, width = 320)
+            )
+        )
+
+        assertTrue(comments.isEmpty())
+    }
+
+    @Test
+    fun youtubeExtractor_neverPromotesTabletRowActionControls() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(text = "@first_user", top = 820, bottom = 860, left = 96, width = 460),
+                node(text = "좋아요 취소", top = 908, bottom = 970, left = 96, width = 280),
+                node(text = "@second_user", top = 1080, bottom = 1120, left = 96, width = 460),
+                node(text = "작업 메뉴", top = 1168, bottom = 1230, left = 96, width = 320),
+                node(text = "@third_user", top = 1280, bottom = 1320, left = 96, width = 460),
+                node(text = "한국어로 번역", top = 1368, bottom = 1430, left = 96, width = 320)
+            )
+        )
+
+        assertTrue(comments.isEmpty())
+    }
+
+    @Test
+    fun youtubeExtractor_usesActualBodiesFromWideTabletRows() {
+        val firstBody = "첫 번째 실제 본문입니다"
+        val secondBody = "두 번째 실제 본문입니다"
+        val parsed = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(text = "정렬 기준", top = 610, bottom = 660, left = 64, width = 200),
+                node(text = "@first_user", top = 820, bottom = 860, left = 96, width = 460),
+                node(text = "7년 전", top = 864, bottom = 900, left = 96, width = 160),
+                node(text = firstBody, top = 908, bottom = 970, left = 96, width = 900),
+                node(text = "답글 보기", top = 978, bottom = 1030, left = 900, width = 180),
+                node(text = "@second_user", top = 1080, bottom = 1120, left = 96, width = 460),
+                node(text = "3일 전", top = 1124, bottom = 1160, left = 96, width = 160),
+                node(text = secondBody, top = 1168, bottom = 1230, left = 96, width = 900),
+                node(text = "답글 총 2개 보기", top = 1238, bottom = 1290, left = 900, width = 220)
+            )
+        )
+
+        assertEquals(listOf(firstBody, secondBody), parsed.map { it.commentText })
+        val adapted = YoutubeCommentAnalysisAdapter.adapt(parsed)
+        assertEquals(
+            listOf(
+                "android-accessibility-comment:youtube:first_user",
+                "android-accessibility-comment:youtube:second_user"
+            ),
+            adapted.map { it.authorId }
+        )
+    }
+
+    @Test
+    fun youtubeExtractor_keepsRowsHiddenOnlyByTheOpaqueMirror() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(
+                    text = "@tablet_user",
+                    top = 820,
+                    bottom = 860,
+                    left = 96,
+                    width = 460,
+                    isVisible = false
+                ),
+                node(
+                    text = "7년 전",
+                    top = 864,
+                    bottom = 900,
+                    left = 96,
+                    width = 160,
+                    isVisible = false
+                ),
+                node(
+                    text = "오버레이 뒤에서도 수집되어야 하는 실제 문장",
+                    top = 908,
+                    bottom = 970,
+                    left = 96,
+                    width = 900,
+                    isVisible = false
+                )
+            )
+        )
+
+        assertEquals(1, comments.size)
+        assertEquals(
+            "오버레이 뒤에서도 수집되어야 하는 실제 문장",
+            comments.single().commentText
+        )
+    }
+
+    @Test
+    fun youtubeAnalysisAdapter_reappliesOriginalSaveFilter() {
+        val comments = YoutubeCommentAnalysisAdapter.adapt(
+            listOf(
+                parsedComment(author = "creator", text = "정상 본문입니다"),
+                parsedComment(author = "creator", text = "View replies"),
+                parsedComment(author = "creator", text = "1,234")
+            )
+        )
+
+        assertEquals(listOf("정상 본문입니다"), comments.map { it.commentText })
+    }
+
+    @Test
+    fun youtubeExtractor_doesNotPromoteStandaloneTextWithoutCommentControls() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(text = "A video title near the top of the page", top = 630, bottom = 720, left = 96, width = 1164),
+                node(text = "Share", top = 730, bottom = 800, left = 96, width = 180),
+                node(text = "Reply", top = 730, bottom = 800, left = 300, width = 180)
+            )
+        )
+
+        assertTrue(comments.isEmpty())
     }
 
     @Test
@@ -100,12 +197,21 @@ class CommentExtractorTest {
         assertEquals("creator_12", comments.single().authorId)
     }
 
+    private fun parsedComment(author: String, text: String): ParsedComment {
+        return ParsedComment(
+            commentText = text,
+            boundsInScreen = BoundsRect(96, 900, 1144, 980),
+            authorId = author
+        )
+    }
+
     private fun node(
         text: String,
         top: Int,
         bottom: Int,
         left: Int = 64,
-        width: Int = 640
+        width: Int = 640,
+        isVisible: Boolean = true
     ): ParsedTextNode {
         return ParsedTextNode(
             packageName = "test.package",
@@ -119,7 +225,7 @@ class CommentExtractorTest {
             right = left + width,
             bottom = bottom,
             approxTop = top,
-            isVisibleToUser = true
+            isVisibleToUser = isVisible
         )
     }
 }

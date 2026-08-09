@@ -41,4 +41,40 @@ class AnalysisEndpointStoreTest {
 
         assertEquals("http://10.0.2.2:8000/analyze_android", resolved)
     }
+
+    @Test
+    fun buildAnalyzeUrlCandidates_prioritizesAdbReverseForPhysicalDevice() {
+        val resolved = AnalysisEndpointStore.buildAnalyzeUrlCandidates(
+            rawInput = "127.0.0.1:8000",
+            emulator = false
+        )
+
+        assertEquals(
+            listOf(
+                "http://127.0.0.1:8000/analyze_android",
+                "http://127.0.0.1:8010/analyze_android",
+                "http://100.95.209.72:8000/analyze_android",
+                "http://100.95.209.72:8010/analyze_android"
+            ),
+            resolved
+        )
+    }
+
+    @Test
+    fun buildAnalyzeUrlCandidates_migratesStaleLoopbackToEmulatorHost() {
+        val resolved = AnalysisEndpointStore.buildAnalyzeUrlCandidates(
+            rawInput = "127.0.0.1:8000",
+            emulator = true
+        )
+
+        assertEquals(
+            listOf(
+                "http://127.0.0.1:8000/analyze_android",
+                "http://127.0.0.1:8010/analyze_android",
+                "http://10.0.2.2:8000/analyze_android",
+                "http://10.0.2.2:8010/analyze_android"
+            ),
+            resolved
+        )
+    }
 }
