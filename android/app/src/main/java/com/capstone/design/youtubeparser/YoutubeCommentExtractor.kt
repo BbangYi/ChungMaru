@@ -141,6 +141,9 @@ object YoutubeCommentExtractor {
         if (lower.contains("dislike this comment")) return true
         if (lower.contains("dislike this reply")) return true
         if (lower.contains("action menu")) return true
+        if (lower == "unlike") return true
+        if (lower.startsWith("like") && lower.endsWith("this comment")) return true
+        if (lower.startsWith("translate to ")) return true
         if (lower.contains("open camera")) return true
         if (lower.contains("drag handle")) return true
         if (lower.contains("video player")) return true
@@ -153,6 +156,12 @@ object YoutubeCommentExtractor {
         if (text == "답글") return true
         if (text.contains("답글")) return true
         if (text.contains("댓글")) return true
+        if (text == "좋아요 취소") return true
+        if (Regex("^좋아요\\s*\\d+개$").matches(text)) return true
+        if (text == "댓글 싫어요 표시") return true
+        if (text == "작업 메뉴") return true
+        if (text == "한국어로 번역") return true
+        if (text.contains("이 댓글을 좋아함")) return true
         if (text.contains("정렬")) return true
         if (text == "뒤로") return true
         if (text == "닫기") return true

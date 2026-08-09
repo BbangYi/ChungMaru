@@ -732,6 +732,7 @@ class MaskOverlayEventPolicyTest {
     fun shouldRemoveYoutubeMirrorAfterPanelMiss_waitsForStableAbsence() {
         assertFalse(
             MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
                 panelPresent = false,
                 panelTransitionActive = false,
                 missingForMs = 899L,
@@ -740,6 +741,7 @@ class MaskOverlayEventPolicyTest {
         )
         assertTrue(
             MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
                 panelPresent = false,
                 panelTransitionActive = false,
                 missingForMs = 900L,
@@ -752,6 +754,7 @@ class MaskOverlayEventPolicyTest {
     fun shouldRemoveYoutubeMirrorAfterPanelMiss_ignoresPanelTransitions() {
         assertFalse(
             MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
                 panelPresent = false,
                 panelTransitionActive = true,
                 missingForMs = 5_000L,
@@ -760,7 +763,21 @@ class MaskOverlayEventPolicyTest {
         )
         assertFalse(
             MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = false,
                 panelPresent = true,
+                panelTransitionActive = false,
+                missingForMs = 5_000L,
+                missingGraceMs = 900L
+            )
+        )
+    }
+
+    @Test
+    fun shouldRemoveYoutubeMirrorAfterPanelMiss_keepsReadyMirrorOnTreeOcclusion() {
+        assertFalse(
+            MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                mirrorReady = true,
+                panelPresent = false,
                 panelTransitionActive = false,
                 missingForMs = 5_000L,
                 missingGraceMs = 900L

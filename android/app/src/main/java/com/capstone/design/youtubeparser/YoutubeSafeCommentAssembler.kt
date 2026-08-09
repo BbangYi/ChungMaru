@@ -25,10 +25,24 @@ object YoutubeSafeCommentAssembler {
         Regex("\\s+(?:read more|더보기)$", RegexOption.IGNORE_CASE)
     private val replyCountLabel =
         Regex("^\\d+\\s*(?:repl(?:y|ies)|답글)\\s*[>›]?$", RegexOption.IGNORE_CASE)
+    private val commentCountActionLabel =
+        Regex("^(?:댓글\\s*\\d+\\s*개\\s*보기|view\\s+\\d+\\s+comments?)$", RegexOption.IGNORE_CASE)
+    private val koreanPlaybackProgressLabel =
+        Regex("^\\d+\\s*분(?:\\s*\\d+\\s*초)?\\s*중\\s*\\d+\\s*분(?:\\s*\\d+\\s*초)?$")
+    private val clockPlaybackProgressLabel =
+        Regex("^\\d{1,2}:\\d{2}(?::\\d{2})?\\s*/\\s*\\d{1,2}:\\d{2}(?::\\d{2})?$")
     private val uiLabels = setOf(
         "검열중",
         "검열 중",
         "loading",
+        "드래그 핸들",
+        "댓글 정보",
+        "좋아요 취소",
+        "댓글 싫어요 표시",
+        "작업 메뉴",
+        "한국어로 번역",
+        "[music]",
+        "[음악]",
         "답글",
         "reply",
         "learn more",
@@ -48,6 +62,21 @@ object YoutubeSafeCommentAssembler {
         "더보기",
         "댓글"
     )
+    private val youtubeControlLabels = setOf(
+        "동영상 일시중지",
+        "동영상 일지중지",
+        "동영상 재생",
+        "다음 동영상",
+        "이전 동영상",
+        "동영상 공유",
+        "리믹스",
+        "pause video",
+        "play video",
+        "next video",
+        "previous video",
+        "share video",
+        "remix"
+    )
 
     fun assembleAccessibilityResults(
         results: List<AndroidAnalysisResultItem>
@@ -59,14 +88,35 @@ object YoutubeSafeCommentAssembler {
         )
     }
 
+    internal fun isYoutubeAccessibilitySource(authorId: String?): Boolean {
+        return isAccessibilitySource(
+            source = normalizedAccessibilitySource(authorId),
+            accessibilitySource = YOUTUBE_ACCESSIBILITY_SOURCE
+        )
+    }
+
+    internal fun youtubeAuthorLabel(authorId: String?): String? {
+        val source = normalizedAccessibilitySource(authorId)
+        if (!isAccessibilitySource(source, YOUTUBE_ACCESSIBILITY_SOURCE)) return null
+        val author = source
+            .removePrefix(YOUTUBE_ACCESSIBILITY_SOURCE)
+            .trimStart(':')
+            .substringBefore(":line:")
+            .trim()
+            .removePrefix("@")
+        return author.takeIf { value -> value.isNotBlank() }?.let { value -> "@$value" }
+    }
+
     internal fun assemblePlatformAccessibilityResults(
         results: List<AndroidAnalysisResultItem>,
         accessibilitySource: String,
         unknownAuthor: String
     ): YoutubeSafeCommentBatch {
         val accessibilityResults = results.filter { result ->
-            normalizedAccessibilitySource(result.authorId)
-                .startsWith(accessibilitySource)
+            isAccessibilitySource(
+                source = normalizedAccessibilitySource(result.authorId),
+                accessibilitySource = accessibilitySource
+            )
         }
         if (accessibilityResults.isEmpty()) {
             return YoutubeSafeCommentBatch(
@@ -146,6 +196,10 @@ object YoutubeSafeCommentAssembler {
             .trim()
     }
 
+    private fun isAccessibilitySource(source: String, accessibilitySource: String): Boolean {
+        return source == accessibilitySource || source.startsWith("$accessibilitySource:")
+    }
+
     private fun parseAccessibilityAuthor(
         authorId: String?,
         accessibilitySource: String,
@@ -167,7 +221,18 @@ object YoutubeSafeCommentAssembler {
         if (text.length < 2) return false
         val lowercase = text.lowercase()
         if (lowercase in uiLabels) return false
+        if (lowercase in youtubeControlLabels) return false
         if (replyCountLabel.matches(text)) return false
+        if (commentCountActionLabel.matches(text)) return false
+        if (koreanPlaybackProgressLabel.matches(text)) return false
+        if (clockPlaybackProgressLabel.matches(text)) return false
+        if (Regex("^좋아요\\s*\\d+개$").matches(text)) return false
+        if (lowercase.contains("이 댓글을 좋아함")) return false
+        if (lowercase.contains("이 동영상에 좋아요 표시")) return false
+        if (lowercase.startsWith("liked by ") && lowercase.contains(" this video")) return false
+        if (lowercase.startsWith("이 사운드를 사용하는 동영상")) return false
+        if (lowercase.startsWith("videos using this sound")) return false
+        if (lowercase.startsWith("구독:") || lowercase.startsWith("subscribe:")) return false
         if (lowercase.startsWith("pinned by @")) return false
         if (lowercase.startsWith("고정한 댓글") || lowercase.startsWith("고정됨")) return false
         if (lowercase.startsWith("remember to keep comments respectful")) return false

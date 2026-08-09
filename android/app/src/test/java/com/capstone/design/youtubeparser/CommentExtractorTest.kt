@@ -61,6 +61,22 @@ class CommentExtractorTest {
     }
 
     @Test
+    fun youtubeExtractor_neverPromotesTabletRowActionControls() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(text = "@first_user", top = 820, bottom = 860, left = 96, width = 460),
+                node(text = "좋아요 취소", top = 908, bottom = 970, left = 96, width = 280),
+                node(text = "@second_user", top = 1080, bottom = 1120, left = 96, width = 460),
+                node(text = "작업 메뉴", top = 1168, bottom = 1230, left = 96, width = 320),
+                node(text = "@third_user", top = 1280, bottom = 1320, left = 96, width = 460),
+                node(text = "한국어로 번역", top = 1368, bottom = 1430, left = 96, width = 320)
+            )
+        )
+
+        assertTrue(comments.isEmpty())
+    }
+
+    @Test
     fun youtubeExtractor_usesActualBodiesFromWideTabletRows() {
         val firstBody = "첫 번째 실제 본문입니다"
         val secondBody = "두 번째 실제 본문입니다"
@@ -86,6 +102,44 @@ class CommentExtractorTest {
                 "android-accessibility-comment:youtube:second_user"
             ),
             adapted.map { it.authorId }
+        )
+    }
+
+    @Test
+    fun youtubeExtractor_keepsRowsHiddenOnlyByTheOpaqueMirror() {
+        val comments = YoutubeCommentExtractor.extractComments(
+            listOf(
+                node(
+                    text = "@tablet_user",
+                    top = 820,
+                    bottom = 860,
+                    left = 96,
+                    width = 460,
+                    isVisible = false
+                ),
+                node(
+                    text = "7년 전",
+                    top = 864,
+                    bottom = 900,
+                    left = 96,
+                    width = 160,
+                    isVisible = false
+                ),
+                node(
+                    text = "오버레이 뒤에서도 수집되어야 하는 실제 문장",
+                    top = 908,
+                    bottom = 970,
+                    left = 96,
+                    width = 900,
+                    isVisible = false
+                )
+            )
+        )
+
+        assertEquals(1, comments.size)
+        assertEquals(
+            "오버레이 뒤에서도 수집되어야 하는 실제 문장",
+            comments.single().commentText
         )
     }
 
@@ -156,7 +210,8 @@ class CommentExtractorTest {
         top: Int,
         bottom: Int,
         left: Int = 64,
-        width: Int = 640
+        width: Int = 640,
+        isVisible: Boolean = true
     ): ParsedTextNode {
         return ParsedTextNode(
             packageName = "test.package",
@@ -170,7 +225,7 @@ class CommentExtractorTest {
             right = left + width,
             bottom = bottom,
             approxTop = top,
-            isVisibleToUser = true
+            isVisibleToUser = isVisible
         )
     }
 }

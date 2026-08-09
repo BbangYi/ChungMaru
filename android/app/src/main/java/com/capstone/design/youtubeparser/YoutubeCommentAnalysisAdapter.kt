@@ -50,6 +50,14 @@ object YoutubeCommentAnalysisAdapter {
             lower == "정렬 기준" ||
             lower == "인기 댓글순" ||
             lower == "최신순" ||
+            lower == "드래그 핸들" ||
+            lower == "댓글 정보" ||
+            lower == "좋아요 취소" ||
+            lower == "댓글 싫어요 표시" ||
+            lower == "작업 메뉴" ||
+            lower == "한국어로 번역" ||
+            lower == "[music]" ||
+            lower == "[음악]" ||
             lower == "reply" ||
             lower == "reply..." ||
             lower == "comment" ||
@@ -64,6 +72,8 @@ object YoutubeCommentAnalysisAdapter {
             lower == "subscribe" ||
             lower == "view reply" ||
             lower == "view replies" ||
+            Regex("^좋아요\\s*\\d+개$").matches(lower) ||
+            lower.contains("이 댓글을 좋아함") ||
             lower.startsWith("view ") && lower.contains("replies")
     }
 }

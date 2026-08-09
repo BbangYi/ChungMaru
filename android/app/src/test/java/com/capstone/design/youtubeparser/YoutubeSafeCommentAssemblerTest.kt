@@ -74,6 +74,98 @@ class YoutubeSafeCommentAssemblerTest {
 
         assertEquals("@sampleuser", batch.safeComments.single().author)
     }
+
+    @Test
+    fun accessibilitySource_acceptsAuthorlessExistingParserResult() {
+        val source = "android-accessibility-comment:youtube"
+        val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "작성자 연결 없이도 보존할 댓글",
+                    authorId = source
+                )
+            )
+        )
+
+        assertTrue(YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(source))
+        assertEquals(1, batch.rawLineCount)
+        assertEquals("@youtube", batch.safeComments.single().author)
+        assertEquals(null, YoutubeSafeCommentAssembler.youtubeAuthorLabel(source))
+    }
+
+    @Test
+    fun youtubeAuthorLabel_normalizesLookaheadAndAtSign() {
+        assertEquals(
+            "@sampleuser",
+            YoutubeSafeCommentAssembler.youtubeAuthorLabel(
+                "android-accessibility-lookahead:" +
+                    "android-accessibility-comment:youtube:sampleuser"
+            )
+        )
+    }
+
+    @Test
+    fun accessibilitySource_rejectsPrefixCollision() {
+        val source = "android-accessibility-comment:youtube-other:@sampleuser"
+        val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "This must not be treated as a YouTube comment",
+                    authorId = source
+                )
+            )
+        )
+
+        assertFalse(YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(source))
+        assertEquals(0, batch.rawLineCount)
+        assertTrue(batch.safeComments.isEmpty())
+    }
+
+    @Test
+    fun assembleAccessibilityResults_rejectsRealYoutubePlaybackControls() {
+        val controls = listOf(
+            "동영상 일지중지",
+            "다음 동영상",
+            "0분 5초 중 0분 1초",
+            "다른 사용자 5명과 함께 이 동영상에 좋아요 표시",
+            "댓글 27개 보기",
+            "동영상 공유",
+            "리믹스",
+            "이 사운드를 사용하는 동영상 더보기",
+            "구독: 새로운 콘텐츠 이용 가능",
+            "드래그 핸들",
+            "댓글 정보",
+            "[Music]",
+            "좋아요 취소",
+            "좋아요 6개",
+            "댓글 싫어요 표시",
+            "작업 메뉴",
+            "한국어로 번역",
+            "나와 사용자 2명이 이 댓글을 좋아함"
+        )
+        val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            controls.map { text ->
+                accessibilityResult(
+                    text = text,
+                    authorId = "android-accessibility-comment:youtube"
+                )
+            }
+        )
+
+        assertEquals(0, batch.rawLineCount)
+        assertTrue(batch.safeComments.isEmpty())
+    }
+
+    @Test
+    fun youtubeAuthorLabel_removesParserLineSuffix() {
+        assertEquals(
+            "@sampleuser",
+            YoutubeSafeCommentAssembler.youtubeAuthorLabel(
+                "android-accessibility-comment:youtube:@sampleuser:line:240"
+            )
+        )
+    }
+
     @Test
     fun buffer_retractsEarlierSafeCommentWhenAuthorIsLaterHarmful() {
         val buffer = YoutubeSafeCommentBuffer()

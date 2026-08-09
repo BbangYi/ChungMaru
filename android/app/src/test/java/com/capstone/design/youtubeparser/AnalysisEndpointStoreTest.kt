@@ -43,7 +43,7 @@ class AnalysisEndpointStoreTest {
     }
 
     @Test
-    fun buildAnalyzeUrlCandidates_addsAlternatePortForPhysicalLoopback() {
+    fun buildAnalyzeUrlCandidates_prioritizesAdbReverseForPhysicalDevice() {
         val resolved = AnalysisEndpointStore.buildAnalyzeUrlCandidates(
             rawInput = "127.0.0.1:8000",
             emulator = false
@@ -52,7 +52,9 @@ class AnalysisEndpointStoreTest {
         assertEquals(
             listOf(
                 "http://127.0.0.1:8000/analyze_android",
-                "http://127.0.0.1:8010/analyze_android"
+                "http://127.0.0.1:8010/analyze_android",
+                "http://100.95.209.72:8000/analyze_android",
+                "http://100.95.209.72:8010/analyze_android"
             ),
             resolved
         )

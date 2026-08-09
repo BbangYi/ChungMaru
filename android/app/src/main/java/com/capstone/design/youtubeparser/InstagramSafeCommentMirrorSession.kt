@@ -163,6 +163,7 @@ internal class InstagramSafeCommentMirrorSession(
                 val missingForMs = nowMs - panelMissingSinceMs
                 if (
                     !MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
+                        mirrorReady = false,
                         panelPresent = false,
                         panelTransitionActive = false,
                         missingForMs = missingForMs,

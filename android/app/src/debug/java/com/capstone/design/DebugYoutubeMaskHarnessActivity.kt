@@ -23,7 +23,7 @@ class DebugYoutubeMaskHarnessActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         AndroidAnalysisClient.clearCache()
-        AnalysisEndpointStore.saveRawInput(this, "10.0.2.2:8010")
+        AnalysisEndpointStore.saveRawInput(this, "10.0.2.2:8000")
         AnalysisSensitivityStore.save(this, 100)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE

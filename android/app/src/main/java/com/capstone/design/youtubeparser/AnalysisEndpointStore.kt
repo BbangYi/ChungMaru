@@ -10,8 +10,9 @@ object AnalysisEndpointStore {
     private const val PREFS_NAME = "youtube_parser_settings"
     private const val KEY_ANALYSIS_INPUT = "analysis_input"
     private const val DEFAULT_EMULATOR_ANALYSIS_HOST = "10.0.2.2:8000"
-    private const val DEFAULT_DEVICE_ANALYSIS_HOST = "100.95.209.72:8000"
-    private const val LEGACY_DEFAULT_ANALYSIS_HOST = "100.95.209.72:8000"
+    private const val DEFAULT_DEVICE_ANALYSIS_HOST = "127.0.0.1:8000"
+    private const val REMOTE_DEVICE_ANALYSIS_HOST = "100.95.209.72:8000"
+    private const val LEGACY_DEFAULT_ANALYSIS_HOST = REMOTE_DEVICE_ANALYSIS_HOST
     private const val LEGACY_DEFAULT_ANALYSIS_HOST_BARE = "100.95.209.72"
     private const val DEFAULT_ANALYSIS_PATH = "/analyze_android"
     private const val PRIMARY_ANALYSIS_PORT = 8000
@@ -25,10 +26,10 @@ object AnalysisEndpointStore {
         }
 
         return if (
-            isLikelyEmulator() &&
-            (stored == LEGACY_DEFAULT_ANALYSIS_HOST || stored == LEGACY_DEFAULT_ANALYSIS_HOST_BARE)
+            stored == LEGACY_DEFAULT_ANALYSIS_HOST ||
+            stored == LEGACY_DEFAULT_ANALYSIS_HOST_BARE
         ) {
-            DEFAULT_EMULATOR_ANALYSIS_HOST
+            defaultHostForRuntime()
         } else {
             stored
         }
@@ -101,6 +102,7 @@ object AnalysisEndpointStore {
             addHost("10.0.2.2")
         } else {
             addHost("127.0.0.1")
+            addHost(REMOTE_DEVICE_ANALYSIS_HOST.substringBefore(':'))
         }
         return candidates.toList()
     }
