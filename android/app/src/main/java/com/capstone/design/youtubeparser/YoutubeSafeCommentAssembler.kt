@@ -96,12 +96,11 @@ object YoutubeSafeCommentAssembler {
     }
 
     internal fun youtubeAuthorLabel(authorId: String?): String? {
-        val source = normalizedAccessibilitySource(authorId)
+        val source = accessibilityResultIdentity(authorId)
         if (!isAccessibilitySource(source, YOUTUBE_ACCESSIBILITY_SOURCE)) return null
         val author = source
             .removePrefix(YOUTUBE_ACCESSIBILITY_SOURCE)
             .trimStart(':')
-            .substringBefore(":line:")
             .trim()
             .removePrefix("@")
         return author.takeIf { value -> value.isNotBlank() }?.let { value -> "@$value" }
@@ -126,11 +125,16 @@ object YoutubeSafeCommentAssembler {
             )
         }
 
-        val primaryResults = accessibilityResults.filterNot { result ->
-            normalizedAccessibilitySource(result.authorId).contains(":line:")
-        }
-        val displayResults = primaryResults
-            .ifEmpty { accessibilityResults }
+        val displayResults = accessibilityResults
+            .groupByTo(LinkedHashMap()) { result ->
+                accessibilityResultIdentity(result.authorId)
+            }
+            .values
+            .flatMap { identityResults ->
+                identityResults
+                    .filterNot { result -> isAccessibilityLineResult(result.authorId) }
+                    .ifEmpty { identityResults }
+            }
             .filter { result ->
                 val text = normalize(result.original)
                     .replace(trailingExpansionLabel, "")
@@ -196,6 +200,14 @@ object YoutubeSafeCommentAssembler {
             .trim()
     }
 
+    private fun accessibilityResultIdentity(authorId: String?): String {
+        return normalizedAccessibilitySource(authorId).substringBefore(":line:")
+    }
+
+    private fun isAccessibilityLineResult(authorId: String?): Boolean {
+        return normalizedAccessibilitySource(authorId).contains(":line:")
+    }
+
     private fun isAccessibilitySource(source: String, accessibilitySource: String): Boolean {
         return source == accessibilitySource || source.startsWith("$accessibilitySource:")
     }
@@ -205,12 +217,11 @@ object YoutubeSafeCommentAssembler {
         accessibilitySource: String,
         unknownAuthor: String
     ): String {
-        val source = normalizedAccessibilitySource(authorId)
+        val source = accessibilityResultIdentity(authorId)
         val suffix = source
             .removePrefix(accessibilitySource)
             .trimStart(':')
         val author = suffix
-            .substringBefore(":line:")
             .trim()
             .removePrefix("@")
             .takeIf { value -> value.length in 1..95 }

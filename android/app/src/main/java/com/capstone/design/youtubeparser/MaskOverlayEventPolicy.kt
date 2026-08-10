@@ -270,16 +270,13 @@ internal object MaskOverlayEventPolicy {
     }
 
     fun shouldRemoveYoutubeMirrorAfterPanelMiss(
-        mirrorReady: Boolean,
+        mirrorReady: Boolean = false,
         panelPresent: Boolean,
-        panelTransitionActive: Boolean,
+        panelTransitionActive: Boolean = false,
         missingForMs: Long,
         missingGraceMs: Long
     ): Boolean {
-        // A ready accessibility overlay can make YouTube's underlying panel
-        // disappear from the observable window tree. Only explicit close/back
-        // signals may dismiss the mirror after that handoff.
-        if (mirrorReady || panelPresent || panelTransitionActive) return false
+        if (panelPresent || panelTransitionActive) return false
         return missingForMs >= missingGraceMs.coerceAtLeast(0L)
     }
 

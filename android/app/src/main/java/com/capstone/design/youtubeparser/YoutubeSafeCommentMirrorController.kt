@@ -16,6 +16,7 @@ import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.OverScroller
 import kotlin.math.PI
@@ -35,7 +36,8 @@ internal class YoutubeSafeCommentMirrorController(
     private val service: AccessibilityService,
     private val onNeedMore: () -> Unit,
     private val visualStyle: SafeCommentMirrorVisualStyle =
-        SafeCommentMirrorVisualStyle.YOUTUBE
+        SafeCommentMirrorVisualStyle.YOUTUBE,
+    private val onDismiss: (() -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "YoutubeSafeMirror"
@@ -121,7 +123,8 @@ internal class YoutubeSafeCommentMirrorController(
                 YoutubeSafeCommentMirrorView(
                     context = service,
                     onNeedMore = onNeedMore,
-                    visualStyle = visualStyle
+                    visualStyle = visualStyle,
+                    onDismiss = onDismiss
                 ).also { view ->
                     view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     view.setInputEnabled(touchEnabled)
@@ -210,7 +213,8 @@ internal class YoutubeSafeCommentMirrorController(
 private class YoutubeSafeCommentMirrorView(
     context: Context,
     private val onNeedMore: () -> Unit,
-    private val visualStyle: SafeCommentMirrorVisualStyle
+    private val visualStyle: SafeCommentMirrorVisualStyle,
+    private val onDismiss: (() -> Unit)?
 ) : View(context) {
     private enum class Mode {
         LOADING,
@@ -226,6 +230,8 @@ private class YoutubeSafeCommentMirrorView(
 
     private val density = resources.displayMetrics.density
     private val scaledDensity = resources.displayMetrics.scaledDensity
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val pullDownDismissDistance = dp(84f)
     private val isDark =
         resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
@@ -322,6 +328,11 @@ private class YoutubeSafeCommentMirrorView(
     private var emptyMessage: String? = null
     private var lastNeedMoreAtMs = 0L
     private var needMoreArmed = false
+    private var pullDownOriginX = 0f
+    private var pullDownOriginY = 0f
+    private var pullDownStartedAtTop = false
+    private var pullDownCaptured = false
+    private var pullDownDismissPending = false
 
     val isReady: Boolean
         get() = mode == Mode.READY
@@ -383,12 +394,97 @@ private class YoutubeSafeCommentMirrorView(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (mode != Mode.READY || !inputEnabled) return true
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) needMoreArmed = true
+        if (pullDownDismissPending) return true
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                needMoreArmed = true
+                pullDownOriginX = event.x
+                pullDownOriginY = event.y
+                pullDownStartedAtTop =
+                    visualStyle == SafeCommentMirrorVisualStyle.YOUTUBE &&
+                        onDismiss != null &&
+                        YoutubeMirrorPullDownGesturePolicy.startsAtTop(scrollOffset)
+                pullDownCaptured = false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (pullDownStartedAtTop && !pullDownCaptured) {
+                    val deltaX = event.x - pullDownOriginX
+                    val deltaY = event.y - pullDownOriginY
+                    if (
+                        YoutubeMirrorPullDownGesturePolicy.shouldCapture(
+                            startedAtTop = true,
+                            deltaX = deltaX,
+                            deltaY = deltaY,
+                            touchSlop = touchSlop
+                        )
+                    ) {
+                        pullDownCaptured = true
+                        needMoreArmed = false
+                        scroller.forceFinished(true)
+                        cancelGestureDetector(event)
+                    } else if (
+                        YoutubeMirrorPullDownGesturePolicy.isDirectionResolved(
+                            deltaX = deltaX,
+                            deltaY = deltaY,
+                            touchSlop = touchSlop
+                        )
+                    ) {
+                        pullDownStartedAtTop = false
+                    }
+                }
+                if (pullDownCaptured) return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                if (pullDownCaptured) {
+                    val shouldDismiss = YoutubeMirrorPullDownGesturePolicy.shouldDismiss(
+                        distanceY = event.y - pullDownOriginY,
+                        dismissDistance = pullDownDismissDistance
+                    )
+                    resetPullDownGesture()
+                    if (shouldDismiss) {
+                        pullDownDismissPending = true
+                        post {
+                            try {
+                                onDismiss?.invoke()
+                            } finally {
+                                pullDownDismissPending = false
+                            }
+                        }
+                    }
+                    return true
+                }
+                resetPullDownGesture()
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                if (pullDownCaptured) {
+                    resetPullDownGesture()
+                    return true
+                }
+                resetPullDownGesture()
+            }
+        }
+
         val handled = gestureDetector.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             requestMoreIfNeeded()
         }
         return handled || true
+    }
+
+    private fun cancelGestureDetector(event: MotionEvent) {
+        val cancelEvent = MotionEvent.obtain(event)
+        cancelEvent.action = MotionEvent.ACTION_CANCEL
+        gestureDetector.onTouchEvent(cancelEvent)
+        cancelEvent.recycle()
+    }
+
+    private fun resetPullDownGesture() {
+        pullDownStartedAtTop = false
+        pullDownCaptured = false
     }
 
     override fun computeScroll() {

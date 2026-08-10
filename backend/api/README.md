@@ -61,7 +61,7 @@ cp .env.example .env
 
 # 3. 서버 실행 (브라우저 실사용 검증)
 cd api
-uvicorn app:app --host 127.0.0.1 --port 8000
+python run_server.py --port 8000
 
 # 개발 중 자동 재시작이 필요할 때만
 uvicorn app:app --host 127.0.0.1 --port 8000 --reload

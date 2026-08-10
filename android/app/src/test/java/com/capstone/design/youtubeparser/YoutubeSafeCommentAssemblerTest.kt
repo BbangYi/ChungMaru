@@ -36,6 +36,46 @@ class YoutubeSafeCommentAssemblerTest {
     }
 
     @Test
+    fun assembleAccessibilityResults_keepsLineFallbackForAnotherCommentIdentity() {
+        val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "First complete comment",
+                    authorId = "android-accessibility-comment:youtube:@first"
+                ),
+                accessibilityResult(
+                    text = "Second line-only comment",
+                    authorId = "android-accessibility-comment:youtube:@second:line:320"
+                )
+            )
+        )
+
+        assertEquals(2, batch.rawLineCount)
+        assertEquals(
+            listOf("@first", "@second"),
+            batch.safeComments.map { comment -> comment.author }
+        )
+        assertEquals(
+            listOf("First complete comment", "Second line-only comment"),
+            batch.safeComments.map { comment -> comment.text }
+        )
+    }
+
+    @Test
+    fun assembleAccessibilityResults_treatsAuthorlessLineAsUnknownAuthor() {
+        val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "Authorless parser fallback",
+                    authorId = "android-accessibility-comment:youtube:line:420"
+                )
+            )
+        )
+
+        assertEquals("@youtube", batch.safeComments.single().author)
+    }
+
+    @Test
     fun assembleAccessibilityResults_blocksCompositeWhenItsLineIsHarmful() {
         val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
             listOf(
@@ -263,6 +303,48 @@ class YoutubeSafeCommentAssemblerTest {
                 maxForwardSteps = 3
             )
         )
+    }
+
+    @Test
+    fun buffer_appendsOnlyNewSafeCommentsFromLaterViewport() {
+        val buffer = YoutubeSafeCommentBuffer()
+        val firstViewport = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "First viewport comment",
+                    authorId = "android-accessibility-comment:youtube:@one"
+                ),
+                accessibilityResult(
+                    text = "Overlapping viewport comment",
+                    authorId = "android-accessibility-comment:youtube:@two"
+                )
+            )
+        )
+        val laterViewport = YoutubeSafeCommentAssembler.assembleAccessibilityResults(
+            listOf(
+                accessibilityResult(
+                    text = "Overlapping viewport comment",
+                    authorId = "android-accessibility-comment:youtube:@two"
+                ),
+                accessibilityResult(
+                    text = "New safe comment",
+                    authorId = "android-accessibility-comment:youtube:@three"
+                ),
+                accessibilityResult(
+                    text = "New harmful comment",
+                    authorId = "android-accessibility-comment:youtube:@blocked",
+                    offensive = true
+                )
+            )
+        )
+
+        assertEquals(2, buffer.add(firstViewport))
+        assertEquals(1, buffer.add(laterViewport))
+        assertEquals(
+            listOf("@one", "@two", "@three"),
+            buffer.comments().map { comment -> comment.author }
+        )
+        assertFalse(buffer.comments().any { comment -> comment.author == "@blocked" })
     }
 
     private fun accessibilityResult(
