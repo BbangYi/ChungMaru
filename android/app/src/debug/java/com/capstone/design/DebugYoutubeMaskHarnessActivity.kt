@@ -111,10 +111,16 @@ class DebugYoutubeMaskHarnessActivity : AppCompatActivity() {
         }
 
         row.addView(TextView(this).apply {
-            text = "${comment.author} ${index + 1} days ago"
+            text = comment.author
+            contentDescription = comment.author
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(75, 75, 75))
+        })
+        row.addView(TextView(this).apply {
+            text = "${index + 1} days ago"
+            textSize = 12f
+            setTextColor(Color.rgb(110, 110, 110))
         })
         row.addView(TextView(this).apply {
             text = comment.body
@@ -131,6 +137,8 @@ class DebugYoutubeMaskHarnessActivity : AppCompatActivity() {
         listOf("Like this comment", "Dislike this comment", "Reply").forEach { label ->
             actions.addView(TextView(this).apply {
                 text = label
+                contentDescription = label
+                isClickable = label == "Reply"
                 textSize = 12f
                 setTextColor(Color.rgb(95, 95, 95))
                 setPadding(0, dp(4), dp(22), dp(4))

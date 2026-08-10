@@ -95,22 +95,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
         private const val INSTAGRAM_PANEL_PROBE_INTERVAL_MS = 90L
         private val INSTAGRAM_PANEL_PROBE_RETRY_DELAYS_MS =
             longArrayOf(60L, 180L, 420L)
-        private const val YOUTUBE_MIRROR_INITIAL_FORWARD_STEPS = 5
-        private const val YOUTUBE_MIRROR_PREFETCH_FORWARD_STEPS = 2
-        private const val YOUTUBE_MIRROR_INITIAL_REWIND_MAX_STEPS = 8
-        private const val YOUTUBE_MIRROR_VIEWPORT_SETTLE_MS = 620L
         private const val YOUTUBE_MIRROR_NEXT_STEP_DELAY_MS = 120L
+        private const val YOUTUBE_MIRROR_PREFETCH_SCROLL_SETTLE_MS = 620L
+        private const val YOUTUBE_MIRROR_CAPTURE_HIDE_SETTLE_MS = 48L
         private const val YOUTUBE_MIRROR_SEED_CAPTURE_THROTTLE_MS = 80L
         private const val YOUTUBE_MIRROR_SEED_TARGET_COUNT = 3
-        private const val YOUTUBE_MIRROR_REWIND_STEP_DELAY_MS = 260L
         private const val YOUTUBE_MIRROR_CAPTURE_SETTLE_MS = 120L
         private const val YOUTUBE_MIRROR_BATCH_TIMEOUT_MS = 15_000L
         private const val YOUTUBE_MIRROR_INITIAL_TIMEOUT_MS = 28_000L
-        private const val YOUTUBE_MIRROR_INITIAL_RECOVERY_TIMEOUT_MS = 17_000L
         private const val YOUTUBE_MIRROR_VISUAL_ANALYSIS_TIMEOUT_MS = 15_000L
         private const val YOUTUBE_MIRROR_MAX_EMPTY_RETRIES = 2
-        private const val YOUTUBE_MIRROR_MAX_INITIAL_RECOVERY_ATTEMPTS = 1
         private const val YOUTUBE_MIRROR_PANEL_PRESENCE_DELAY_MS = 120L
+        private const val YOUTUBE_MIRROR_PANEL_AUDIT_INTERVAL_MS = 250L
         private const val YOUTUBE_MIRROR_PANEL_MISSING_GRACE_MS = 900L
         private const val YOUTUBE_MIRROR_PANEL_OPENING_GRACE_MS = 900L
         private const val YOUTUBE_MIRROR_REOPEN_GUARD_MS = 1_200L
@@ -228,7 +224,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private val youtubeSafeCommentMirrorController by lazy {
         YoutubeSafeCommentMirrorController(
             service = this,
-            onNeedMore = { startYoutubeMirrorPrefetch() }
+            onNeedMore = { startYoutubeMirrorPrefetch() },
+            onDismiss = { dismissYoutubeCommentPanelFromMirror() }
         )
     }
     private val instagramSafeCommentMirrorSession by lazy {
@@ -314,8 +311,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private var youtubeMirrorPanelSpec: MaskOverlaySpec? = null
     private var youtubeMirrorSessionRunId = 0L
     private var youtubeMirrorCollectionMode = YoutubeMirrorCollectionMode.IDLE
-    private var youtubeMirrorForwardSteps = 0
-    private var youtubeMirrorNativeRewindRemaining = 0
     private var youtubeMirrorNativeScrollNode: AccessibilityNodeInfo? = null
     private var youtubeMirrorCapturedViewports = 0
     private var youtubeMirrorEmptyRetries = 0
@@ -326,9 +321,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private var youtubeMirrorReachedEnd = false
     private var youtubeMirrorCaptureAttemptId = 0L
-    private var youtubeMirrorInitialRecoveryAttempts = 0
     private var youtubeMirrorPanelMissingSinceMs = 0L
     private var youtubeMirrorPanelNativeObserved = false
+    private var youtubeMirrorPanelAuditScheduledRunId = -1L
     private var youtubeMirrorReopenSuppressedUntilMs = 0L
     private var youtubeMirrorSessionStartedAtUptimeMs = 0L
     private var youtubeMirrorSessionStartedAtEpochMs = 0L
@@ -1483,6 +1478,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val youtubeMirrorRunIdAtSnapshot = youtubeMirrorSessionRunId
         val youtubeMirrorAttemptIdAtSnapshot = youtubeMirrorCaptureAttemptId
         if (youtubeMirrorBatchExpected) {
+            youtubeMirrorParsedCommentCount = max(
+                youtubeMirrorParsedCommentCount,
+                comments.count { comment ->
+                    YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(comment.authorId)
+                }
+            )
             youtubeMirrorExpectedSnapshotTimestampMs = snapshot.timestamp
         }
         val shouldUpload = now - lastUploadAt >= MIN_UPLOAD_INTERVAL_MS
@@ -2109,10 +2110,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         source: String = "general-parser"
     ) {
         val commentOnly = comments.filter { comment ->
-            isTrustedYoutubeMirrorCommentResult(
-                authorId = comment.authorId,
-                bounds = comment.boundsInScreen
-            )
+            YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(comment.authorId)
         }
         if (commentOnly.isEmpty()) return
 
@@ -2153,6 +2151,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
             return null
         }
         return snapshot.copy(timestamp = System.currentTimeMillis())
+    }
+
+    private fun captureYoutubeMirrorSeedFromCurrentWindows() {
+        val nodes = runCatching {
+            extractVisibleTextNodesFromYoutubeWindows(requestCharacterBoxes = false)
+        }.onFailure { error ->
+            Log.w(TAG, "youtube mirror pre-overlay seed capture failed", error)
+        }.getOrElse { emptyList() }
+
+        rememberYoutubeMirrorSeedSnapshot(
+            comments = extractYoutubeMirrorSeedComments(nodes),
+            source = "pre-overlay"
+        )
     }
 
     private fun captureYoutubeMirrorSeedFromEvent(event: AccessibilityEvent) {
@@ -2257,6 +2268,339 @@ class YoutubeAccessibilityService : AccessibilityService() {
         return true
     }
 
+    private fun collectVisibleYoutubeCommentOcrAnchors(
+        panelSpec: MaskOverlaySpec,
+        includeMirrorObscuredNodes: Boolean = false
+    ): List<YoutubeCommentOcrAnchor> {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        rootInActiveWindow?.let(roots::add)
+        windows?.forEach { window ->
+            val root = window.root ?: return@forEach
+            if (isYoutubeAccessibilityRoot(root)) roots += root
+        }
+
+        val panelBounds = BoundsRect(
+            left = panelSpec.left,
+            top = panelSpec.top,
+            right = panelSpec.left + panelSpec.width,
+            bottom = panelSpec.top + panelSpec.height
+        )
+        val anchors = mutableListOf<YoutubeCommentOcrAnchor>()
+        val seenRoots = mutableSetOf<String>()
+        val seenAuthors = mutableSetOf<String>()
+        val allowHiddenNodes = includeMirrorObscuredNodes &&
+            youtubeSafeCommentMirrorController.isActive
+        var visited = 0
+
+        fun visit(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > 18 || visited >= 2_400) return
+            visited += 1
+            val label = visibleYoutubeAuthorLabel(node, allowHiddenNodes)
+            if (label != null) {
+                val authorBounds = youtubeNodeBounds(node, allowHiddenNodes)
+                val authorKey = authorBounds?.let { bounds ->
+                    "$label@${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+                }
+                if (authorBounds != null && authorKey != null && seenAuthors.add(authorKey)) {
+                    findYoutubeCommentRowForAuthor(
+                        authorNode = node,
+                        authorLabel = label,
+                        allowHiddenNodes = allowHiddenNodes
+                    )?.let { match ->
+                        val intersectsPanel = match.rowBounds.bottom > panelBounds.top &&
+                            match.rowBounds.top < panelBounds.bottom
+                        if (intersectsPanel) {
+                            anchors += YoutubeCommentOcrAnchor(
+                                authorLabel = label,
+                                authorBounds = match.authorBounds,
+                                rowBounds = match.rowBounds,
+                                replyBounds = match.replyBounds
+                            )
+                        }
+                    }
+                }
+            }
+
+            for (index in 0 until node.childCount) {
+                val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
+                visit(child, depth + 1)
+            }
+        }
+
+        for (root in roots) {
+            if (!isYoutubeAccessibilityRoot(root)) continue
+            val rootRect = Rect().also { rect -> root.getBoundsInScreen(rect) }
+            val rootKey = "${rootRect.left},${rootRect.top},${rootRect.right},${rootRect.bottom},${root.className}"
+            if (!seenRoots.add(rootKey)) continue
+
+            val panelRoots = YOUTUBE_COMMENT_PANEL_CONTENT_VIEW_IDS
+                .flatMap { viewId ->
+                    runCatching { root.findAccessibilityNodeInfosByViewId(viewId) }
+                        .getOrDefault(emptyList())
+                }
+                .filter { node -> node.isVisibleToUser || allowHiddenNodes }
+            if (panelRoots.isEmpty()) {
+                visit(root, 0)
+            } else {
+                panelRoots.forEach { panelRoot -> visit(panelRoot, 0) }
+            }
+        }
+
+        return anchors.distinctBy { anchor ->
+            val bounds = anchor.rowBounds
+            "${anchor.authorLabel.lowercase()}@${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
+        }
+    }
+
+    private fun requestYoutubeMirrorCommentOcr(
+        runId: Long,
+        panelSpec: MaskOverlaySpec,
+        captureBehindMirror: Boolean = false
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !visualCaptureState.supported) {
+            return false
+        }
+        val metrics = resources.displayMetrics
+        val panelBounds = BoundsRect(
+            left = panelSpec.left,
+            top = panelSpec.top,
+            right = panelSpec.left + panelSpec.width,
+            bottom = panelSpec.top + panelSpec.height
+        )
+        val rows = YoutubeCommentOcrFallback.planRows(
+            anchors = collectVisibleYoutubeCommentOcrAnchors(
+                panelSpec = panelSpec,
+                includeMirrorObscuredNodes = captureBehindMirror
+            ),
+            panelBounds = panelBounds,
+            screenWidth = metrics.widthPixels,
+            screenHeight = metrics.heightPixels
+        )
+        if (rows.isEmpty()) {
+            Log.d(TAG, "skip youtube mirror body OCR: no visible comment rows")
+            return false
+        }
+
+        val rois = rows.map { row -> row.toRoi() }
+        val started = requestYoutubeMirrorScreenshot(
+            runId = runId,
+            captureBehindMirror = captureBehindMirror,
+            onCaptured = { screenshot ->
+                visualTextOcrProcessor.recognize(screenshot, rois) { ocrCandidates ->
+                    if (!screenshot.isRecycled) screenshot.recycle()
+                    val comments = YoutubeCommentOcrFallback.assembleComments(
+                        rows = rows,
+                        ocrCandidates = ocrCandidates
+                    )
+                    handler.post {
+                        if (
+                            runId != youtubeMirrorSessionRunId ||
+                            youtubeMirrorCollectionMode == YoutubeMirrorCollectionMode.IDLE ||
+                            !youtubeSafeCommentMirrorController.isActive
+                        ) {
+                            return@post
+                        }
+                        if (comments.isEmpty()) {
+                            continueYoutubeMirrorAfterOcrMiss(runId, "no-body-text")
+                            return@post
+                        }
+
+                        val attemptId = youtubeMirrorCaptureAttemptId + 1L
+                        youtubeMirrorCaptureAttemptId = attemptId
+                        youtubeMirrorAwaitingBatch = true
+                        youtubeMirrorExpectedSnapshotTimestampMs = 0L
+                        youtubeMirrorAnalysisError = null
+                        youtubeMirrorParsedCommentCount = max(
+                            youtubeMirrorParsedCommentCount,
+                            comments.size
+                        )
+                        val snapshot = ParseSnapshot(
+                            timestamp = System.currentTimeMillis(),
+                            comments = comments
+                        )
+                        Log.d(
+                            TAG,
+                            "capture youtube mirror comment bodies with focused OCR " +
+                                "run=$runId rows=${rows.size} comments=${comments.size} " +
+                                "behindMirror=$captureBehindMirror"
+                        )
+                        analyzeYoutubeMirrorSnapshot(
+                            runId = runId,
+                            attemptId = attemptId,
+                            snapshot = snapshot,
+                            source = "focused-comment-ocr"
+                        )
+                    }
+                }
+            },
+            onFailure = { reason ->
+                continueYoutubeMirrorAfterOcrMiss(runId, reason)
+            }
+        )
+        if (started) {
+            Log.d(
+                TAG,
+                "request youtube mirror focused OCR run=$runId rows=${rows.size} " +
+                    "behindMirror=$captureBehindMirror"
+            )
+        }
+        return started
+    }
+
+    private fun requestYoutubeMirrorScreenshot(
+        runId: Long,
+        captureBehindMirror: Boolean,
+        onCaptured: (Bitmap) -> Unit,
+        onFailure: (String) -> Unit
+    ): Boolean {
+        fun isCurrentRequest(): Boolean {
+            return runId == youtubeMirrorSessionRunId &&
+                youtubeMirrorCollectionMode != YoutubeMirrorCollectionMode.IDLE &&
+                lastObservedPackage == YOUTUBE_PACKAGE &&
+                (!captureBehindMirror || youtubeSafeCommentMirrorController.isActive)
+        }
+
+        fun restoreMirror(wasSuspended: Boolean) {
+            if (!wasSuspended) return
+            handler.post {
+                youtubeSafeCommentMirrorController.restoreAfterCapture(true)
+            }
+        }
+
+        fun handleSuccess(
+            screenshotResult: ScreenshotResult,
+            mirrorWasSuspended: Boolean
+        ) {
+            restoreMirror(mirrorWasSuspended)
+            val screenshot = screenshotResult.toSoftwareBitmap()
+            if (screenshot == null) {
+                onFailure("bitmap-unavailable")
+                return
+            }
+            if (!isCurrentRequest()) {
+                if (!screenshot.isRecycled) screenshot.recycle()
+                return
+            }
+            onCaptured(screenshot)
+        }
+
+        fun requestDisplayScreenshot() {
+            if (!isCurrentRequest()) return
+            val mirrorWasSuspended = captureBehindMirror &&
+                youtubeSafeCommentMirrorController.suspendForCapture()
+            val request = Runnable {
+                if (!isCurrentRequest()) {
+                    restoreMirror(mirrorWasSuspended)
+                    return@Runnable
+                }
+                try {
+                    lastScreenshotRequestAtMs = SystemClock.uptimeMillis()
+                    takeScreenshot(
+                        Display.DEFAULT_DISPLAY,
+                        visualExecutor,
+                        object : TakeScreenshotCallback {
+                            override fun onSuccess(screenshotResult: ScreenshotResult) {
+                                handleSuccess(screenshotResult, mirrorWasSuspended)
+                            }
+
+                            override fun onFailure(errorCode: Int) {
+                                restoreMirror(mirrorWasSuspended)
+                                onFailure("screenshot-$errorCode")
+                            }
+                        }
+                    )
+                } catch (error: RuntimeException) {
+                    restoreMirror(mirrorWasSuspended)
+                    Log.w(TAG, "youtube mirror display screenshot request failed", error)
+                    onFailure("screenshot-request-failed")
+                }
+            }
+            if (mirrorWasSuspended) {
+                handler.postDelayed(request, YOUTUBE_MIRROR_CAPTURE_HIDE_SETTLE_MS)
+            } else {
+                request.run()
+            }
+        }
+
+        val youtubeWindowId = if (
+            captureBehindMirror &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+        ) {
+            currentYoutubeApplicationWindowId()
+        } else {
+            null
+        }
+        if (youtubeWindowId == null) {
+            requestDisplayScreenshot()
+            return true
+        }
+
+        return try {
+            lastScreenshotRequestAtMs = SystemClock.uptimeMillis()
+            takeScreenshotOfWindow(
+                youtubeWindowId,
+                visualExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshotResult: ScreenshotResult) {
+                        handleSuccess(screenshotResult, mirrorWasSuspended = false)
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        Log.w(
+                            TAG,
+                            "youtube window screenshot failed code=$errorCode; use display fallback"
+                        )
+                        handler.post { requestDisplayScreenshot() }
+                    }
+                }
+            )
+            true
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "youtube window screenshot request failed; use display fallback", error)
+            handler.post { requestDisplayScreenshot() }
+            true
+        }
+    }
+
+    private fun currentYoutubeApplicationWindowId(): Int? {
+        val activeRoot = rootInActiveWindow
+        if (activeRoot != null && isYoutubeAccessibilityRoot(activeRoot)) {
+            return activeRoot.windowId.takeIf { windowId -> windowId >= 0 }
+        }
+        return windows
+            ?.asSequence()
+            ?.mapNotNull { window ->
+                val root = runCatching { window.root }.getOrNull() ?: return@mapNotNull null
+                if (!isYoutubeAccessibilityRoot(root)) return@mapNotNull null
+                window.id.takeIf { windowId -> windowId >= 0 }
+            }
+            ?.firstOrNull()
+    }
+
+    private fun continueYoutubeMirrorAfterOcrMiss(runId: Long, reason: String) {
+        handler.post {
+            if (
+                runId != youtubeMirrorSessionRunId ||
+                youtubeMirrorCollectionMode == YoutubeMirrorCollectionMode.IDLE ||
+                !youtubeSafeCommentMirrorController.isActive ||
+                youtubeMirrorAwaitingBatch
+            ) {
+                return@post
+            }
+            Log.d(TAG, "youtube mirror focused OCR miss run=$runId reason=$reason")
+            if (youtubeMirrorCollectionMode == YoutubeMirrorCollectionMode.PREFETCH) {
+                if (debugYoutubeHarnessActive) {
+                    scheduleYoutubeMirrorCurrentViewportCapture("prefetch-debug-ocr-$reason")
+                    return@post
+                }
+                youtubeMirrorAnalysisError = "PREFETCH_OCR_MISS:$reason"
+                finishYoutubeMirrorCollection("prefetch-ocr-miss:$reason")
+                return@post
+            }
+            scheduleYoutubeMirrorCurrentViewportCapture("ocr-fallback-$reason")
+        }
+    }
+
 
     private fun beginYoutubeMirrorSession(spec: MaskOverlaySpec) {
         cancelScheduledParse()
@@ -2264,8 +2608,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
         youtubeMirrorCaptureAttemptId += 1L
         youtubeMirrorPanelSpec = spec
         youtubeMirrorCollectionMode = YoutubeMirrorCollectionMode.INITIAL
-        youtubeMirrorForwardSteps = 0
-        youtubeMirrorNativeRewindRemaining = 0
         youtubeMirrorCapturedViewports = 0
         youtubeMirrorEmptyRetries = 0
         youtubeMirrorAwaitingBatch = false
@@ -2274,119 +2616,32 @@ class YoutubeAccessibilityService : AccessibilityService() {
         youtubeMirrorAnalysisError = null
         youtubeMirrorLastSeedCaptureAtMs = 0L
         youtubeMirrorReachedEnd = false
-        youtubeMirrorInitialRecoveryAttempts = 0
         youtubeMirrorPanelMissingSinceMs = 0L
-        youtubeMirrorPanelNativeObserved = hasYoutubeCommentPanelStructureInAnyWindow()
+        youtubeMirrorPanelNativeObserved =
+            hasVisibleYoutubeCommentPanelStructureInAnyWindow()
         youtubeMirrorSessionStartedAtUptimeMs = SystemClock.uptimeMillis()
         youtubeMirrorSessionStartedAtEpochMs = System.currentTimeMillis()
         youtubeMirrorSeenViewportSignatures.clear()
         youtubeSafeCommentBuffer.clear()
-        youtubeMirrorNativeScrollNode = if (debugYoutubeHarnessActive) {
-            findDebugYoutubeHarnessScrollNode()
-        } else {
-            findYoutubeCommentScrollNode(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-        } ?: youtubeMirrorNativeScrollNode
-        Log.d(
-            TAG,
-            "cache youtube mirror native scroll node=" +
-                (youtubeMirrorNativeScrollNode != null)
-        )
-        val cachedSeed = consumeYoutubeMirrorSeedSnapshot()
-        val initialSnapshot = cachedSeed ?: buildYoutubeMirrorSnapshot("initial-native")
-        rememberYoutubeMirrorSeedSnapshot(
-            comments = initialSnapshot.comments,
-            source = if (cachedSeed != null) "cached-pre-overlay" else "pre-overlay"
-        )
-        youtubeSafeCommentMirrorController.startLoading(spec)
-        youtubeCommentInitialAnalysisCompleted = false
+        youtubeMirrorSeedSnapshot = null
+        youtubeMirrorSeedCapturedAtUptimeMs = 0L
+        captureYoutubeMirrorSeedFromCurrentWindows()
         val runId = youtubeMirrorSessionRunId
+        val focusedOcrStarted = requestYoutubeMirrorCommentOcr(runId, spec)
+        youtubeSafeCommentMirrorController.startLoading(spec)
+        scheduleYoutubeMirrorPanelPresenceAudit("session-start")
+        youtubeCommentInitialAnalysisCompleted = false
         scheduleYoutubeMirrorInitialTimeout(runId, YOUTUBE_MIRROR_INITIAL_TIMEOUT_MS)
 
-        prepareYoutubeMirrorInitialViewport(
-            runId = runId,
-            remainingSteps = YOUTUBE_MIRROR_INITIAL_REWIND_MAX_STEPS
-        )
+        if (!focusedOcrStarted) {
+            scheduleYoutubeMirrorCurrentViewportCapture("initial-current")
+        }
         Log.d(
             TAG,
             "begin youtube safe mirror session run=$runId " +
-                "seedComments=${initialSnapshot.comments.size} cached=${cachedSeed != null}"
+                "seedComments=${youtubeMirrorSeedSnapshot?.comments.orEmpty().size} " +
+                "focusedOcr=$focusedOcrStarted"
         )
-    }
-
-    private fun prepareYoutubeMirrorInitialViewport(
-        runId: Long,
-        remainingSteps: Int,
-        rewoundSteps: Int = 0
-    ) {
-        handler.postDelayed(
-            {
-                if (
-                    runId != youtubeMirrorSessionRunId ||
-                    youtubeMirrorCollectionMode != YoutubeMirrorCollectionMode.INITIAL ||
-                    !youtubeSafeCommentMirrorController.isActive ||
-                    lastObservedPackage != YOUTUBE_PACKAGE
-                ) {
-                    return@postDelayed
-                }
-
-                val canScrollBackward =
-                    findYoutubeCommentScrollNode(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD) != null
-                if (!canScrollBackward || remainingSteps <= 0) {
-                    Log.d(
-                        TAG,
-                        "youtube mirror initial viewport ready rewound=$rewoundSteps " +
-                            "reachedTop=${!canScrollBackward}"
-                    )
-                    scheduleYoutubeMirrorCurrentViewportCapture("initial-top")
-                    return@postDelayed
-                }
-
-                val handled = performYoutubeCommentScroll(
-                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                )
-                youtubeSyntheticScrollUntilMs =
-                    SystemClock.uptimeMillis() + YOUTUBE_PRECHECK_SYNTHETIC_SCROLL_GRACE_MS
-                if (!handled) {
-                    scheduleYoutubeMirrorCurrentViewportCapture("initial-top")
-                    return@postDelayed
-                }
-
-                prepareYoutubeMirrorInitialViewport(
-                    runId = runId,
-                    remainingSteps = remainingSteps - 1,
-                    rewoundSteps = rewoundSteps + 1
-                )
-            },
-            if (rewoundSteps == 0) {
-                YOUTUBE_MIRROR_NEXT_STEP_DELAY_MS
-            } else {
-                YOUTUBE_MIRROR_REWIND_STEP_DELAY_MS
-            }
-        )
-    }
-
-
-    private fun buildYoutubeMirrorSnapshot(source: String): ParseSnapshot {
-        val captureStartedAtMs = SystemClock.uptimeMillis()
-        val nodes = runCatching {
-            extractVisibleTextNodesFromYoutubeWindows(requestCharacterBoxes = false)
-        }.onFailure { error ->
-            Log.w(TAG, "youtube parser node capture failed source=$source", error)
-        }.getOrElse { emptyList() }
-        val parsedComments = YoutubeCommentExtractor.extractComments(nodes)
-        val comments = YoutubeCommentAnalysisAdapter.adapt(parsedComments)
-        youtubeMirrorParsedCommentCount = max(youtubeMirrorParsedCommentCount, comments.size)
-        val snapshot = ParseSnapshot(
-            timestamp = System.currentTimeMillis(),
-            comments = comments
-        )
-        Log.d(
-            TAG,
-            "capture existing youtube parser snapshot source=$source nodes=${nodes.size} " +
-                "comments=${comments.size} captureMs=" +
-                (SystemClock.uptimeMillis() - captureStartedAtMs)
-        )
-        return snapshot
     }
 
     private fun analyzeYoutubeMirrorSnapshot(
@@ -2465,14 +2720,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             youtubeMirrorAnalysisError = error
             youtubeMirrorAwaitingBatch = false
             youtubeMirrorExpectedSnapshotTimestampMs = 0L
-            if (youtubeMirrorEmptyRetries < YOUTUBE_MIRROR_MAX_EMPTY_RETRIES) {
-                youtubeMirrorEmptyRetries += 1
-                scheduleYoutubeMirrorCurrentViewportCapture(
-                    "analysis-retry-${youtubeMirrorEmptyRetries}"
-                )
-            } else {
-                finishYoutubeMirrorCollection("analysis-failure")
-            }
+            finishYoutubeMirrorCollection("analysis-failure")
         }
     }
     private fun onYoutubeMirrorAccessibilityResults(
@@ -2482,10 +2730,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (!YOUTUBE_SAFE_MIRROR_ENABLED || !youtubeSafeCommentMirrorController.isActive) return
         val runId = youtubeMirrorSessionRunId
         val accessibilityResults = results.filter { item ->
-            isTrustedYoutubeMirrorCommentResult(
-                authorId = item.authorId,
-                bounds = item.boundsInScreen
-            )
+            YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(item.authorId)
         }
         val batch = YoutubeSafeCommentAssembler.assembleAccessibilityResults(accessibilityResults)
         val signature = accessibilityResults
@@ -2534,9 +2779,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
             youtubeMirrorCaptureAttemptId += 1L
             val isNewViewport = signature.isNotBlank() &&
                 youtubeMirrorSeenViewportSignatures.add(signature)
+            var added = 0
             if (isNewViewport) {
                 youtubeMirrorCapturedViewports += 1
-                val added = youtubeSafeCommentBuffer.add(batch)
+                added = youtubeSafeCommentBuffer.add(batch)
                 Log.d(
                     TAG,
                     "collect youtube mirror accessibility viewport run=$runId " +
@@ -2563,6 +2809,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 )
             }
 
+            if (
+                batch.rawLineCount == 0 &&
+                youtubeMirrorCollectionMode == YoutubeMirrorCollectionMode.PREFETCH
+            ) {
+                youtubeMirrorAnalysisError = "EMPTY_PREFETCH_BATCH"
+                finishYoutubeMirrorCollection("prefetch-empty-current-viewport")
+                return@post
+            }
             if (batch.rawLineCount == 0 && youtubeMirrorEmptyRetries < YOUTUBE_MIRROR_MAX_EMPTY_RETRIES) {
                 youtubeMirrorEmptyRetries += 1
                 scheduleYoutubeMirrorCurrentViewportCapture("empty-${youtubeMirrorEmptyRetries}")
@@ -2572,61 +2826,18 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
             when (youtubeMirrorCollectionMode) {
                 YoutubeMirrorCollectionMode.INITIAL -> {
-                    val shouldFinish = youtubeMirrorReachedEnd ||
-                        youtubeSafeCommentBuffer.shouldFinishInitialCollection(
-                            capturedViewports = youtubeMirrorCapturedViewports,
-                            forwardSteps = youtubeMirrorForwardSteps,
-                            maxForwardSteps = YOUTUBE_MIRROR_INITIAL_FORWARD_STEPS
-                        )
-                    if (shouldFinish) {
-                        finishYoutubeMirrorCollection("initial-target")
-                    } else {
-                        advanceYoutubeMirrorCollection()
-                    }
+                    finishYoutubeMirrorCollection("initial-current-viewport")
                 }
 
                 YoutubeMirrorCollectionMode.PREFETCH -> {
-                    if (
-                        youtubeMirrorReachedEnd ||
-                        youtubeMirrorForwardSteps >= YOUTUBE_MIRROR_PREFETCH_FORWARD_STEPS
-                    ) {
-                        finishYoutubeMirrorCollection("prefetch-target")
-                    } else {
-                        advanceYoutubeMirrorCollection()
-                    }
+                    finishYoutubeMirrorCollection(
+                        "prefetch-current-viewport:new=$isNewViewport:added=$added"
+                    )
                 }
 
                 YoutubeMirrorCollectionMode.IDLE -> Unit
             }
         }
-    }
-
-    private fun advanceYoutubeMirrorCollection() {
-        if (!isYoutubeMirrorCollectionActive()) return
-        val maxSteps = when (youtubeMirrorCollectionMode) {
-            YoutubeMirrorCollectionMode.INITIAL -> YOUTUBE_MIRROR_INITIAL_FORWARD_STEPS
-            YoutubeMirrorCollectionMode.PREFETCH -> YOUTUBE_MIRROR_PREFETCH_FORWARD_STEPS
-            YoutubeMirrorCollectionMode.IDLE -> 0
-        }
-        if (youtubeMirrorForwardSteps >= maxSteps) {
-            finishYoutubeMirrorCollection("step-limit")
-            return
-        }
-
-        youtubeMirrorSeedSnapshot = null
-        youtubeMirrorSeedCapturedAtUptimeMs = 0L
-        youtubeMirrorLastSeedCaptureAtMs = 0L
-        val scrolled = performYoutubeCommentScroll(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-        if (!scrolled) {
-            youtubeMirrorReachedEnd = true
-            finishYoutubeMirrorCollection("native-end")
-            return
-        }
-
-        youtubeMirrorForwardSteps += 1
-        youtubeSyntheticScrollUntilMs =
-            SystemClock.uptimeMillis() + YOUTUBE_PRECHECK_SYNTHETIC_SCROLL_GRACE_MS
-        scheduleYoutubeMirrorCurrentViewportCapture("forward-${youtubeMirrorForwardSteps}")
     }
 
     private fun scheduleYoutubeMirrorCurrentViewportCapture(reason: String) {
@@ -2651,23 +2862,28 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     return@postDelayed
                 }
-                val parserSnapshot = buildYoutubeMirrorSnapshot(reason)
-                youtubeMirrorSeedSnapshot = null
-                youtubeMirrorSeedCapturedAtUptimeMs = 0L
-                analyzeYoutubeMirrorSnapshot(
-                    runId = runId,
-                    attemptId = attemptId,
-                    snapshot = parserSnapshot,
-                    source = reason
+                if (
+                    reason == "initial-current" &&
+                    analyzeYoutubeMirrorSeedSnapshot(
+                        runId = runId,
+                        attemptId = attemptId,
+                        source = reason
+                    )
+                ) {
+                    return@postDelayed
+                }
+                scheduleParse(
+                    delayMs = 0L,
+                    eventType = AccessibilityEvent.TYPE_VIEW_SCROLLED,
+                    replaceExisting = true
                 )
                 Log.d(
                     TAG,
-                    "capture youtube mirror with original parser run=$runId " +
-                        "reason=$reason comments=${parserSnapshot.comments.size}"
+                    "capture youtube mirror with existing parser run=$runId reason=$reason"
                 )
             },
-            if (reason.startsWith("forward-") || reason == "initial-top") {
-                YOUTUBE_MIRROR_VIEWPORT_SETTLE_MS
+            if (reason == "initial-current") {
+                YOUTUBE_MIRROR_CAPTURE_SETTLE_MS
             } else {
                 YOUTUBE_MIRROR_NEXT_STEP_DELAY_MS
             }
@@ -2681,34 +2897,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     youtubeMirrorAwaitingBatch = false
                     youtubeMirrorExpectedSnapshotTimestampMs = 0L
-                    if (youtubeMirrorEmptyRetries < YOUTUBE_MIRROR_MAX_EMPTY_RETRIES) {
-                        youtubeMirrorEmptyRetries += 1
-                        scheduleYoutubeMirrorCurrentViewportCapture("timeout-${youtubeMirrorEmptyRetries}")
-                    } else {
-                        youtubeMirrorEmptyRetries = 0
-                        advanceYoutubeMirrorCollection()
-                    }
+                    youtubeMirrorAnalysisError = "ANALYSIS_TIMEOUT"
+                    youtubeMirrorEmptyRetries = 0
+                    finishYoutubeMirrorCollection("current-viewport-timeout")
                 }
             },
             YOUTUBE_MIRROR_BATCH_TIMEOUT_MS
-        )
-    }
-
-    private fun isTrustedYoutubeMirrorCommentResult(
-        authorId: String?,
-        bounds: BoundsRect
-    ): Boolean {
-        if (!YoutubeSafeCommentAssembler.isYoutubeAccessibilitySource(authorId)) return false
-        val panelSpec = youtubeMirrorPanelSpec
-            ?: lastYoutubeScrollLoadingSpec
-            ?: lastYoutubeCommentPaneSpec
-            ?: return false
-        return YoutubeMirrorParserPolicy.isTrustedCommentResult(
-            hasParsedAuthor = YoutubeSafeCommentAssembler.youtubeAuthorLabel(authorId) != null,
-            resultTop = bounds.top,
-            resultBottom = bounds.bottom,
-            panelTop = panelSpec.top,
-            panelBottom = panelSpec.top + panelSpec.height
         )
     }
 
@@ -2721,36 +2915,15 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     return@postDelayed
                 }
-                if (
-                    youtubeSafeCommentBuffer.rawLineCount == 0 &&
-                    youtubeMirrorInitialRecoveryAttempts <
-                    YOUTUBE_MIRROR_MAX_INITIAL_RECOVERY_ATTEMPTS
-                ) {
-                    youtubeMirrorInitialRecoveryAttempts += 1
-                    youtubeMirrorCaptureAttemptId += 1L
-                    youtubeMirrorAwaitingBatch = false
-                    youtubeMirrorEmptyRetries = 0
-                    Log.w(
-                        TAG,
-                        "retry empty youtube mirror collection " +
-                            "attempt=$youtubeMirrorInitialRecoveryAttempts"
-                    )
-                    scheduleYoutubeMirrorCurrentViewportCapture(
-                        "initial-recovery-$youtubeMirrorInitialRecoveryAttempts"
-                    )
-                    scheduleYoutubeMirrorInitialTimeout(
-                        runId = runId,
-                        delayMs = YOUTUBE_MIRROR_INITIAL_RECOVERY_TIMEOUT_MS
-                    )
-                } else {
-                    finishYoutubeMirrorCollection(
-                        if (youtubeSafeCommentBuffer.rawLineCount == 0) {
-                            "initial-timeout-empty"
-                        } else {
-                            "initial-timeout"
-                        }
-                    )
-                }
+                youtubeMirrorAnalysisError =
+                    youtubeMirrorAnalysisError ?: "ANALYSIS_TIMEOUT"
+                finishYoutubeMirrorCollection(
+                    if (youtubeSafeCommentBuffer.rawLineCount == 0) {
+                        "initial-timeout-empty"
+                    } else {
+                        "initial-timeout"
+                    }
+                )
             },
             delayMs
         )
@@ -2759,24 +2932,70 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (!YOUTUBE_SAFE_MIRROR_ENABLED) return
         if (!youtubeSafeCommentMirrorController.isReady) return
         if (youtubeMirrorCollectionMode != YoutubeMirrorCollectionMode.IDLE) return
-        if (youtubeMirrorNativeRewindRemaining > 0) return
         if (youtubeMirrorReachedEnd || lastObservedPackage != YOUTUBE_PACKAGE) return
 
+        val panelSpec = youtubeMirrorPanelSpec ?: return
+        val runId = youtubeMirrorSessionRunId
         youtubeMirrorCollectionMode = YoutubeMirrorCollectionMode.PREFETCH
-        youtubeMirrorForwardSteps = 0
-        youtubeMirrorCapturedViewports = 0
         youtubeMirrorEmptyRetries = 0
         youtubeMirrorAwaitingBatch = false
+        youtubeMirrorExpectedSnapshotTimestampMs = 0L
+        youtubeMirrorAnalysisError = null
         youtubeSafeCommentMirrorController.setPrefetching(true)
-        youtubeSafeCommentMirrorController.setInputEnabled(false)
-        Log.d(TAG, "start youtube safe mirror prefetch run=$youtubeMirrorSessionRunId")
-        advanceYoutubeMirrorCollection()
+
+        if (!performYoutubeCommentScroll(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+            youtubeMirrorReachedEnd = true
+            finishYoutubeMirrorCollection("prefetch-native-end")
+            return
+        }
+
+        youtubeSyntheticScrollUntilMs = max(
+            youtubeSyntheticScrollUntilMs,
+            SystemClock.uptimeMillis() + YOUTUBE_PRECHECK_SYNTHETIC_SCROLL_GRACE_MS
+        )
+        handler.postDelayed(
+            {
+                if (
+                    runId != youtubeMirrorSessionRunId ||
+                    youtubeMirrorCollectionMode != YoutubeMirrorCollectionMode.PREFETCH ||
+                    !youtubeSafeCommentMirrorController.isActive
+                ) {
+                    return@postDelayed
+                }
+                val started = requestYoutubeMirrorCommentOcr(
+                    runId = runId,
+                    panelSpec = youtubeMirrorPanelSpec ?: panelSpec,
+                    captureBehindMirror = true
+                )
+                if (!started) {
+                    if (debugYoutubeHarnessActive) {
+                        scheduleYoutubeMirrorCurrentViewportCapture("prefetch-debug-current")
+                        return@postDelayed
+                    }
+                    youtubeMirrorAnalysisError = "PREFETCH_OCR_UNAVAILABLE"
+                    finishYoutubeMirrorCollection("prefetch-ocr-unavailable")
+                }
+            },
+            YOUTUBE_MIRROR_PREFETCH_SCROLL_SETTLE_MS
+        )
+        handler.postDelayed(
+            {
+                if (
+                    runId == youtubeMirrorSessionRunId &&
+                    youtubeMirrorCollectionMode == YoutubeMirrorCollectionMode.PREFETCH
+                ) {
+                    youtubeMirrorAnalysisError = "PREFETCH_TIMEOUT"
+                    finishYoutubeMirrorCollection("prefetch-timeout")
+                }
+            },
+            YOUTUBE_MIRROR_BATCH_TIMEOUT_MS
+        )
+        Log.d(TAG, "start youtube mirror one-viewport prefetch run=$runId")
     }
 
     private fun finishYoutubeMirrorCollection(reason: String) {
         if (!youtubeSafeCommentMirrorController.isActive) return
         val previousMode = youtubeMirrorCollectionMode
-        val nativeForwardSteps = youtubeMirrorForwardSteps
         val readySpec = youtubeMirrorPanelSpec
             ?: lastYoutubeScrollLoadingSpec
             ?: lastYoutubeCommentPaneSpec
@@ -2811,43 +3030,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 "harmful=${youtubeSafeCommentBuffer.harmfulCommentCount} " +
                 "spec=${readySpec != null} ready=${youtubeSafeCommentMirrorController.isReady}"
         )
-        if (previousMode != YoutubeMirrorCollectionMode.IDLE && nativeForwardSteps > 0) {
-            rewindYoutubeMirrorNativeList(
-                runId = youtubeMirrorSessionRunId,
-                remainingSteps = nativeForwardSteps
-            )
-        }
-    }
-
-    private fun rewindYoutubeMirrorNativeList(runId: Long, remainingSteps: Int) {
-        if (remainingSteps <= 0) {
-            youtubeMirrorNativeRewindRemaining = 0
-            return
-        }
-        youtubeMirrorNativeRewindRemaining = remainingSteps
-        handler.postDelayed(
-            {
-                if (
-                    runId != youtubeMirrorSessionRunId ||
-                    !youtubeSafeCommentMirrorController.isActive ||
-                    lastObservedPackage != YOUTUBE_PACKAGE
-                ) {
-                    youtubeMirrorNativeRewindRemaining = 0
-                    return@postDelayed
-                }
-                val handled = performYoutubeCommentScroll(
-                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-                )
-                youtubeSyntheticScrollUntilMs =
-                    SystemClock.uptimeMillis() + YOUTUBE_PRECHECK_SYNTHETIC_SCROLL_GRACE_MS
-                if (!handled) {
-                    youtubeMirrorNativeRewindRemaining = 0
-                    return@postDelayed
-                }
-                rewindYoutubeMirrorNativeList(runId, remainingSteps - 1)
-            },
-            YOUTUBE_MIRROR_REWIND_STEP_DELAY_MS
-        )
     }
 
 
@@ -2859,8 +3041,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
         youtubeMirrorCaptureAttemptId += 1L
         youtubeMirrorPanelSpec = null
         youtubeMirrorCollectionMode = YoutubeMirrorCollectionMode.IDLE
-        youtubeMirrorForwardSteps = 0
-        youtubeMirrorNativeRewindRemaining = 0
         youtubeMirrorNativeScrollNode = null
         youtubeMirrorCapturedViewports = 0
         youtubeMirrorEmptyRetries = 0
@@ -2869,9 +3049,9 @@ class YoutubeAccessibilityService : AccessibilityService() {
         youtubeMirrorParsedCommentCount = 0
         youtubeMirrorAnalysisError = null
         youtubeMirrorReachedEnd = false
-        youtubeMirrorInitialRecoveryAttempts = 0
         youtubeMirrorPanelMissingSinceMs = 0L
         youtubeMirrorPanelNativeObserved = false
+        youtubeMirrorPanelAuditScheduledRunId = -1L
         youtubeMirrorSessionStartedAtUptimeMs = 0L
         youtubeMirrorSessionStartedAtEpochMs = 0L
         youtubeMirrorSeedSnapshot = null
@@ -3576,6 +3756,63 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun dismissYoutubeCommentPanelFromMirror() {
+        if (
+            lastObservedPackage != YOUTUBE_PACKAGE ||
+            !youtubeSafeCommentMirrorController.isActive
+        ) {
+            return
+        }
+
+        val nativePanelPresent = hasYoutubeCommentPanelStructureInAnyWindow()
+        val closeActionHandled = performYoutubeCommentPanelCloseAction()
+        val backActionHandled = if (!closeActionHandled && nativePanelPresent) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+        } else {
+            false
+        }
+
+        clearMaskOverlay()
+        invalidateYoutubeCommentPanelSession("mirror-pull-down")
+        Log.d(
+            TAG,
+            "dismiss youtube panel from mirror pull-down " +
+                "panelPresent=$nativePanelPresent close=$closeActionHandled back=$backActionHandled"
+        )
+    }
+
+    private fun performYoutubeCommentPanelCloseAction(): Boolean {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        rootInActiveWindow?.let(roots::add)
+        windows?.forEach { window ->
+            window.root?.let(roots::add)
+        }
+
+        for (root in roots.distinct()) {
+            if (!isYoutubeAccessibilityRoot(root)) continue
+            val closeNodes = runCatching {
+                root.findAccessibilityNodeInfosByViewId(YOUTUBE_COMMENT_PANEL_CLOSE_VIEW_ID)
+            }.getOrDefault(emptyList())
+            for (closeNode in closeNodes) {
+                var candidate: AccessibilityNodeInfo? = closeNode
+                var parentDepth = 0
+                while (candidate != null && parentDepth <= 4) {
+                    if (
+                        candidate.isClickable &&
+                        runCatching {
+                            candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        }.getOrDefault(false)
+                    ) {
+                        return true
+                    }
+                    candidate = runCatching { candidate.parent }.getOrNull()
+                    parentDepth += 1
+                }
+            }
+        }
+        return false
+    }
+
 
     private fun youtubeMirrorOpeningGraceRemainingMs(): Long {
         if (youtubeMirrorPanelNativeObserved) return 0L
@@ -3591,8 +3828,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
     ) {
         if (!youtubeSafeCommentMirrorController.isActive) return
         val runId = youtubeMirrorSessionRunId
+        if (youtubeMirrorPanelAuditScheduledRunId == runId) return
+        youtubeMirrorPanelAuditScheduledRunId = runId
         handler.postDelayed(
             {
+                if (youtubeMirrorPanelAuditScheduledRunId == runId) {
+                    youtubeMirrorPanelAuditScheduledRunId = -1L
+                }
                 if (
                     runId != youtubeMirrorSessionRunId ||
                     !youtubeSafeCommentMirrorController.isActive ||
@@ -3600,18 +3842,12 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 ) {
                     return@postDelayed
                 }
-                if (hasYoutubeCommentPanelStructureInAnyWindow()) {
+                if (hasVisibleYoutubeCommentPanelStructureInAnyWindow()) {
                     youtubeMirrorPanelNativeObserved = true
                     youtubeMirrorPanelMissingSinceMs = 0L
-                    return@postDelayed
-                }
-
-                if (youtubeSafeCommentMirrorController.isReady) {
-                    youtubeMirrorPanelMissingSinceMs = 0L
-                    Log.v(
-                        TAG,
-                        "keep ready youtube mirror on inconclusive native panel miss " +
-                            "reason=$reason"
+                    scheduleYoutubeMirrorPanelPresenceAudit(
+                        reason = "heartbeat",
+                        delayMs = YOUTUBE_MIRROR_PANEL_AUDIT_INTERVAL_MS
                     )
                     return@postDelayed
                 }
@@ -3626,26 +3862,13 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 }
 
                 val nowMs = SystemClock.uptimeMillis()
-                val panelTransitionActive =
-                    youtubeMirrorCollectionMode != YoutubeMirrorCollectionMode.IDLE ||
-                        nowMs < youtubeSyntheticScrollUntilMs
-                if (panelTransitionActive) {
-                    youtubeMirrorPanelMissingSinceMs = 0L
-                    scheduleYoutubeMirrorPanelPresenceAudit(
-                        reason = "panel-transition:$reason",
-                        delayMs = YOUTUBE_MIRROR_PANEL_MISSING_GRACE_MS
-                    )
-                    return@postDelayed
-                }
                 if (youtubeMirrorPanelMissingSinceMs == 0L) {
                     youtubeMirrorPanelMissingSinceMs = nowMs
                 }
                 val missingForMs = nowMs - youtubeMirrorPanelMissingSinceMs
                 if (
                     !MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
-                        mirrorReady = youtubeSafeCommentMirrorController.isReady,
                         panelPresent = false,
-                        panelTransitionActive = false,
                         missingForMs = missingForMs,
                         missingGraceMs = YOUTUBE_MIRROR_PANEL_MISSING_GRACE_MS
                     )
@@ -3670,6 +3893,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun hasYoutubeCommentPanelStructureInAnyWindow(): Boolean {
+        val includeHidden = YOUTUBE_SAFE_MIRROR_ENABLED &&
+            youtubeSafeCommentMirrorController.isActive &&
+            youtubeMirrorPanelSpec != null
+        return hasYoutubeCommentPanelStructureInAnyWindow(includeHidden)
+    }
+
+    private fun hasVisibleYoutubeCommentPanelStructureInAnyWindow(): Boolean {
+        return hasYoutubeCommentPanelStructureInAnyWindow(includeHidden = false)
+    }
+
+    private fun hasYoutubeCommentPanelStructureInAnyWindow(
+        includeHidden: Boolean
+    ): Boolean {
         val roots = mutableListOf<AccessibilityNodeInfo>()
         rootInActiveWindow?.let { root -> roots.add(root) }
         windows?.forEach { window ->
@@ -3678,19 +3914,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
         return roots
             .asSequence()
             .filter { root -> isYoutubeAccessibilityRoot(root) }
-            .any { root -> hasYoutubeCommentPanelStructure(root) }
+            .any { root -> hasYoutubeCommentPanelStructure(root, includeHidden) }
     }
 
-    private fun hasYoutubeCommentPanelStructure(root: AccessibilityNodeInfo): Boolean {
+    private fun hasYoutubeCommentPanelStructure(
+        root: AccessibilityNodeInfo,
+        includeHidden: Boolean
+    ): Boolean {
         if (
             debugYoutubeHarnessActive &&
             root.packageName?.toString() == applicationContext.packageName
         ) {
             return true
         }
-        val includeHidden = YOUTUBE_SAFE_MIRROR_ENABLED &&
-            youtubeSafeCommentMirrorController.isActive &&
-            youtubeMirrorPanelSpec != null
         if (
             findFirstNodeByViewId(
                 root = root,
@@ -6425,8 +6661,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
         return selected
     }
 
-    private fun visibleYoutubeAuthorLabel(node: AccessibilityNodeInfo): String? {
-        if (!node.isVisibleToUser) return null
+    private fun visibleYoutubeAuthorLabel(
+        node: AccessibilityNodeInfo,
+        allowHiddenNode: Boolean = false
+    ): String? {
+        if (!node.isVisibleToUser && !allowHiddenNode) return null
         return listOfNotNull(
             node.contentDescription?.toString(),
             node.text?.toString()
@@ -6452,18 +6691,26 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun findYoutubeCommentRowForAuthor(
         authorNode: AccessibilityNodeInfo,
-        authorLabel: String
+        authorLabel: String,
+        allowHiddenNodes: Boolean = false
     ): YoutubeReplyAnchorMatch? {
-        val authorBounds = youtubeNodeBounds(authorNode) ?: return null
+        val authorBounds = youtubeNodeBounds(authorNode, allowHiddenNodes) ?: return null
         var current: AccessibilityNodeInfo? = authorNode
         repeat(YOUTUBE_COMMENT_ROW_MAX_PARENT_DEPTH + 1) {
             val rowNode = current ?: return null
-            val replyNode = findYoutubeReplyDescendant(rowNode)
-            if (replyNode != null && rowContainsExactYoutubeAuthor(rowNode, authorLabel)) {
+            val replyNode = findYoutubeReplyDescendant(
+                node = rowNode,
+                allowHiddenNodes = allowHiddenNodes
+            )
+            if (
+                replyNode != null &&
+                rowContainsExactYoutubeAuthor(rowNode, authorLabel, allowHiddenNodes)
+            ) {
                 buildYoutubeReplyAnchorMatch(
                     replyNode = replyNode,
                     rowNode = rowNode,
-                    authorBounds = authorBounds
+                    authorBounds = authorBounds,
+                    allowHiddenNodes = allowHiddenNodes
                 )?.let { return it }
             }
             current = runCatching { rowNode.parent }.getOrNull()
@@ -6549,10 +6796,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun buildYoutubeReplyAnchorMatch(
         replyNode: AccessibilityNodeInfo,
         rowNode: AccessibilityNodeInfo,
-        authorBounds: BoundsRect
+        authorBounds: BoundsRect,
+        allowHiddenNodes: Boolean = false
     ): YoutubeReplyAnchorMatch? {
-        val replyBounds = youtubeNodeBounds(replyNode) ?: return null
-        val rawRowBounds = youtubeNodeBounds(rowNode) ?: return null
+        val replyBounds = youtubeNodeBounds(replyNode, allowHiddenNodes) ?: return null
+        val rawRowBounds = youtubeNodeBounds(rowNode, allowHiddenNodes) ?: return null
         if (
             authorBounds.left < rawRowBounds.left - 8 ||
             authorBounds.right > rawRowBounds.right + 8 ||
@@ -6599,19 +6847,23 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun findYoutubeReplyDescendant(
         node: AccessibilityNodeInfo,
-        depth: Int = 0
+        depth: Int = 0,
+        allowHiddenNodes: Boolean = false
     ): AccessibilityNodeInfo? {
         if (depth > YOUTUBE_COMMENT_ROW_MAX_SEARCH_DEPTH) return null
-        if (isYoutubeReplyNode(node)) return node
+        if (isYoutubeReplyNode(node, allowHiddenNodes)) return node
         for (index in 0 until node.childCount) {
             val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
-            findYoutubeReplyDescendant(child, depth + 1)?.let { return it }
+            findYoutubeReplyDescendant(child, depth + 1, allowHiddenNodes)?.let { return it }
         }
         return null
     }
 
-    private fun isYoutubeReplyNode(node: AccessibilityNodeInfo): Boolean {
-        if (!node.isVisibleToUser || !node.isClickable) return false
+    private fun isYoutubeReplyNode(
+        node: AccessibilityNodeInfo,
+        allowHiddenNode: Boolean = false
+    ): Boolean {
+        if ((!node.isVisibleToUser && !allowHiddenNode) || !node.isClickable) return false
         val labels = listOfNotNull(
             node.contentDescription?.toString(),
             node.text?.toString()
@@ -6625,14 +6877,16 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun rowContainsExactYoutubeAuthor(
         rowNode: AccessibilityNodeInfo,
-        authorLabel: String
+        authorLabel: String,
+        allowHiddenNodes: Boolean = false
     ): Boolean {
-        return findExactYoutubeAuthorBounds(rowNode, authorLabel) != null
+        return findExactYoutubeAuthorBounds(rowNode, authorLabel, allowHiddenNodes) != null
     }
 
     private fun findExactYoutubeAuthorBounds(
         rowNode: AccessibilityNodeInfo,
-        authorLabel: String
+        authorLabel: String,
+        allowHiddenNodes: Boolean = false
     ): BoundsRect? {
         var visited = 0
         fun visit(node: AccessibilityNodeInfo?, depth: Int): BoundsRect? {
@@ -6640,8 +6894,8 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 return null
             }
             visited += 1
-            if (isExactVisibleYoutubeAuthorNode(node, authorLabel)) {
-                return youtubeNodeBounds(node)
+            if (isExactVisibleYoutubeAuthorNode(node, authorLabel, allowHiddenNodes)) {
+                return youtubeNodeBounds(node, allowHiddenNodes)
             }
             for (index in 0 until node.childCount) {
                 val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
@@ -6654,15 +6908,19 @@ class YoutubeAccessibilityService : AccessibilityService() {
 
     private fun isExactVisibleYoutubeAuthorNode(
         node: AccessibilityNodeInfo,
-        authorLabel: String
+        authorLabel: String,
+        allowHiddenNode: Boolean = false
     ): Boolean {
-        if (!node.isVisibleToUser) return false
+        if (!node.isVisibleToUser && !allowHiddenNode) return false
         return node.contentDescription?.toString()?.trim() == authorLabel ||
             node.text?.toString()?.trim() == authorLabel
     }
 
-    private fun youtubeNodeBounds(node: AccessibilityNodeInfo): BoundsRect? {
-        if (!node.isVisibleToUser) return null
+    private fun youtubeNodeBounds(
+        node: AccessibilityNodeInfo,
+        allowHiddenNode: Boolean = false
+    ): BoundsRect? {
+        if (!node.isVisibleToUser && !allowHiddenNode) return null
         val rect = Rect()
         runCatching { node.getBoundsInScreen(rect) }.getOrElse { return null }
         if (rect.width() <= 0 || rect.height() <= 0) return null
@@ -6995,7 +7253,11 @@ class YoutubeAccessibilityService : AccessibilityService() {
     }
 
     private fun performYoutubeCommentScroll(action: Int): Boolean {
-        val node = findYoutubeCommentScrollNode(action) ?: run {
+        val node = if (debugYoutubeHarnessActive) {
+            findDebugYoutubeHarnessScrollNode()
+        } else {
+            findYoutubeCommentScrollNode(action)
+        } ?: run {
             Log.w(
                 TAG,
                 "stop youtube comment collection: native results list not found action=$action"
@@ -7022,12 +7284,14 @@ class YoutubeAccessibilityService : AccessibilityService() {
         action: Int = AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
     ): AccessibilityNodeInfo? {
         youtubeMirrorNativeScrollNode?.let { cachedNode ->
-            val supportsAction = cachedNode.actionList.any { candidate ->
+            val refreshed = runCatching { cachedNode.refresh() }.getOrDefault(false)
+            val supportsAction = refreshed && cachedNode.actionList.any { candidate ->
                 candidate.id == action
             }
-            if (cachedNode.isScrollable || supportsAction) {
+            if (refreshed && (cachedNode.isScrollable || supportsAction)) {
                 return cachedNode
             }
+            youtubeMirrorNativeScrollNode = null
         }
         val paneSpec = youtubeMirrorPanelSpec
             ?: lastYoutubeCommentPaneSpec
@@ -7076,7 +7340,10 @@ class YoutubeAccessibilityService : AccessibilityService() {
                 }
             }
         }
-        exactNode?.let { node -> return node }
+        exactNode?.let { node ->
+            youtubeMirrorNativeScrollNode = node
+            return node
+        }
 
         var bestNode: AccessibilityNodeInfo? = null
         var bestScore = Int.MIN_VALUE
@@ -7119,7 +7386,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         }
 
         youtubeRoots.forEach { root -> visit(root, 0) }
-        return bestNode
+        return bestNode?.also { node -> youtubeMirrorNativeScrollNode = node }
     }
 
     private fun findDebugYoutubeHarnessScrollNode(): AccessibilityNodeInfo? {
@@ -9219,6 +9486,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         val viewIdResourceName = node.viewIdResourceName
         val text = node.text?.toString()
         val contentDescription = node.contentDescription?.toString()
+        val rect = precomputedRect ?: Rect().also { node.getBoundsInScreen(it) }
         val isYoutubeCommentPanelStructure = packageName == YOUTUBE_PACKAGE &&
             viewIdResourceName.orEmpty() in YOUTUBE_COMMENT_PANEL_CONTENT_VIEW_IDS
         val isInstagramCommentPanelStructure =
@@ -9233,7 +9501,6 @@ class YoutubeAccessibilityService : AccessibilityService() {
             else -> null
         } ?: return null
 
-        val rect = precomputedRect ?: Rect().also { node.getBoundsInScreen(it) }
         if (rect.width() <= 0 || rect.height() <= 0) {
             return null
         }
