@@ -2893,6 +2893,35 @@ class YoutubeAccessibilityService : AccessibilityService() {
     private fun handleInstagramSafeMirrorEvent(event: AccessibilityEvent): Boolean {
         if (!INSTAGRAM_SAFE_MIRROR_ENABLED) return false
 
+        val instagramMetrics = resources.displayMetrics
+        val instagramMirrorAlreadyActive = instagramSafeCommentMirrorSession.isActive
+        val isInstagramReelsScreen =
+            !instagramMirrorAlreadyActive &&
+                InstagramReelsLoadingGate.isReelsScreen(rootInActiveWindow)
+        if (
+            !instagramMirrorAlreadyActive &&
+            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            InstagramReelsLoadingGate.isReelsCommentTrigger(
+                source = event.source,
+                screenWidth = instagramMetrics.widthPixels,
+                screenHeight = instagramMetrics.heightPixels
+            )
+        ) {
+            val loadingSpec = InstagramReelsLoadingGate.createLoadingSpec(
+                screenWidth = instagramMetrics.widthPixels,
+                screenHeight = instagramMetrics.heightPixels
+            )
+            if (
+                loadingSpec != null &&
+                instagramSafeCommentMirrorSession.showSurface(
+                    spec = loadingSpec,
+                    reason = "reels-comment-trigger"
+                )
+            ) {
+                return true
+            }
+        }
+
         if (instagramSafeCommentMirrorSession.isActive) {
             if (
                 event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
@@ -2924,7 +2953,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> true
             else -> false
         }
-        if (!isProbeEvent) return false
+        if (!isProbeEvent) return isInstagramReelsScreen
 
         val forceProbe =
             event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
@@ -2942,7 +2971,7 @@ class YoutubeAccessibilityService : AccessibilityService() {
         if (forceProbe) {
             scheduleInstagramPanelProbeRetries("event-${event.eventType}")
         }
-        return false
+        return isInstagramReelsScreen
     }
 
     private fun scheduleInstagramPanelProbeRetries(reason: String) {
@@ -3174,6 +3203,32 @@ class YoutubeAccessibilityService : AccessibilityService() {
         rootInActiveWindow?.let(roots::add)
         windows?.forEach { window ->
             window.root?.let(roots::add)
+        }
+
+        for (root in roots) {
+            if (!isInstagramAccessibilityRoot(root)) continue
+            for (viewId in InstagramReelsLoadingGate.commentScrollViewIds) {
+                val candidates = runCatching {
+                    root.findAccessibilityNodeInfosByViewId(viewId)
+                }.getOrDefault(emptyList())
+                val directMatch = candidates.firstOrNull { candidate ->
+                    val rect = Rect().also { candidate.getBoundsInScreen(it) }
+                    val supportsForward = candidate.actionList.any { action ->
+                        action.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                    }
+                    (candidate.isScrollable || supportsForward) &&
+                        rect.width() >= 160 &&
+                        rect.height() >= 180 &&
+                        rectIntersectsSpec(rect, paneSpec)
+                }
+                if (directMatch != null) {
+                    Log.d(
+                        TAG,
+                        "instagram direct scroll node id=${directMatch.viewIdResourceName}"
+                    )
+                    return directMatch
+                }
+            }
         }
 
         var bestNode: AccessibilityNodeInfo? = null

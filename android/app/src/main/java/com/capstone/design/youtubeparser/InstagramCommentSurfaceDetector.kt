@@ -1,25 +1,37 @@
 package com.capstone.design.youtubeparser
 
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+
+enum class InstagramCommentSurfaceKind {
+    REELS_BOTTOM_SHEET
+}
 
 data class InstagramCommentSurface(
     val boundsInScreen: BoundsRect,
     val commentCount: Int,
     val confidence: Int,
-    val signature: String
+    val signature: String,
+    val kind: InstagramCommentSurfaceKind = InstagramCommentSurfaceKind.REELS_BOTTOM_SHEET
 )
 
 object InstagramCommentSurfaceDetector {
-    private const val MIN_CONFIDENCE = 6
-    private const val MIN_PANEL_HEIGHT_PX = 180
-    private const val MIN_CONTAINER_WIDTH_RATIO = 0.32f
-    private const val SIDE_PANEL_START_RATIO = 0.42f
+    private const val MIN_REELS_CONFIDENCE = 11
+    private const val MIN_PANEL_HEIGHT_PX = 360
+    private const val MIN_REELS_WIDTH_RATIO = 0.55f
+    private const val MAX_REELS_WIDTH_RATIO = 0.90f
+    private const val MIN_REELS_TOP_RATIO = 0.25f
+    private const val MAX_REELS_TOP_RATIO = 0.72f
+    private const val MAX_CENTER_OFFSET_RATIO = 0.12f
 
-    private const val KOREAN_COMMENTS = "\uB313\uAE00"
-    private const val KOREAN_REPLY = "\uB2F5\uAE00"
-    private const val KOREAN_COUNT_MAGNITUDES = "\uB9CC\uCC9C"
-    private const val KOREAN_COUNT_SUFFIX = "\uAC1C"
+    private const val BOTTOM_SHEET_ID = "bottom_sheet_container"
+    private const val MAIN_LIST_ID = "main_list_view"
+    private const val STICKY_LIST_ID = "sticky_header_list"
+    private const val ABOVE_COMPOSER_ID = "above_composer_views"
+    private const val COMPOSER_PARENT_ID = "comment_composer_parent_updated"
+    private const val COMPOSER_INPUT_ID = "layout_comment_thread_edittext_multiline"
+
     fun detect(
         nodes: List<ParsedTextNode>,
         screenWidth: Int,
@@ -39,97 +51,71 @@ object InstagramCommentSurfaceDetector {
         val visibleNodes = boundedNodes.filter { node -> node.isVisibleToUser }
         if (visibleNodes.isEmpty()) return null
 
-        // Instagram can mark the header text itself invisible while its panel children remain visible.
-        // Exact, on-screen title geometry is still reliable evidence for the open comment surface.
-        val titleNode = boundedNodes
-            .filter { node -> isCommentTitle(node.displayText.orEmpty()) }
-            .minByOrNull { node -> node.top }
-        val composerNodes = visibleNodes.filter(::isComposerNode)
-        val containerNodes = visibleNodes.filter(::isCommentContainerNode)
-        val parsedComments = InstagramCommentExtractor.extractComments(visibleNodes)
-        val metadataCount = visibleNodes.count { node ->
-            isCommentMetadata(node.displayText.orEmpty())
-        }
-
-        val credibleContainer = containerNodes
+        val bottomSheet = boundedNodes.firstOrNull { node ->
+            node.viewIdResourceName.hasId(BOTTOM_SHEET_ID)
+        } ?: return null
+        val listNode = visibleNodes
             .filter { node ->
-                node.right - node.left >= screenWidth * MIN_CONTAINER_WIDTH_RATIO &&
+                node.viewIdResourceName.hasId(MAIN_LIST_ID) ||
+                    node.viewIdResourceName.hasId(STICKY_LIST_ID)
+            }
+            .filter { node ->
+                val widthRatio = node.width().toFloat() / screenWidth
+                val topRatio = node.top.toFloat() / screenHeight
+                widthRatio in MIN_REELS_WIDTH_RATIO..MAX_REELS_WIDTH_RATIO &&
+                    topRatio in MIN_REELS_TOP_RATIO..MAX_REELS_TOP_RATIO &&
                     node.bottom - node.top >= MIN_PANEL_HEIGHT_PX
             }
-            .maxByOrNull { node ->
-                (node.right - node.left).toLong() * (node.bottom - node.top)
-            }
+            .maxByOrNull { node -> node.width().toLong() * node.height() }
+            ?: return null
 
-        val hasStrongPanelEvidence =
-            titleNode != null ||
-                (
-                    credibleContainer != null &&
-                        (
-                            composerNodes.isNotEmpty() ||
-                                parsedComments.size >= 2 ||
-                                metadataCount >= 2
-                            )
-                    )
-        if (!hasStrongPanelEvidence) return null
+        val leftMargin = listNode.left
+        val rightMargin = screenWidth - listNode.right
+        val centered = abs(leftMargin - rightMargin) <= screenWidth * MAX_CENTER_OFFSET_RATIO
+        if (!centered) return null
+
+        val composerNodes = visibleNodes.filter { node ->
+            val id = node.viewIdResourceName
+            id.hasId(ABOVE_COMPOSER_ID) ||
+                id.hasId(COMPOSER_PARENT_ID) ||
+                id.hasId(COMPOSER_INPUT_ID)
+        }
+        val alignedComposerNodes = composerNodes.filter { node ->
+            node.right >= listNode.left + listNode.width() / 2 &&
+                node.left <= listNode.right - listNode.width() / 2 &&
+                node.top >= listNode.top
+        }
+        if (alignedComposerNodes.isEmpty()) return null
+
+        val parsedComments = InstagramCommentExtractor.extractComments(visibleNodes)
+        val announcementCount = visibleNodes.count { node ->
+            InstagramCommentExtractor.isAccessibilityCommentAnnouncement(
+                node.displayText.orEmpty()
+            )
+        }
+
+        val horizontalNodes = listOf(listNode) + alignedComposerNodes.filter { node ->
+            node.width() >= listNode.width() * 0.72f
+        }
+        val left = horizontalNodes.minOf { node -> node.left }.coerceIn(0, screenWidth)
+        val right = horizontalNodes.maxOf { node -> node.right }.coerceIn(left, screenWidth)
+        val top = (listNode.top - dp(26, density)).coerceIn(0, screenHeight)
+        val composerBottom = alignedComposerNodes.maxOf { node -> node.bottom }
+        val bottom = max(listNode.bottom, composerBottom).coerceIn(top, screenHeight)
+
+        if (right - left < screenWidth * MIN_REELS_WIDTH_RATIO) return null
+        if (bottom - top < MIN_PANEL_HEIGHT_PX) return null
+        if (bottom < screenHeight * 0.70f) return null
+        if (bottomSheet.bottom < bottom) return null
 
         val confidence =
-            (if (titleNode != null) 6 else 0) +
-                (if (credibleContainer != null) 5 else 0) +
-                (if (composerNodes.isNotEmpty()) 2 else 0) +
+            4 +
+                5 +
+                3 +
                 min(parsedComments.size, 3) +
-                (if (metadataCount >= 2) 1 else 0)
-        if (confidence < MIN_CONFIDENCE) return null
-
-        val commentUnion = unionBounds(parsedComments.map { comment -> comment.boundsInScreen })
-        val containerBounds = credibleContainer?.toBoundsRect()
-        val titleBottom = titleNode?.bottom
-        val top = when {
-            titleBottom != null -> {
-                val afterHeader = titleBottom + dp(8, density)
-                max(afterHeader, containerBounds?.top?.takeIf { it >= titleBottom } ?: afterHeader)
-            }
-            containerBounds != null -> containerBounds.top
-            commentUnion != null -> commentUnion.top - dp(56, density)
-            else -> (screenHeight * 0.18f).toInt()
-        }.coerceIn(0, screenHeight)
-
-        val composerTop = composerNodes
-            .asSequence()
-            .map { node -> node.top }
-            .filter { value -> value >= top + MIN_PANEL_HEIGHT_PX }
-            .minOrNull()
-        val preferredBottom = when {
-            composerTop != null -> composerTop
-            containerBounds != null && containerBounds.bottom >= top + MIN_PANEL_HEIGHT_PX ->
-                containerBounds.bottom
-            else -> screenHeight - dp(20, density)
-        }
-        var bottom = preferredBottom.coerceIn(top, screenHeight)
-        if (bottom - top < MIN_PANEL_HEIGHT_PX) {
-            bottom = screenHeight
-        }
-        if (bottom - top < MIN_PANEL_HEIGHT_PX) return null
-
-        val horizontalBounds = containerBounds ?: commentUnion
-        val left: Int
-        val right: Int
-        if (horizontalBounds == null) {
-            left = 0
-            right = screenWidth
-        } else if (horizontalBounds.left > screenWidth * SIDE_PANEL_START_RATIO) {
-            left = (horizontalBounds.left - dp(88, density)).coerceIn(0, screenWidth)
-            right = screenWidth
-        } else {
-            val horizontalWidth = horizontalBounds.right - horizontalBounds.left
-            if (horizontalWidth >= screenWidth * 0.72f) {
-                left = 0
-                right = screenWidth
-            } else {
-                left = (horizontalBounds.left - dp(72, density)).coerceIn(0, screenWidth)
-                right = (horizontalBounds.right + dp(72, density)).coerceIn(left, screenWidth)
-            }
-        }
-        if (right - left < 160) return null
+                min(announcementCount, 2) +
+                2
+        if (confidence < MIN_REELS_CONFIDENCE) return null
 
         val bounds = BoundsRect(
             left = left,
@@ -141,84 +127,42 @@ object InstagramCommentSurfaceDetector {
             boundsInScreen = bounds,
             commentCount = parsedComments.size,
             confidence = confidence,
-            signature = "${bounds.left}|${bounds.top}|${bounds.right}|" +
-                "${bounds.bottom}|${parsedComments.size}"
+            signature = "reels|${bounds.left}|${bounds.top}|${bounds.right}|" +
+                "${bounds.bottom}|${parsedComments.size}",
+            kind = InstagramCommentSurfaceKind.REELS_BOTTOM_SHEET
         )
     }
 
     fun isCommentStructureViewId(viewIdResourceName: String?): Boolean {
         val id = viewIdResourceName.orEmpty().lowercase()
+        if (id.isBlank()) return false
+        if (
+            id.hasId(BOTTOM_SHEET_ID) ||
+            id.hasId(MAIN_LIST_ID) ||
+            id.hasId(STICKY_LIST_ID) ||
+            id.hasId(ABOVE_COMPOSER_ID) ||
+            id.hasId(COMPOSER_PARENT_ID) ||
+            id.hasId(COMPOSER_INPUT_ID)
+        ) {
+            return true
+        }
         if (!id.contains("comment")) return false
         return id.contains("recycler") ||
             id.contains("list") ||
             id.contains("sheet") ||
             id.contains("panel") ||
             id.contains("container") ||
-            id.contains("thread")
+            id.contains("thread") ||
+            id.contains("composer")
     }
 
-    private fun isCommentContainerNode(node: ParsedTextNode): Boolean {
-        return isCommentStructureViewId(node.viewIdResourceName)
-    }
+    private fun ParsedTextNode.width(): Int = right - left
 
-    private fun isComposerNode(node: ParsedTextNode): Boolean {
-        val id = node.viewIdResourceName.orEmpty().lowercase()
-        val text = node.displayText.orEmpty()
-            .replace(Regex("\\s+"), " ")
-            .trim()
-            .lowercase()
-        val composerId =
-            id.contains("comment") &&
-                (
-                    id.contains("composer") ||
-                        id.contains("input") ||
-                        id.contains("field")
-                    )
-        return composerId ||
-            text == "\uB313\uAE00 \uB2EC\uAE30" ||
-            text == "\uB313\uAE00 \uB2EC\uAE30..." ||
-            text == "\uB313\uAE00 \uCD94\uAC00" ||
-            text == "\uB313\uAE00 \uCD94\uAC00..." ||
-            text == "add a comment" ||
-            text == "add a comment..."
-    }
+    private fun ParsedTextNode.height(): Int = bottom - top
 
-    private fun isCommentTitle(value: String): Boolean {
-        val text = value.replace(Regex("\\s+"), " ").trim().lowercase()
-        return text == "comments" ||
-            text == KOREAN_COMMENTS ||
-            Regex("^comments\\s+[\\d,.kmb]+$").matches(text) ||
-            Regex("^$KOREAN_COMMENTS\\s*[\\d,.$KOREAN_COUNT_MAGNITUDES]+\\s*$KOREAN_COUNT_SUFFIX?$").matches(text)
-    }
-
-    private fun isCommentMetadata(value: String): Boolean {
-        val text = value.replace(Regex("\\s+"), " ").trim().lowercase()
-        return text == KOREAN_REPLY ||
-            text == "reply" ||
-            text.endsWith("\uCD08 \uC804") ||
-            text.endsWith("\uBD84 \uC804") ||
-            text.endsWith("\uC2DC\uAC04 \uC804") ||
-            text.endsWith("\uC77C \uC804") ||
-            text.endsWith("\uC8FC \uC804") ||
-            text.endsWith("s ago") ||
-            text.endsWith("m ago") ||
-            text.endsWith("h ago") ||
-            text.endsWith("d ago") ||
-            text.endsWith("w ago")
-    }
-
-    private fun ParsedTextNode.toBoundsRect(): BoundsRect {
-        return BoundsRect(left = left, top = top, right = right, bottom = bottom)
-    }
-
-    private fun unionBounds(bounds: List<BoundsRect>): BoundsRect? {
-        if (bounds.isEmpty()) return null
-        return BoundsRect(
-            left = bounds.minOf { rect -> rect.left },
-            top = bounds.minOf { rect -> rect.top },
-            right = bounds.maxOf { rect -> rect.right },
-            bottom = bounds.maxOf { rect -> rect.bottom }
-        )
+    private fun String?.hasId(name: String): Boolean {
+        val value = this.orEmpty().lowercase()
+        return value == name || value.endsWith(":id/$name") || value.endsWith("/$name")
     }
 
     private fun dp(value: Int, density: Float): Int {
