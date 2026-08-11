@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.os.Handler
 import android.os.SystemClock
 import android.util.Log
+import kotlin.math.max
+import kotlin.math.min
 
 internal class InstagramSafeCommentMirrorSession(
     private val service: AccessibilityService,
@@ -17,8 +19,8 @@ internal class InstagramSafeCommentMirrorSession(
 ) {
     companion object {
         private const val TAG = "InstagramSafeMirror"
-        private const val INITIAL_FORWARD_STEPS = 5
-        private const val PREFETCH_FORWARD_STEPS = 2
+        private const val INITIAL_FORWARD_STEPS = 0
+        private const val PREFETCH_FORWARD_STEPS = 1
         private const val VIEWPORT_SETTLE_MS = 620L
         private const val NEXT_STEP_DELAY_MS = 120L
         private const val BATCH_TIMEOUT_MS = 15_000L
@@ -39,13 +41,13 @@ internal class InstagramSafeCommentMirrorSession(
     }
 
     private val mirrorController by lazy {
-        YoutubeSafeCommentMirrorController(
+        InstagramSafeCommentMirrorController(
             service = service,
             onNeedMore = { startPrefetch() },
-            visualStyle = SafeCommentMirrorVisualStyle.INSTAGRAM
+            onDismiss = { dismissFromMirror() }
         )
     }
-    private val safeCommentBuffer = YoutubeSafeCommentBuffer()
+    private val safeCommentBuffer = InstagramSafeCommentBuffer()
 
     private var panelSpec: MaskOverlaySpec? = null
     private var sessionRunId = 0L
@@ -63,6 +65,8 @@ internal class InstagramSafeCommentMirrorSession(
     private var sessionStartedAtUptimeMs = 0L
     private var sessionStartedAtEpochMs = 0L
     private var syntheticScrollUntilMs = 0L
+    private var presenceAuditGeneration = 0L
+    private var presenceAuditScheduled = false
     private val seenViewportSignatures = linkedSetOf<String>()
 
     val isActive: Boolean
@@ -77,7 +81,7 @@ internal class InstagramSafeCommentMirrorSession(
     fun showSurface(spec: MaskOverlaySpec, reason: String): Boolean {
         if (!isInstagramForeground()) return false
         val metrics = service.resources.displayMetrics
-        val surfaceSpec = YoutubeSkeletonMaskBuilder.stabilizeLoadingPaneSpec(
+        val surfaceSpec = stabilizeSurfaceSpec(
             previousSpec = panelSpec,
             currentSpec = spec,
             screenWidth = metrics.widthPixels,
@@ -109,7 +113,9 @@ internal class InstagramSafeCommentMirrorSession(
         Log.d(
             TAG,
             "render surface reason=$reason ready=${mirrorController.isReady} " +
-                "safe=${safeCommentBuffer.comments().size}"
+                "safe=${safeCommentBuffer.comments().size} " +
+                "input=${spec.left},${spec.top},${spec.width},${spec.height} " +
+                "stable=${surfaceSpec.left},${surfaceSpec.top},${surfaceSpec.width},${surfaceSpec.height}"
         )
         return true
     }
@@ -119,9 +125,17 @@ internal class InstagramSafeCommentMirrorSession(
         delayMs: Long = PANEL_PRESENCE_DELAY_MS
     ) {
         if (!mirrorController.isActive) return
+        if (presenceAuditScheduled) return
         val runId = sessionRunId
+        val generation = presenceAuditGeneration + 1L
+        presenceAuditGeneration = generation
+        presenceAuditScheduled = true
         handler.postDelayed(
             {
+                if (generation != presenceAuditGeneration) {
+                    return@postDelayed
+                }
+                presenceAuditScheduled = false
                 if (
                     runId != sessionRunId ||
                     !mirrorController.isActive ||
@@ -161,15 +175,7 @@ internal class InstagramSafeCommentMirrorSession(
                     panelMissingSinceMs = nowMs
                 }
                 val missingForMs = nowMs - panelMissingSinceMs
-                if (
-                    !MaskOverlayEventPolicy.shouldRemoveYoutubeMirrorAfterPanelMiss(
-                        mirrorReady = false,
-                        panelPresent = false,
-                        panelTransitionActive = false,
-                        missingForMs = missingForMs,
-                        missingGraceMs = PANEL_MISSING_GRACE_MS
-                    )
-                ) {
+                if (missingForMs < PANEL_MISSING_GRACE_MS) {
                     schedulePresenceAudit(
                         reason = reason,
                         delayMs = PANEL_MISSING_GRACE_MS - missingForMs
@@ -209,6 +215,8 @@ internal class InstagramSafeCommentMirrorSession(
         sessionStartedAtUptimeMs = 0L
         sessionStartedAtEpochMs = 0L
         syntheticScrollUntilMs = 0L
+        presenceAuditGeneration += 1L
+        presenceAuditScheduled = false
         seenViewportSignatures.clear()
         safeCommentBuffer.clear()
         mirrorController.clear()
@@ -228,15 +236,21 @@ internal class InstagramSafeCommentMirrorSession(
         reachedEnd = false
         initialRecoveryAttempts = 0
         panelMissingSinceMs = 0L
-        panelNativeObserved = isPanelPresent()
+        panelNativeObserved = false
         sessionStartedAtUptimeMs = SystemClock.uptimeMillis()
         sessionStartedAtEpochMs = System.currentTimeMillis()
         syntheticScrollUntilMs = 0L
+        presenceAuditGeneration += 1L
+        presenceAuditScheduled = false
         seenViewportSignatures.clear()
         safeCommentBuffer.clear()
         mirrorController.startLoading(spec)
 
         val runId = sessionRunId
+        schedulePresenceAudit(
+            reason = "session-open",
+            delayMs = PANEL_OPENING_GRACE_MS
+        )
         scheduleInitialTimeout(runId, INITIAL_TIMEOUT_MS)
         scheduleCurrentViewportCapture("initial-top")
         Log.d(TAG, "begin session run=$runId")
@@ -355,6 +369,14 @@ internal class InstagramSafeCommentMirrorSession(
             captureAttemptId += 1L
             val isNewViewport = signature.isNotBlank() &&
                 seenViewportSignatures.add(signature)
+            if (
+                collectionMode == CollectionMode.PREFETCH &&
+                signature.isNotBlank() &&
+                !isNewViewport
+            ) {
+                reachedEnd = true
+                Log.d(TAG, "stop prefetch at repeated viewport")
+            }
             if (isNewViewport) {
                 capturedViewports += 1
                 val added = safeCommentBuffer.add(batch)
@@ -562,6 +584,16 @@ internal class InstagramSafeCommentMirrorSession(
         advanceCollection()
     }
 
+    private fun dismissFromMirror() {
+        if (!mirrorController.isActive) return
+        handler.post {
+            if (!mirrorController.isActive) return@post
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            reset("reels-pull-down")
+            clearLegacyOverlay()
+        }
+    }
+
     private fun finishCollection(reason: String) {
         if (!mirrorController.isActive) return
         val previousMode = collectionMode
@@ -599,6 +631,41 @@ internal class InstagramSafeCommentMirrorSession(
         if (sessionStartedAtUptimeMs <= 0L) return 0L
         val elapsedMs = SystemClock.uptimeMillis() - sessionStartedAtUptimeMs
         return (PANEL_OPENING_GRACE_MS - elapsedMs).coerceAtLeast(0L)
+    }
+
+    private fun stabilizeSurfaceSpec(
+        previousSpec: MaskOverlaySpec?,
+        currentSpec: MaskOverlaySpec,
+        screenWidth: Int,
+        screenHeight: Int
+    ): MaskOverlaySpec {
+        if (
+            previousSpec == null ||
+            previousSpec.style != MaskOverlayStyle.LOADING ||
+            currentSpec.style != MaskOverlayStyle.LOADING ||
+            screenWidth <= 0 ||
+            screenHeight <= 0
+        ) {
+            return currentSpec
+        }
+
+        val left = min(previousSpec.left, currentSpec.left).coerceIn(0, screenWidth)
+        val top = min(previousSpec.top, currentSpec.top).coerceIn(0, screenHeight)
+        val right = max(
+            previousSpec.left + previousSpec.width,
+            currentSpec.left + currentSpec.width
+        ).coerceIn(left, screenWidth)
+        val bottom = max(
+            previousSpec.top + previousSpec.height,
+            currentSpec.top + currentSpec.height
+        ).coerceIn(top, screenHeight)
+        return currentSpec.copy(
+            left = left,
+            top = top,
+            width = right - left,
+            height = bottom - top,
+            allowScrollTranslation = false
+        )
     }
 
     private fun emptyStateMessage(): String? {

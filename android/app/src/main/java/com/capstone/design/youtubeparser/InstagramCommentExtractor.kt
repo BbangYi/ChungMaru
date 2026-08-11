@@ -6,6 +6,13 @@ object InstagramCommentExtractor {
         val authorId: String,
         val body: String
     )
+    private val koreanAccessibilityAnnouncement = Regex(
+        "^([A-Za-z0-9._]{1,64})\\s*님이\\s+(.+?)\\s+댓글을\\s+달았습니다[.!]?$"
+    )
+    private val englishAccessibilityAnnouncement = Regex(
+        "^([A-Za-z0-9._]{1,64})\\s+(?:commented|left a comment)[:\\s]+(.+)$",
+        RegexOption.IGNORE_CASE
+    )
     private val nonAuthorPrefixes = setOf(
         "a", "an", "he", "how", "i", "it", "she", "that", "the",
         "these", "they", "this", "those", "we", "what", "when", "why", "you"
@@ -24,6 +31,15 @@ object InstagramCommentExtractor {
 
         for (node in sorted) {
             val text = node.displayText ?: continue
+            val announcement = extractAccessibilityAnnouncement(text)
+            if (announcement != null) {
+                results += ParsedComment(
+                    commentText = announcement.body,
+                    boundsInScreen = BoundsRect(node.left, node.top, node.right, node.bottom),
+                    authorId = announcement.authorId
+                )
+                continue
+            }
             val combined = extractCombinedComment(text)
             if (combined != null && isLikelyCommentBody(combined.body)) {
                 results += ParsedComment(
@@ -48,6 +64,17 @@ object InstagramCommentExtractor {
 
                 if (isDateText(nextText)) continue
                 if (isMetaText(nextText)) continue
+                val announcement = extractAccessibilityAnnouncement(nextText)
+                if (announcement != null) {
+                    if (announcement.authorId.equals(anchorText.trim().removePrefix("@"), ignoreCase = true)) {
+                        results += ParsedComment(
+                            commentText = announcement.body,
+                            boundsInScreen = BoundsRect(next.left, next.top, next.right, next.bottom),
+                            authorId = announcement.authorId
+                        )
+                    }
+                    break
+                }
                 if (isLikelyCommentBody(nextText)) {
                     results += ParsedComment(
                         commentText = nextText,
@@ -62,6 +89,7 @@ object InstagramCommentExtractor {
         for (node in sorted) {
             val text = node.displayText ?: continue
             if (!isLikelyCommentBody(text)) continue
+            if (extractAccessibilityAnnouncement(text) != null) continue
             if (extractCombinedComment(text) != null) continue
             if (looksLikeUsername(text)) continue
             if (isDateText(text)) continue
@@ -76,6 +104,22 @@ object InstagramCommentExtractor {
         return results.distinctBy {
             "${it.commentText}|${it.boundsInScreen.top}|${it.boundsInScreen.left}"
         }
+    }
+
+    fun isAccessibilityCommentAnnouncement(text: String): Boolean {
+        return extractAccessibilityAnnouncement(text) != null
+    }
+
+    private fun extractAccessibilityAnnouncement(text: String): CombinedComment? {
+        val normalized = text.replace(Regex("\\s+"), " ").trim()
+        val match = koreanAccessibilityAnnouncement.matchEntire(normalized)
+            ?: englishAccessibilityAnnouncement.matchEntire(normalized)
+            ?: return null
+        val authorId = match.groupValues[1].trim().removePrefix("@")
+        val body = match.groupValues[2].trim()
+        if (!InstagramAuthorPolicy.isValid(authorId)) return null
+        if (body.isBlank() || isDateText(body) || isMetaText(body)) return null
+        return CombinedComment(authorId = authorId, body = body)
     }
 
     private fun extractCombinedComment(text: String): CombinedComment? {
@@ -114,6 +158,7 @@ object InstagramCommentExtractor {
         val lower = text.trim().lowercase()
         return lower == "답글" ||
             lower == "좋아요" ||
+            lower == "작성자" ||
             lower == "리포스트" ||
             lower == "댓글 달기" ||
             lower == "저장" ||
@@ -147,6 +192,9 @@ object InstagramCommentExtractor {
             lower.contains("재생하거나 일시 중지하려면") ||
             lower.contains("번역 보기") ||
             lower.contains("see translation") ||
+            Regex("^답글\\s*[\\d,.]+개?\\s*더\\s*보기$").matches(lower) ||
+            (lower.startsWith("좋아요 ") && lower.contains("개")) ||
+            lower.endsWith("댓글을 달았습니다") ||
             lower.contains("더 보기") ||
             lower.contains("more")
     }
